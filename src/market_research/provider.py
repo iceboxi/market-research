@@ -49,10 +49,14 @@ class YahooDailyProvider:
                             where=np.isfinite(close) & (close > 0))
         if not np.isfinite(factors).all() or (factors <= 0).any():
             raise ValueError(f"{symbol}: missing/invalid Yahoo adjusted close")
+        # Preserve Yahoo's reported (cash-dividend UNadjusted) opening price.
+        # Historical quote opens may already be split-adjusted by Yahoo, so
+        # this is a price-only fill proxy, not a broker execution record.
+        frame["execution_open"] = frame["open"].astype(float)
         frame[["open", "high", "low", "close"]] = (
             frame[["open", "high", "low", "close"]].mul(factors, axis=0)
         )
-        return frame[["open", "high", "low", "close", "volume", "adj_close"]]
+        return frame[["open", "high", "low", "close", "volume", "adj_close", "execution_open"]]
 
 
 @dataclass

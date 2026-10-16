@@ -69,3 +69,19 @@ This repository currently covers only a handful of example tickers. It is **not*
 ## Shared market-data contract
 
 Scan and Backtest now call the same `load_daily_bars` boundary in `market_data.py` for source routing, completed-session exclusion, OHLCV checks, checksum, metadata, and strict-freshness policy. Backtest also accepts `--replay-dir snapshots/` and `--snapshot-output snapshots/` for privately retained input history. Analysis price basis is tracked separately from execution price basis: dividend-adjusted US opening prices are **not executable fills**. The backtest remains an exploratory proxy, not a broker-realistic simulator.
+
+
+## Price-model safety (research vs simulated execution)
+
+US **signal candles** are adjusted using Yahoo Adj Close / Close, but a
+separate `execution_open` column preserves Yahoo's quoted Open without cash
+dividend adjustment. TWSE stores its unadjusted Open as `execution_open`.
+The backtester explicitly uses `execution_open` for price-only entry and exit
+calculations. Yahoo historic quote Open may already be split-adjusted, and
+neither provider guarantees executable prices. **Cash dividends, distributions,
+exchange fees and full corporate actions are not fully modeled.** Backtest
+returns are price-only exploratory metrics, not investor total returns.
+
+The daily data contract records the analysis price basis, execution proxy,
+dividend-handling limitations, and SHA-256 of the complete input, including
+`execution_open`.

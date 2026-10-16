@@ -136,6 +136,7 @@ def test_yahoo_adjusted_ohlc_preserves_reported_volume():
     assert df["open"].iloc[0] == pytest.approx(94.05)
     assert df["close"].iloc[0] == pytest.approx(95.0)
     assert df["volume"].tolist() == [1000, 1200]
+    assert df["execution_open"].tolist() == pytest.approx([99., 102.])
 
 
 def test_yahoo_missing_adjusted_close_is_rejected():

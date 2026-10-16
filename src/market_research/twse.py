@@ -112,7 +112,8 @@ class TwseDailyProvider:
         merged.index.name = "date"
         # 'adj_close' is intentionally NaN: these are unadjusted official prices.
         merged["adj_close"] = float("nan")
-        return merged[["open", "high", "low", "close", "volume", "adj_close"]]
+        merged["execution_open"] = merged["open"]
+        return merged[["open", "high", "low", "close", "volume", "adj_close", "execution_open"]]
 
 
 def twse_close_check(symbol: str, trade_date: date, yahoo_close: float,

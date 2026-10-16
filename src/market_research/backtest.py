@@ -98,7 +98,9 @@ def backtest_symbol(df, market, symbol, strategy, params, cfg):
     last_entry = n - cfg.hold_bars - 1
     if last_entry < first:
         raise ValueError(f"{symbol}: insufficient complete bars for backtest")
-    opens = df["open"].to_numpy(dtype=float)
+    # Signal predicates consume analysis OHLC; filled prices are a separate
+    # price-only quote-open proxy. Avoid using dividend-adjusted opens for fills.
+    opens = df["execution_open"].to_numpy(dtype=float) if "execution_open" in df else df["open"].to_numpy(dtype=float)
     if not np.isfinite(opens).all() or (opens <= 0).any():
         raise ValueError(f"{symbol}: invalid opening prices")
     entries, signal_indices = [], []
@@ -148,6 +150,8 @@ def backtest_symbol(df, market, symbol, strategy, params, cfg):
         "start_date": str(df.index[first]), "last_date": str(df.index[-1]),
         "bars": n, "closed_trades": len(trades),
         "skipped_overlapping_signals": skipped,
+        "return_convention": "price_only_excludes_dividend_cashflows",
+        "execution_open_field": "execution_open" if "execution_open" in df else "open_fixture_fallback",
         "strategy_net_return_pct": (equity[-1] - 1) * 100,
         "strategy_max_drawdown_pct": drawdown(equity),
         "win_rate_pct": (
@@ -225,7 +229,8 @@ def run_backtest(market="both", period="1y", out=Path("backtest_output"),
         "limitations": [
             "Not an executable trading strategy or out-of-sample validation.",
             "TWSE prices unadjusted for splits/dividends; can distort results.",
-            "Yahoo US adjusted OHLC prices are not directly executable prices.",
+            "US screening uses dividend-adjusted OHLC; backtest fills use Yahoo quote Open (possibly split adjusted).",
+            "Performance is price-only: cash dividends and other corporate actions are not credited.",
             "No portfolio allocation, FX, market impact, or capital constraints.",
             "Random benchmark matches the number of non-overlapping trades.",
             "No raw historical OHLC data is redistributed by this public repository.",

@@ -73,3 +73,41 @@ def test_invalid_settings_and_small_history():
         Settings(trials=0).validate()
     with pytest.raises(ValueError,match="insufficient"):
         backtest_symbol(candles(15),"us","TEST",FixedSignals(),{},Settings())
+
+
+def test_us_signal_uses_adjusted_prices_but_fill_uses_quote_open():
+    df = candles(65)
+    df["execution_open"] = df["open"] * 1.2
+    cfg = Settings(trials=3)
+    summary, trades = backtest_symbol(df, "us", "TEST", FixedSignals((29,)), {}, cfg)
+    assert summary["execution_open_field"] == "execution_open"
+    assert trades[0]["entry_open"] == pytest.approx(df["execution_open"].iloc[30])
+    assert trades[0]["entry_open"] != df["open"].iloc[30]
+    assert summary["return_convention"] == "price_only_excludes_dividend_cashflows"
+
+
+def test_tw_source_has_explicit_unadjusted_execution_open():
+    from market_research.market_data import load_daily_bars
+    from datetime import datetime, timezone
+    class TW:
+        source = "twse_stock_day_official_raw_ohlcv"
+        def load(self, symbol, period):
+            return candles()
+    daily = load_daily_bars(TW(), "tw", "2330.TW", "1y",
+        datetime(2026, 11, 16, tzinfo=timezone.utc), "Asia/Taipei")
+    assert "execution_open" in daily.frame
+    assert daily.metadata["dividend_cashflows_included"] is False
+    assert daily.metadata["execution_price_basis"] == "twse_raw_open_proxy_not_guaranteed_fill"
+
+
+def test_us_production_source_rejects_missing_execution_price_proxy():
+    from market_research.market_data import load_daily_bars
+    from datetime import datetime, timezone
+    class US:
+        source = "yahoo_finance_via_yfinance"
+        def load(self, symbol, period):
+            return candles()
+    with pytest.raises(ValueError, match="missing unadjusted-for-dividends"):
+        load_daily_bars(US(), "us", "TEST", "1y",
+                        datetime(2026, 11, 16, tzinfo=timezone.utc),
+                        "America/New_York")

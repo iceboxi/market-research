@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
 from zoneinfo import ZoneInfo
+import numpy as np
 
 import pandas as pd
 
@@ -21,7 +22,7 @@ PRICE_BASIS = {
 }
 EXECUTION_BASIS = {
     "tw": "twse_raw_open_proxy_not_guaranteed_fill",
-    "us": "dividend_adjusted_open_not_executable_price",
+    "us": "yahoo_quote_open_excludes_dividend_cashflows_split_adjusted_proxy",
 }
 
 
@@ -78,11 +79,28 @@ def load_daily_bars(provider, market: str, symbol: str, period: str,
     source = getattr(provider_for, "source", getattr(provider, "source", "unknown"))
     if source == "checksummed_local_replay" and hasattr(provider, "records"):
         source = provider.records[symbol]["source"]
+    # Every post-ingestion frame has an explicit execution-price proxy. A
+    # Yahoo production frame without it is invalid: otherwise the backtester
+    # would silently execute at dividend-adjusted analytical prices.
+    if "execution_open" not in frame:
+        if market == "us" and source == "yahoo_finance_via_yfinance":
+            raise ValueError(f"{symbol}: missing unadjusted-for-dividends execution_open")
+        frame["execution_open"] = frame["open"]
+    exec_opens = pd.to_numeric(frame["execution_open"], errors="coerce").to_numpy(dtype=float)
+    if not np.isfinite(exec_opens).all() or (exec_opens <= 0).any():
+        raise ValueError(f"{symbol}: invalid execution_open")
     checked.update({
         "market": market, "symbol": symbol,
         "source": source, "contract_version": DATA_CONTRACT_VERSION,
         "price_basis": PRICE_BASIS[market],
         "execution_price_basis": EXECUTION_BASIS[market],
+        "return_convention": "price_only_excludes_cash_dividends_and_other_distributions",
+        "corporate_actions_handling": (
+            "TWSE official prices not adjusted for corporate actions"
+            if market == "tw"
+            else "Yahoo adjusted analysis OHLC, quote opens may be split adjusted"
+        ),
+        "dividend_cashflows_included": False,
         "volume_unit": "reported_shares",
         "as_of_market_date": str(local_date),
         "last_date": str(frame.index[-1]),
