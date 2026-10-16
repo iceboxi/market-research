@@ -85,3 +85,8 @@ returns are price-only exploratory metrics, not investor total returns.
 The daily data contract records the analysis price basis, execution proxy,
 dividend-handling limitations, and SHA-256 of the complete input, including
 `execution_open`.
+
+
+## Reproducible CI dependencies
+
+The GitHub Runner-generated `uv.lock` is committed to main. Unit, scan and backtest workflows verify `uv lock --check` and install with `uv sync --locked`. Dependency updates are reviewed through the separate `Generate dependency lock` workflow. A generated lock file is not itself a full market-data snapshot.

@@ -3,6 +3,11 @@ on:
   push:
     paths:
       - 'src/market_research/backtest.py'
+      - 'src/market_research/provider.py'
+      - 'src/market_research/twse.py'
+      - 'src/market_research/validation.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - 'src/market_research/market_data.py'
       - 'src/market_research/market_calendar.py'
       - 'src/market_research/snapshots.py'

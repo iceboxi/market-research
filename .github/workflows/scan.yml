@@ -6,6 +6,7 @@ on:
       - 'tests/**'
       - 'config/**'
       - 'pyproject.toml'
+      - 'uv.lock'
       - '.github/workflows/scan.yml'
   workflow_dispatch:
     inputs:
