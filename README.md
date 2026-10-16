@@ -59,3 +59,8 @@ Symbols are in config/markets.yaml; toggle strategies in config/strategies.yaml.
 TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.
 
 This repository currently covers only a handful of example tickers. It is **not** a whole-exchange scanner. No automatic trading, VPS, AI API, Serenity analysis, or backtesting is included. Dependency versions are constrained but there is no checked-in uv.lock yet; generate and commit one after networked resolution.
+
+
+## Foundation: freshness and offline replay
+
+`market-scan --strict-freshness` validates the latest completed XTAI/XNYS session, with a 60-minute safety delay after the close. Calendar outages or unexpected official closures still require review. The default remains diagnostic/non-strict until live freshness behavior has passed CI. Local opt-in snapshots can be created with `market-scan --snapshot-output snapshots/` and replayed with `market-scan --replay-dir snapshots/`. Snapshots are gitignored and must not be uploaded to this public repository without redistribution rights. Read `docs/STRATEGY_SPEC.md` before implementing new strategies. This project already has a manual exploratory backtest workflow.

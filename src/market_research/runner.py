@@ -11,6 +11,9 @@ import pandas as pd
 import yaml
 
 from .provider import RoutedDailyProvider
+from .market_calendar import require_complete_session
+from .snapshots import ReplayProvider, write_snapshot, write_index
+from .data_contract import verify_scan_artifacts
 from .strategies import get_strategy
 from .validation import validate_daily
 from .twse import twse_close_check
@@ -21,13 +24,17 @@ def save(path, payload):
 
 
 def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("config"),
-             provider=None, include_snapshot=False, check_twse=False, now=None, verifier=None):
+             provider=None, include_snapshot=False, check_twse=False, now=None,
+             verifier=None, snapshot_output=None, replay_dir=None,
+             strict_freshness=False):
     markets = yaml.safe_load((config_dir / "markets.yaml").read_text())["markets"]
     strategies = [s for s in yaml.safe_load((config_dir / "strategies.yaml").read_text())["strategies"] if s["enabled"]]
     selected = list(markets) if market == "both" else [market]
     if any(m not in markets for m in selected) or not strategies:
         raise ValueError("Unknown market or no strategies")
-    provider = provider or RoutedDailyProvider()
+    if replay_dir and provider:
+        raise ValueError('Cannot supply provider and replay directory together')
+    provider = ReplayProvider(replay_dir) if replay_dir else (provider or RoutedDailyProvider())
     now = now or datetime.now(timezone.utc)
     out.mkdir(parents=True, exist_ok=True)
     manifest = {"schema_version": 1, "generated_at_utc": now.astimezone(timezone.utc).isoformat(),
@@ -37,7 +44,7 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                                  "params": s.get("params", {})} for s in strategies],
                 "snapshot_included": include_snapshot}
     quality = {"symbols": [], "errors": [], "warnings": []}
-    results, snapshots = [], []
+    results, snapshots, records = [], [] , []
     for m in selected:
         today = now.astimezone(ZoneInfo(markets[m]["timezone"])).date()
         for symbol in markets[m]["symbols"]:
@@ -57,6 +64,8 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                     # For an official EOD source an incomplete record is an error.
                     raise ValueError(f"{symbol}: incomplete trailing OHLC on {df.index[-1]}")
                 checked = validate_daily(df, symbol, market_today=today)
+                if strict_freshness:
+                    checked['session'] = require_complete_session(m, df.index[-1], now)
                 source = (provider.provider_for(symbol).source if hasattr(provider, "provider_for")
                           else provider.source)
                 checked.update({"market": m, "source": source,
@@ -73,6 +82,8 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                         checked["twse_spot_check"] = (verifier or twse_close_check)(
                             symbol, df.index[-1], float(df["close"].iloc[-1]),
                             float(df["volume"].iloc[-1]))
+                if snapshot_output:
+                    records.append(write_snapshot(Path(snapshot_output), symbol, df, source))
                 quality["symbols"].append(checked)
                 if include_snapshot:
                     copy = df.reset_index().copy()
@@ -85,6 +96,8 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
             except Exception as exc:
                 quality["errors"].append({"market": m, "symbol": symbol,
                                            "error_type": type(exc).__name__, "reason": str(exc)})
+    if snapshot_output:
+        write_index(Path(snapshot_output), records)
     signals = [r for r in results if r["matched"]]
     official_mismatches = sum(1 for entry in quality["symbols"] if entry.get("twse_spot_check", {}).get("status") == "mismatch")
     manifest.update({"sources_by_market": {"tw": "twse_stock_day_official_raw_ohlcv",
@@ -95,6 +108,9 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                      "matching_signals": len(signals), "warning_count": len(quality["warnings"]),
                      "result_status": ("partial_or_failed" if quality["errors"] else
                                        "complete_with_data_warnings" if quality["warnings"] or official_mismatches else "complete")})
+    manifest['strict_freshness'] = strict_freshness
+    manifest['snapshot_policy'] = ('local_only' if snapshot_output else 'replay' if replay_dir else 'no_raw_export')
+    verify_scan_artifacts(manifest, quality, results, signals)
     save(out / "manifest.json", manifest)
     save(out / "data_quality.json", quality)
     save(out / "screening_results.json", results)
