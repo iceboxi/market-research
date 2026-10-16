@@ -72,7 +72,58 @@ class MaBreakout:
         )
 
 
-STRATEGIES = {"rsi_volume": RsiVolume, "ma_breakout": MaBreakout}
+
+class SakataThreeSoldiers:
+    """An explicit *research variant* of Sakata red three soldiers; no trades."""
+    id = "sakata_three_soldiers"
+    version = "0.1.0"
+
+    def scan(self, market: str, symbol: str, data: pd.DataFrame,
+             params: dict) -> ScreenResult:
+        n = int(params.get("prior_trend_bars", 5))
+        decline = float(params.get("prior_decline_min_pct", 2))
+        min_body = float(params.get("min_body_to_range", 0.5))
+        max_upper = float(params.get("max_upper_shadow_to_range", 0.25))
+        if n < 2 or decline < 0:
+            raise ValueError("Invalid prior_trend_bars or prior_decline_min_pct")
+        if not 0 < min_body <= 1 or not 0 <= max_upper < 1:
+            raise ValueError("Invalid candle proportions")
+        if len(data) < n + 3:
+            return ScreenResult(market, symbol, self.id, self.version,
+                str(data.index[-1]), False, {"observation": "insufficient_history",
+                "required_bars": n + 3}, "Not enough completed candles")
+        previous = data.iloc[-n-3:-3]["close"].astype(float)
+        pct = float((previous.iloc[0] - previous.iloc[-1]) /
+                    previous.iloc[0] * 100)
+        o = data["open"].iloc[-3:].astype(float).to_numpy()
+        h = data["high"].iloc[-3:].astype(float).to_numpy()
+        l = data["low"].iloc[-3:].astype(float).to_numpy()
+        c = data["close"].iloc[-3:].astype(float).to_numpy()
+        spread = h - l
+        bullish = bool((c > o).all())
+        rising = bool((c[1:] > c[:-1]).all())
+        within = bool(((o[1:] >= o[:-1]) & (o[1:] <= c[:-1])).all())
+        ranges_valid = bool((spread > 0).all())
+        body_ok = ranges_valid and bool(((c-o) / spread >= min_body).all())
+        shadow_ok = ranges_valid and bool((((h-c) / spread >= 0) &
+                                            ((h-c) / spread <= max_upper)).all())
+        trend_ok = bool(pct >= decline)
+        matched = bool(all((bullish, rising, within, body_ok, shadow_ok, trend_ok)))
+        return ScreenResult(
+            market, symbol, self.id, self.version, str(data.index[-1]),
+            matched,
+            {"pattern": "bullish_three_soldiers", "prior_decline_pct": round(pct, 4),
+             "minimum_prior_decline_pct": decline, "min_body_to_range": min_body,
+             "max_upper_shadow_to_range": max_upper,
+             "three_bullish_candles": bullish, "rising_closes": rising,
+             "opens_in_previous_body": within, "body_ok": body_ok,
+             "upper_shadows_ok": shadow_ok, "prior_decline_ok": trend_ok},
+            "Sakata-inspired K-line observation; not a trade recommendation",
+        )
+
+
+STRATEGIES = {"rsi_volume": RsiVolume, "ma_breakout": MaBreakout,
+              "sakata_three_soldiers": SakataThreeSoldiers}
 
 
 def get_strategy(name: str) -> ScreeningStrategy:

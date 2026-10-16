@@ -1,6 +1,14 @@
+# Sakata-inspired pilot replaces RSI as active scan strategy.
 strategies:
-  - id: rsi_volume
+  - id: sakata_three_soldiers
     enabled: true
+    params:
+      prior_trend_bars: 5
+      prior_decline_min_pct: 2.0
+      min_body_to_range: 0.5
+      max_upper_shadow_to_range: 0.25
+  - id: rsi_volume
+    enabled: false
     params:
       rsi_period: 14
       rsi_max: 30.0

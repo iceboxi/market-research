@@ -149,3 +149,50 @@ def test_yahoo_missing_adjusted_close_is_rejected():
             }, index=pd.date_range("2026-10-14", periods=1))
     with pytest.raises(ValueError, match="adjusted close"):
         YahooDailyProvider(ticker_factory=lambda symbol: Ticker()).load("AAPL")
+
+
+def three_soldiers_frame():
+    dates = pd.bdate_range("2026-10-05", periods=8).date
+    return pd.DataFrame({
+        "open": [110.5,108.5,106.5,104.5,102.5,101,103,106],
+        "high": [111,109,107,105,103,104.4,107.5,110.5],
+        "low": [109,107,105,103,101,100.5,102.5,105.5],
+        "close": [110,108,106,104,102,104,107,110],
+        "volume": [1000]*8,
+    }, index=pd.Index(dates, name="date"))
+
+
+def test_sakata_three_soldiers_positive_and_negatives():
+    s = get_strategy("sakata_three_soldiers")
+    p = {"prior_trend_bars": 5, "prior_decline_min_pct": 2.0,
+         "min_body_to_range": 0.5, "max_upper_shadow_to_range": 0.25}
+    df = three_soldiers_frame()
+    assert s.scan("tw", "2330.TW", df, p).matched
+    broken_close = df.copy()
+    broken_close.iloc[-1, broken_close.columns.get_loc("close")] = 105.
+    assert not s.scan("tw", "2330.TW", broken_close, p).matched
+    long_wick = df.copy()
+    long_wick.iloc[-1, long_wick.columns.get_loc("high")] = 118.
+    assert not s.scan("tw", "2330.TW", long_wick, p).matched
+    no_decline = df.copy()
+    no_decline.iloc[:5, no_decline.columns.get_loc("close")] = [102,103,104,105,106]
+    assert not s.scan("tw", "2330.TW", no_decline, p).matched
+
+
+def test_sakata_rejects_invalid_params_and_short_history():
+    s = get_strategy("sakata_three_soldiers")
+    assert not s.scan("us", "AAPL", three_soldiers_frame().iloc[-5:], {}).matched
+    with pytest.raises(ValueError, match="prior_trend_bars"):
+        s.scan("us", "AAPL", three_soldiers_frame(), {"prior_trend_bars": 1})
+    with pytest.raises(ValueError, match="proportions"):
+        s.scan("us", "AAPL", three_soldiers_frame(), {"min_body_to_range": 0.0})
+
+
+def test_default_strategy_is_sakata_not_rsi():
+    from pathlib import Path
+    import yaml
+    config = yaml.safe_load((Path(__file__).resolve().parents[1] /
+                             "config/strategies.yaml").read_text())
+    assert [x["id"] for x in config["strategies"] if x["enabled"]] == [
+        "sakata_three_soldiers"
+    ]

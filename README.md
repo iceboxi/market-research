@@ -2,7 +2,21 @@
 
 Public-source research proof of concept for **Taiwan and US end-of-day stocks**. It is not a trading or order execution system.
 
-Python package with authoritative TWSE daily historical OHLCV for listed Taiwan stocks and Yahoo/yfinance for US symbols, defensive quality checks, and interchangeable screening strategies (Wilder RSI + relative volume, and optional 20-bar moving average breakout).
+Python package with authoritative TWSE daily historical OHLCV for listed Taiwan stocks and Yahoo/yfinance for US symbols, defensive quality checks, and interchangeable screening strategies. The default is a Sakata-inspired bullish three soldiers pattern; legacy RSI and MA examples are disabled.
+
+## Sakata three soldiers (pilot, not validated trading advice)
+
+This is a precise *research interpretation*, not an implementation of all
+five Sakata methods or a proven buy/sell system. The active condition requires:
+five prior daily closes falling by at least 2% from first to last; three
+consecutive bullish bars with successively rising closes; second and third
+opens inside previous real bodies; each real body >= 50% of daily range; and
+each upper wick <= 25% of the range. The thresholds are adjustable hypotheses.
+Signal is only observable **after the third close**; hypothetical execution
+cannot occur before the following session. Evaluate with out-of-sample
+backtests, costs, and benchmarks before any live trading.
+
+RSI is retained as disabled reference code, not used by the scheduled scanner.
 
 ## Market coverage and request cost
 
