@@ -6,7 +6,8 @@ from market_research.indicators import rsi_wilder, relative_volume
 from market_research.strategies import get_strategy
 from market_research.runner import run_scan
 from market_research.validation import validate_daily, DataQualityError
-from market_research.twse import twse_close_check, parse_twse_roc_date
+from market_research.twse import twse_close_check, parse_twse_roc_date, parse_stock_day, TwseDailyProvider
+from market_research.provider import RoutedDailyProvider
 
 
 def fake_frame():
@@ -70,3 +71,52 @@ def test_twse():
     def get(url, **kwargs):
         return Response()
     assert twse_close_check("2330.TW",date(2026,10,16),1200,2000000,get=get)["status"] == "verified"
+
+def test_twse_period_parse_and_units():
+    payload = {"stat":"OK",
+        "fields":["日期","成交股數","成交金額","開盤價","最高價","最低價","收盤價","漲跌價差","成交筆數","註記"],
+        "data":[["115/10/15","58,486,711","100","2,400.00","2,450.00","2,390.00","2,440.00","0","123",""],
+                ["115/10/16","0","0","--","--","--","--","--","0",""]]}
+    parsed = parse_stock_day(payload, "2330.TW")
+    assert len(parsed) == 1
+    assert parsed.iloc[0]["volume"] == 58486711
+    assert parsed.iloc[0]["close"] == 2440.0
+
+
+def test_official_monthly_history_and_router():
+    from datetime import date
+    class Response:
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {"stat":"OK",
+                    "fields":["日期","成交股數","開盤價","最高價","最低價","收盤價"],
+                    "data":[["115/10/15","1,234,567","20.00","21.00","19.00","20.50"]]}
+    requests = []
+    def fake_get(url, **kwargs):
+        month = kwargs["params"]["date"]
+        requests.append(month)
+        class MonthlyResponse:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                y = int(month[:4]) - 1911
+                mm = int(month[4:6])
+                return {"stat":"OK",
+                        "fields":["日期","成交股數","開盤價","最高價","最低價","收盤價"],
+                        "data":[[f"{y}/{mm:02d}/15","1,234,567","20.00","21.00","19.00","20.50"]]}
+        return MonthlyResponse()
+    twse = TwseDailyProvider(get=fake_get, today=date(2026,10,17),
+                             request_pause_seconds=0)
+    df = twse.load("2330.TW", "3mo")
+    assert len(requests) == 4
+    assert len(df) == 4
+    assert df["volume"].iloc[-1] == 1234567
+    assert df.index.is_monotonic_increasing
+    class FakeUs:
+        source = "test_us"
+        def load(self, symbol, period="1y"):
+            return fake_frame()
+    router = RoutedDailyProvider(taiwan=twse, united_states=FakeUs())
+    assert router.provider_for("2330.TW").source == twse.source
+    assert router.provider_for("AAPL").source == "test_us"

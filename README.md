@@ -2,7 +2,7 @@
 
 Public-source research proof of concept for **Taiwan and US end-of-day stocks**. It is not a trading or order execution system.
 
-Python package with Yahoo/yfinance historical OHLCV adapter, optional independent TWSE close and volume crosscheck, defensive quality checks, and interchangeable screening strategies (Wilder RSI + relative volume, and optional 20-bar moving average breakout).
+Python package with authoritative TWSE daily historical OHLCV for listed Taiwan stocks and Yahoo/yfinance for US symbols, defensive quality checks, and interchangeable screening strategies (Wilder RSI + relative volume, and optional 20-bar moving average breakout).
 
 ## Run with GitHub Actions
 
@@ -24,6 +24,6 @@ Symbols are in config/markets.yaml; toggle strategies in config/strategies.yaml.
 
 ## Limits
 
-Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. A TWSE mismatch or unavailability is not independent verification. No match is a legitimate result, not a license to invent candidates.
+TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.
 
 This repository currently covers only a handful of example tickers. It is **not** a whole-exchange scanner. No automatic trading, VPS, AI API, Serenity analysis, or backtesting is included. Dependency versions are constrained but there is no checked-in uv.lock yet; generate and commit one after networked resolution.
