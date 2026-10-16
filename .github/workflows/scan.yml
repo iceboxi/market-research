@@ -1,0 +1,41 @@
+name: EOD market scan
+on:
+  workflow_dispatch:
+    inputs:
+      market:
+        description: Market
+        type: choice
+        required: true
+        default: both
+        options: [tw, us, both]
+  schedule:
+    - cron: '30 11 * * 1-5'
+    - cron: '45 0 * * 2-6'
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SCAN_MARKET: ${{ github.event_name == 'schedule' && (github.event.schedule == '30 11 * * 1-5' && 'tw' || 'us') || inputs.market || 'both' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv sync --extra dev
+      - run: uv run --no-sync pytest
+      - name: Fetch actual daily market prices and screen
+        run: uv run --no-sync market-scan --market "$SCAN_MARKET" --period 1y --check-twse --out output
+      - name: Add job summary
+        if: always()
+        run: |
+          if [ -f output/summary.md ]; then cat output/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Upload research artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-scan-${{ env.SCAN_MARKET }}-${{ github.run_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 14

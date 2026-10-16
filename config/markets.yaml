@@ -1,0 +1,14 @@
+markets:
+  tw:
+    timezone: Asia/Taipei
+    symbols:
+      - 2330.TW
+      - 2303.TW
+      - 2454.TW
+  us:
+    timezone: America/New_York
+    symbols:
+      - AAPL
+      - MSFT
+      - NVDA
+      - SPY

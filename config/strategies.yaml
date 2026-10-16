@@ -1,0 +1,12 @@
+strategies:
+  - id: rsi_volume
+    enabled: true
+    params:
+      rsi_period: 14
+      rsi_max: 30.0
+      volume_window: 20
+      volume_ratio_min: 2.0
+  - id: ma_breakout
+    enabled: false
+    params:
+      ma_window: 20
