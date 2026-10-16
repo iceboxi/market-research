@@ -37,7 +37,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv python install 3.12
-      - run: uv sync --extra dev
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
       - run: uv run --no-sync pytest
       - name: Run historical backtest
         run: uv run --no-sync python -m market_research.backtest --market "$MARKET" --period "$PERIOD" --out backtest_output

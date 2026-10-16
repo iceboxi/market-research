@@ -30,7 +30,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv python install 3.12
-      - run: uv sync --extra dev
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
       - run: uv run --no-sync pytest
       - name: Fetch actual daily market prices and screen
         run: uv run --no-sync market-scan --market "$SCAN_MARKET" --period 6mo --check-twse --strict-freshness --out output
