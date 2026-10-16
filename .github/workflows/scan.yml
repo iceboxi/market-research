@@ -33,7 +33,7 @@ jobs:
       - run: uv sync --extra dev
       - run: uv run --no-sync pytest
       - name: Fetch actual daily market prices and screen
-        run: uv run --no-sync market-scan --market "$SCAN_MARKET" --period 1y --check-twse --out output
+        run: uv run --no-sync market-scan --market "$SCAN_MARKET" --period 6mo --check-twse --out output
       - name: Add job summary
         if: always()
         run: |

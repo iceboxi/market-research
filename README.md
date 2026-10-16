@@ -4,6 +4,24 @@ Public-source research proof of concept for **Taiwan and US end-of-day stocks**.
 
 Python package with authoritative TWSE daily historical OHLCV for listed Taiwan stocks and Yahoo/yfinance for US symbols, defensive quality checks, and interchangeable screening strategies (Wilder RSI + relative volume, and optional 20-bar moving average breakout).
 
+## Market coverage and request cost
+
+The pilot universe now includes **10 TWSE-listed Taiwanese stocks and 12 US
+stocks**, not the full markets. Default scheduled period is **6mo**:
+TWSE STOCK_DAY requires one official monthly request per ticker, so this
+downloads **7 months x 10 = 70 requests** instead of 13 x 10 = 130.
+The adjustable period can still be changed back to 1y for research. The
+TWSE client reuses HTTP connections per symbol and throttles requests.
+For whole-market scans we should switch to a bulk daily data pipeline rather
+than scaling this per-ticker historical endpoint indefinitely.
+
+US yfinance OHLC bars are adjusted using Yahoo's Adj Close / Close factor for
+each day; trading volume is deliberately left unchanged (reported shares).
+TWSE bars stay officially unadjusted. Data-quality artifacts record both
+price bases. Do not directly compare raw Taiwanese prices to adjusted US
+prices or treat unadjusted Taiwan prices as corporate-action-neutral.
+
+
 ## Run with GitHub Actions
 
 - **Unit tests** workflow runs on push and pull request.

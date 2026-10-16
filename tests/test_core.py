@@ -120,3 +120,32 @@ def test_official_monthly_history_and_router():
     router = RoutedDailyProvider(taiwan=twse, united_states=FakeUs())
     assert router.provider_for("2330.TW").source == twse.source
     assert router.provider_for("AAPL").source == "test_us"
+
+
+def test_yahoo_adjusted_ohlc_preserves_reported_volume():
+    from market_research.provider import YahooDailyProvider
+    class Ticker:
+        def history(self, **kwargs):
+            return pd.DataFrame({
+                "Open": [99.0, 102.0], "High": [103.0, 106.0],
+                "Low": [97.0, 101.0], "Close": [100.0, 105.0],
+                "Adj Close": [95.0, 105.0], "Volume": [1000, 1200],
+            }, index=pd.date_range("2026-10-14", periods=2))
+    provider = YahooDailyProvider(ticker_factory=lambda symbol: Ticker())
+    df = provider.load("AAPL")
+    assert df["open"].iloc[0] == pytest.approx(94.05)
+    assert df["close"].iloc[0] == pytest.approx(95.0)
+    assert df["volume"].tolist() == [1000, 1200]
+
+
+def test_yahoo_missing_adjusted_close_is_rejected():
+    from market_research.provider import YahooDailyProvider
+    class Ticker:
+        def history(self, **kwargs):
+            return pd.DataFrame({
+                "Open": [99.0], "High": [103.0], "Low": [97.0],
+                "Close": [100.0], "Adj Close": [float("nan")],
+                "Volume": [1000],
+            }, index=pd.date_range("2026-10-14", periods=1))
+    with pytest.raises(ValueError, match="adjusted close"):
+        YahooDailyProvider(ticker_factory=lambda symbol: Ticker()).load("AAPL")

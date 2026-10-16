@@ -6,6 +6,7 @@ This adapter never forward-fills missing official trading records.
 from dataclasses import dataclass
 from datetime import date, datetime
 import time
+from contextlib import nullcontext
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -74,25 +75,31 @@ class TwseDailyProvider:
         last_month_id = current.year * 12 + current.month - 1
         first_id = last_month_id - (lookbacks[period] - 1)
         from_month = date(first_id // 12, first_id % 12 + 1, 1)
-        request = self.get or httpx.get
         frames, failures = [], []
         months = list(_month_starts(from_month, current))
-        for index, month in enumerate(months):
-            try:
-                response = request(
-                    TWSE_URL, params={"response": "json", "date": month.strftime("%Y%m01"),
-                                      "stockNo": symbol.split(".")[0]},
-                    headers={"User-Agent": "market-research/0.1 (research-only)",
-                             "Accept": "application/json"}, timeout=20,
-                )
-                response.raise_for_status()
-                frame = parse_stock_day(response.json(), symbol)
-                if not frame.empty:
-                    frames.append(frame)
-            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-                failures.append(f"{month}: {exc}")
-            if self.request_pause_seconds > 0 and index != len(months) - 1:
-                time.sleep(self.request_pause_seconds)
+        # Keep one HTTP connection for all months of a single ticker;
+        # this significantly reduces TLS handshakes on GitHub runners.
+        client = (httpx.Client(timeout=20, follow_redirects=True,
+                   headers={"User-Agent": "market-research/0.1 (research-only)",
+                            "Accept": "application/json"})
+                  if self.get is None else nullcontext())
+        with client as session:
+            request = self.get or session.get
+            for index, month in enumerate(months):
+                try:
+                    response = request(
+                        TWSE_URL, params={"response": "json",
+                                          "date": month.strftime("%Y%m01"),
+                                          "stockNo": symbol.split(".")[0]}, timeout=20,
+                    )
+                    response.raise_for_status()
+                    frame = parse_stock_day(response.json(), symbol)
+                    if not frame.empty:
+                        frames.append(frame)
+                except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                    failures.append(f"{month}: {exc}")
+                if self.request_pause_seconds > 0 and index != len(months) - 1:
+                    time.sleep(self.request_pause_seconds)
         if failures:
             # Partial history silently changes RSI and volume averages.
             raise ValueError(f"TWSE {symbol}: failed months: {'; '.join(failures)}")

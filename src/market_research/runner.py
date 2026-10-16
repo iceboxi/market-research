@@ -60,7 +60,9 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                 source = (provider.provider_for(symbol).source if hasattr(provider, "provider_for")
                           else provider.source)
                 checked.update({"market": m, "source": source,
-                    "prices": "unadjusted", "volume_unit": "shares",
+                    "price_basis": ("twse_official_unadjusted" if m == "tw"
+                                    else "yahoo_adj_close_ratio_adjusted_ohlc"),
+                    "volume_unit": "reported_shares",
                     "as_of_market_date": str(today),
                     "freshness": "current_calendar_date" if str(df.index[-1]) == str(today) else "check_exchange_holiday_or_feed_delay",
                     "input_sha256": sha256(df.to_csv().encode()).hexdigest()})
@@ -87,6 +89,7 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
     official_mismatches = sum(1 for entry in quality["symbols"] if entry.get("twse_spot_check", {}).get("status") == "mismatch")
     manifest.update({"sources_by_market": {"tw": "twse_stock_day_official_raw_ohlcv",
                                                       "us": "yahoo_finance_via_yfinance"},
+                     "requested_symbols": sum(len(markets[m]["symbols"]) for m in selected),
                      "scanned_symbols": len(quality["symbols"]), "error_count": len(quality["errors"]),
                      "official_mismatch_count": official_mismatches,
                      "matching_signals": len(signals), "warning_count": len(quality["warnings"]),
@@ -98,7 +101,8 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
     save(out / "signals.json", signals)
     if include_snapshot and snapshots:
         pd.concat(snapshots, ignore_index=True).to_csv(out / "market_data.csv", index=False)
-    summary = ["# Daily market scan (research only)", "", f"Sources: TW=TWSE STOCK_DAY official (raw OHLCV); US=Yahoo Finance",
+    summary = ["# Daily market scan (research only)", "",
+               "Sources: TW=TWSE official unadjusted; US=Yahoo adjusted OHLC (volume unchanged)",
                f"Symbols: {manifest['scanned_symbols']} | Errors: {manifest['error_count']}",
                f"Matches: {len(signals)}", "", "## Matches"]
     summary.extend(f"- {r['symbol']}: {r['strategy_id']} {r['metrics']}" for r in signals)

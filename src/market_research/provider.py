@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Callable, Protocol
 
 import pandas as pd
+import numpy as np
 
 
 class DataProvider(Protocol):
@@ -13,7 +14,7 @@ class DataProvider(Protocol):
 
 @dataclass
 class YahooDailyProvider:
-    """Unofficial Yahoo/yfinance personal-use historical candles."""
+    """Yahoo adjusted-close ratio applied to OHLC; volume remains shares."""
     ticker_factory: Callable | None = None
     source: str = "yahoo_finance_via_yfinance"
 
@@ -39,6 +40,18 @@ class YahooDailyProvider:
         frame.index = pd.Index(pd.to_datetime(frame.index).date, name="date")
         if "adj_close" not in frame:
             frame["adj_close"] = float("nan")
+        # Yahoo usually split-adjusts historical raw OHLC already. Adjust for
+        # distributions using Adj Close / Close on each day's *entire* candle.
+        # Do not adjust trading volume for cash dividends.
+        adj = frame["adj_close"].to_numpy(dtype=float)
+        close = frame["close"].to_numpy(dtype=float)
+        factors = np.divide(adj, close, out=np.full_like(adj, np.nan),
+                            where=np.isfinite(close) & (close > 0))
+        if not np.isfinite(factors).all() or (factors <= 0).any():
+            raise ValueError(f"{symbol}: missing/invalid Yahoo adjusted close")
+        frame[["open", "high", "low", "close"]] = (
+            frame[["open", "high", "low", "close"]].mul(factors, axis=0)
+        )
         return frame[["open", "high", "low", "close", "volume", "adj_close"]]
 
 
