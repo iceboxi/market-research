@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'tests/**'
       - 'config/**'
       - 'pyproject.toml'
       - '.github/workflows/scan.yml'
