@@ -11,7 +11,7 @@ import pandas as pd
 import yaml
 
 from .provider import RoutedDailyProvider
-from .market_calendar import require_complete_session
+from .market_data import load_daily_bars
 from .snapshots import ReplayProvider, write_snapshot, write_index
 from .data_contract import verify_scan_artifacts
 from .strategies import get_strategy
@@ -44,37 +44,17 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                                  "params": s.get("params", {})} for s in strategies],
                 "snapshot_included": include_snapshot}
     quality = {"symbols": [], "errors": [], "warnings": []}
-    results, snapshots, records = [], [] , []
+    results, snapshots, records = [], [], []
     for m in selected:
         today = now.astimezone(ZoneInfo(markets[m]["timezone"])).date()
         for symbol in markets[m]["symbols"]:
             try:
-                df = provider.load(symbol, period)
-                # Never screen an intraday US candle as if it were finalized.
-                market_time = now.astimezone(ZoneInfo(markets[m]["timezone"]))
-                if m == "us" and market_time.time() < time(16, 30) and df.index[-1] == today:
-                    quality["warnings"].append({"market": m, "symbol": symbol,
-                        "excluded_date": str(df.index[-1]),
-                        "reason": "in_progress_us_session_bar_excluded"})
-                    df = df.iloc[:-1]
-                # A provider may create a placeholder with missing OHLC for the
-                # newest session. Record it explicitly; never forward-fill prices.
-                if len(df) and df[["open", "high", "low", "close"]].iloc[-1].isna().any():
-                    # Only a provisional session row may be excluded.
-                    # For an official EOD source an incomplete record is an error.
-                    raise ValueError(f"{symbol}: incomplete trailing OHLC on {df.index[-1]}")
-                checked = validate_daily(df, symbol, market_today=today)
-                if strict_freshness:
-                    checked['session'] = require_complete_session(m, df.index[-1], now)
-                source = (provider.provider_for(symbol).source if hasattr(provider, "provider_for")
-                          else provider.source)
-                checked.update({"market": m, "source": source,
-                    "price_basis": ("twse_official_unadjusted" if m == "tw"
-                                    else "yahoo_adj_close_ratio_adjusted_ohlc"),
-                    "volume_unit": "reported_shares",
-                    "as_of_market_date": str(today),
-                    "freshness": "current_calendar_date" if str(df.index[-1]) == str(today) else "check_exchange_holiday_or_feed_delay",
-                    "input_sha256": sha256(df.to_csv().encode()).hexdigest()})
+                daily = load_daily_bars(provider, m, symbol, period, now,
+                                        markets[m]["timezone"], strict_freshness)
+                df = daily.frame
+                checked = daily.metadata
+                quality["warnings"].extend(daily.warnings)
+                source = checked["source"]
                 if m == "tw":
                     if source == "twse_stock_day_official_raw_ohlcv":
                         checked["official_data"] = "TWSE_STOCK_DAY_primary"

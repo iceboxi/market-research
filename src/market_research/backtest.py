@@ -16,7 +16,8 @@ import yaml
 
 from .provider import RoutedDailyProvider
 from .strategies import get_strategy
-from .validation import validate_daily
+from .market_data import load_daily_bars
+from .snapshots import ReplayProvider, write_snapshot, write_index
 
 
 @dataclass(frozen=True)
@@ -162,7 +163,8 @@ def backtest_symbol(df, market, symbol, strategy, params, cfg):
 
 
 def run_backtest(market="both", period="1y", out=Path("backtest_output"),
-                 config_dir=Path("config"), provider=None, now=None):
+                 config_dir=Path("config"), provider=None, now=None,
+                 replay_dir=None, snapshot_output=None, strict_freshness=False):
     markets = yaml.safe_load((config_dir / "markets.yaml").read_text())["markets"]
     strategies = [
         s for s in yaml.safe_load((config_dir / "strategies.yaml").read_text())["strategies"]
@@ -176,29 +178,24 @@ def run_backtest(market="both", period="1y", out=Path("backtest_output"),
     cfg = Settings(**yaml.safe_load((config_dir / "backtest.yaml").read_text())["backtest"])
     cfg.validate()
     now = now or datetime.now(timezone.utc)
-    provider = provider or RoutedDailyProvider()
+    if provider is not None and replay_dir is not None:
+        raise ValueError("Provide either a provider or replay_dir")
+    provider = ReplayProvider(replay_dir) if replay_dir else (provider or RoutedDailyProvider())
     out.mkdir(parents=True, exist_ok=True)
-    results, trades, inputs, errors, warnings = [], [], [], [], []
+    results, trades, inputs, errors, warnings, snapshot_records = [], [], [], [], [], []
     for m in selection:
         local = now.astimezone(ZoneInfo(markets[m]["timezone"]))
         for symbol in markets[m]["symbols"]:
             try:
-                df = provider.load(symbol, period)
-                if (m == "us" and local.time() < time(16, 30)
-                    and str(df.index[-1]) == str(local.date())):
-                    warnings.append({"market": m, "symbol": symbol,
-                                     "reason": "unfinished_US_session", "date": str(df.index[-1])})
-                    df = df.iloc[:-1]
-                verify = validate_daily(df, symbol, market_today=local.date())
-                src = (provider.provider_for(symbol).source
-                       if hasattr(provider, "provider_for") else provider.source)
-                inputs.append({
-                    "market": m, "symbol": symbol, "source": src,
-                    "bars": len(df), "last_date": str(df.index[-1]),
-                    "input_sha256": sha256(df.to_csv().encode()).hexdigest(),
-                    "price_basis": ("TWSE_raw" if m == "tw" else "Yahoo_adjusted"),
-                    "zero_volume_bars": verify["zero_volume_bars"],
-                })
+                daily = load_daily_bars(provider, m, symbol, period, now,
+                                        markets[m]["timezone"], strict_freshness)
+                df = daily.frame
+                warnings.extend(daily.warnings)
+                inputs.append(daily.metadata)
+                if snapshot_output:
+                    snapshot_records.append(write_snapshot(
+                        Path(snapshot_output), symbol, df, daily.metadata["source"]
+                    ))
                 for sc in strategies:
                     result, history = backtest_symbol(
                         df, m, symbol, get_strategy(sc["id"]),
@@ -209,11 +206,16 @@ def run_backtest(market="both", period="1y", out=Path("backtest_output"),
             except Exception as exc:
                 errors.append({"market": m, "symbol": symbol,
                                "error": f"{type(exc).__name__}: {exc}"})
+    if snapshot_output:
+        write_index(Path(snapshot_output), snapshot_records)
     manifest = {
         "schema_version": 1, "study": "in_sample_exploratory",
         "generated_at_utc": now.astimezone(timezone.utc).isoformat(),
         "github_sha": os.getenv("GITHUB_SHA"), "github_run_id": os.getenv("GITHUB_RUN_ID"),
         "period": period,
+        "data_contract_version": 1,
+        "strict_freshness": strict_freshness,
+        "snapshot_policy": "local_only" if snapshot_output else "replay" if replay_dir else "no_raw_export",
         "requested": sum(len(markets[m]["symbols"]) for m in selection),
         "scanned": len(inputs), "error_count": len(errors),
         "warning_count": len(warnings), "trade_count": len(trades),
@@ -270,8 +272,13 @@ def main():
     parser.add_argument("--market", choices=["tw", "us", "both"], default="both")
     parser.add_argument("--period", choices=["3mo", "6mo", "1y", "2y"], default="1y")
     parser.add_argument("--out", type=Path, default=Path("backtest_output"))
+    parser.add_argument("--replay-dir", type=Path)
+    parser.add_argument("--snapshot-output", type=Path)
+    parser.add_argument("--strict-freshness", action="store_true")
     args = parser.parse_args()
-    outcome = run_backtest(args.market, args.period, args.out)
+    outcome = run_backtest(args.market, args.period, args.out,
+                           replay_dir=args.replay_dir, snapshot_output=args.snapshot_output,
+                           strict_freshness=args.strict_freshness)
     print(json.dumps({"scanned": outcome["scanned"],
                       "errors": outcome["error_count"],
                       "trades": outcome["trade_count"]}))

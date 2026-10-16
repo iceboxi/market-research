@@ -65,3 +65,40 @@ def test_opt_in_scan_replay(tmp_path):
     assert json.loads((tmp_path/"a"/"signals.json").read_text()) == json.loads(
         (tmp_path/"b"/"signals.json").read_text()
     )
+
+
+def test_shared_daily_contract_same_source_for_scan_and_backtest():
+    from market_research.market_data import load_daily_bars
+    class Provider:
+        source = "fixture"
+        def load(self, symbol, period="1y"): return sample()
+    stamp = datetime(2026, 11, 17, tzinfo=timezone.utc)
+    daily = load_daily_bars(Provider(), "tw", "2330.TW", "1y",
+                            stamp, "Asia/Taipei", strict_freshness=False)
+    assert daily.metadata["contract_version"] == 1
+    assert daily.metadata["price_basis"] == "twse_official_unadjusted"
+    assert len(daily.frame) == 40
+
+
+def test_backtest_uses_same_verified_replay_and_data_hash(tmp_path):
+    from market_research.backtest import run_backtest
+    from market_research.runner import run_scan
+    class Provider:
+        source = "fixture"
+        def load(self, symbol, period="1y"): return sample()
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+    (cfg / "markets.yaml").write_text(
+        "markets:\n  tw:\n    timezone: Asia/Taipei\n    symbols:\n      - 2330.TW\n")
+    (cfg / "strategies.yaml").write_text(
+        "strategies:\n  - id: sakata_three_soldiers\n    enabled: true\n    params: {}\n")
+    (cfg / "backtest.yaml").write_text("backtest:\n  trials: 5\n")
+    now = datetime(2026, 11, 17, tzinfo=timezone.utc)
+    run_scan("tw", config_dir=cfg, out=tmp_path / "scan", provider=Provider(),
+             snapshot_output=tmp_path / "snap", now=now)
+    manifest = run_backtest("tw", "1y", tmp_path / "backtest", cfg,
+                            replay_dir=tmp_path / "snap", now=now)
+    assert manifest["error_count"] == 0
+    scan_quality = json.loads((tmp_path / "scan" / "data_quality.json").read_text())
+    backtest_inputs = json.loads((tmp_path / "backtest" / "inputs.json").read_text())
+    assert scan_quality["symbols"][0]["input_sha256"] == backtest_inputs[0]["input_sha256"]

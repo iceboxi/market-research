@@ -3,6 +3,10 @@ on:
   push:
     paths:
       - 'src/market_research/backtest.py'
+      - 'src/market_research/market_data.py'
+      - 'src/market_research/market_calendar.py'
+      - 'src/market_research/snapshots.py'
+      - 'src/market_research/strategies.py'
       - 'tests/test_backtest.py'
       - 'config/backtest.yaml'
       - '.github/workflows/backtest.yml'
