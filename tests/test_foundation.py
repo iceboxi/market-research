@@ -58,9 +58,9 @@ def test_opt_in_scan_replay(tmp_path):
         "strategies:\n  - id: sakata_three_soldiers\n    enabled: true\n    params: {}\n")
     a = run_scan("tw", config_dir=config, out=tmp_path/"a",
         provider=Fake(), snapshot_output=tmp_path/"snap",
-        now=datetime(2026, 10, 17, tzinfo=timezone.utc))
+        now=datetime(2026, 11, 17, tzinfo=timezone.utc))
     b = run_scan("tw", config_dir=config, out=tmp_path/"b",
-        replay_dir=tmp_path/"snap", now=datetime(2026, 10, 17, tzinfo=timezone.utc))
+        replay_dir=tmp_path/"snap", now=datetime(2026, 11, 17, tzinfo=timezone.utc))
     assert a["error_count"] == b["error_count"] == 0
     assert json.loads((tmp_path/"a"/"signals.json").read_text()) == json.loads(
         (tmp_path/"b"/"signals.json").read_text()
