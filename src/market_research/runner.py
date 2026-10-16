@@ -77,9 +77,12 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                 quality["errors"].append({"market": m, "symbol": symbol,
                                            "error_type": type(exc).__name__, "reason": str(exc)})
     signals = [r for r in results if r["matched"]]
+    official_mismatches = sum(1 for entry in quality["symbols"] if entry.get("twse_spot_check", {}).get("status") == "mismatch")
     manifest.update({"scanned_symbols": len(quality["symbols"]), "error_count": len(quality["errors"]),
+                     "official_mismatch_count": official_mismatches,
                      "matching_signals": len(signals), "warning_count": len(quality["warnings"]),
-                     "result_status": "complete" if not quality["errors"] else "partial_or_failed"})
+                     "result_status": ("partial_or_failed" if quality["errors"] else
+                                       "complete_with_data_warnings" if quality["warnings"] or official_mismatches else "complete")})
     save(out / "manifest.json", manifest)
     save(out / "data_quality.json", quality)
     save(out / "screening_results.json", results)
