@@ -1,6 +1,6 @@
 """Run a market scan; preserve source provenance, findings, and failures."""
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from hashlib import sha256
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -36,13 +36,27 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                 "strategies": [{"id": s["id"], "version": get_strategy(s["id"]).version,
                                  "params": s.get("params", {})} for s in strategies],
                 "snapshot_included": include_snapshot}
-    quality = {"symbols": [], "errors": []}
+    quality = {"symbols": [], "errors": [], "warnings": []}
     results, snapshots = [], []
     for m in selected:
         today = now.astimezone(ZoneInfo(markets[m]["timezone"])).date()
         for symbol in markets[m]["symbols"]:
             try:
                 df = provider.load(symbol, period)
+                # Never screen an intraday US candle as if it were finalized.
+                market_time = now.astimezone(ZoneInfo(markets[m]["timezone"]))
+                if m == "us" and market_time.time() < time(16, 30) and df.index[-1] == today:
+                    quality["warnings"].append({"market": m, "symbol": symbol,
+                        "excluded_date": str(df.index[-1]),
+                        "reason": "in_progress_us_session_bar_excluded"})
+                    df = df.iloc[:-1]
+                # A provider may create a placeholder with missing OHLC for the
+                # newest session. Record it explicitly; never forward-fill prices.
+                if len(df) and df[["open", "high", "low", "close"]].iloc[-1].isna().any():
+                    quality["warnings"].append({"market": m, "symbol": symbol,
+                        "excluded_date": str(df.index[-1]),
+                        "reason": "incomplete_trailing_ohlc_excluded"})
+                    df = df.iloc[:-1]
                 checked = validate_daily(df, symbol, market_today=today)
                 checked.update({"market": m, "as_of_market_date": str(today),
                     "freshness": "current_calendar_date" if str(df.index[-1]) == str(today) else "check_exchange_holiday_or_feed_delay",
@@ -64,7 +78,7 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                                            "error_type": type(exc).__name__, "reason": str(exc)})
     signals = [r for r in results if r["matched"]]
     manifest.update({"scanned_symbols": len(quality["symbols"]), "error_count": len(quality["errors"]),
-                     "matching_signals": len(signals),
+                     "matching_signals": len(signals), "warning_count": len(quality["warnings"]),
                      "result_status": "complete" if not quality["errors"] else "partial_or_failed"})
     save(out / "manifest.json", manifest)
     save(out / "data_quality.json", quality)
