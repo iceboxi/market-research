@@ -67,7 +67,7 @@ def test_twse():
         def raise_for_status(self):
             pass
         def json(self):
-            return {"stat":"OK","fields":["日期","收盤價","成交股數"],"data":[["115/10/16","1,200","2,000,000"]]}
+            return {"stat":"OK","fields":["日期","成交股數","開盤價","最高價","最低價","收盤價"],"data":[["115/10/16","2,000,000","1,190","1,210","1,180","1,200"]]}
     def get(url, **kwargs):
         return Response()
     assert twse_close_check("2330.TW",date(2026,10,16),1200,2000000,get=get)["status"] == "verified"
