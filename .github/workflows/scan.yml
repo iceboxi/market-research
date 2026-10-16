@@ -1,5 +1,11 @@
 name: EOD market scan
 on:
+  push:
+    paths:
+      - 'src/**'
+      - 'config/**'
+      - 'pyproject.toml'
+      - '.github/workflows/scan.yml'
   workflow_dispatch:
     inputs:
       market:
