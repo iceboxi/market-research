@@ -22,14 +22,19 @@ def validate_daily(data: pd.DataFrame, symbol: str, minimum_rows: int = 22,
     price = data[["open", "high", "low", "close"]].apply(pd.to_numeric, errors="coerce")
     volume = pd.to_numeric(data["volume"], errors="coerce")
     if not np.isfinite(price.to_numpy(dtype=float)).all():
-        raise DataQualityError(f"{symbol}: invalid OHLC")
+        bad = ~np.isfinite(price.to_numpy(dtype=float)).all(axis=1)
+        dates = [str(x) for x in data.index[bad][:5]]
+        raise DataQualityError(f"{symbol}: invalid OHLC in {int(bad.sum())} rows; sample dates: {dates}")
     if not np.isfinite(volume.to_numpy(dtype=float)).all():
         raise DataQualityError(f"{symbol}: invalid volume")
     if (price <= 0).to_numpy().any() or (volume < 0).any():
         raise DataQualityError(f"{symbol}: negative volume or nonpositive price")
     if ((price["high"] < price[["open","low","close"]].max(axis=1)) |
         (price["low"] > price[["open","high","close"]].min(axis=1))).any():
-        raise DataQualityError(f"{symbol}: inconsistent OHLC ranges")
+        bad = ((price["high"] < price[["open","low","close"]].max(axis=1)) |
+               (price["low"] > price[["open","high","close"]].min(axis=1)))
+        dates = [str(x) for x in data.index[bad][:5]]
+        raise DataQualityError(f"{symbol}: inconsistent OHLC in {int(bad.sum())} rows; sample dates: {dates}")
     today = market_today or pd.Timestamp.now(tz="UTC").date()
     if data.index[-1] > today:
         raise DataQualityError(f"{symbol}: future date")
