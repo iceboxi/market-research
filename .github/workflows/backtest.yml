@@ -1,0 +1,51 @@
+name: Exploratory Sakata backtest
+on:
+  push:
+    paths:
+      - 'src/market_research/backtest.py'
+      - 'tests/test_backtest.py'
+      - 'config/backtest.yaml'
+      - '.github/workflows/backtest.yml'
+  workflow_dispatch:
+    inputs:
+      market:
+        description: Market
+        type: choice
+        required: true
+        default: both
+        options: [tw, us, both]
+      period:
+        description: Historical data
+        type: choice
+        required: true
+        default: 1y
+        options: [6mo, 1y, 2y]
+permissions:
+  contents: read
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      MARKET: ${{ inputs.market || 'both' }}
+      PERIOD: ${{ inputs.period || '1y' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv sync --extra dev
+      - run: uv run --no-sync pytest
+      - name: Run historical backtest
+        run: uv run --no-sync python -m market_research.backtest --market "$MARKET" --period "$PERIOD" --out backtest_output
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -f backtest_output/summary.md ]; then cat backtest_output/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sakata-backtest-${{ env.MARKET }}-${{ github.run_id }}
+          path: backtest_output/
+          if-no-files-found: warn
+          retention-days: 14
