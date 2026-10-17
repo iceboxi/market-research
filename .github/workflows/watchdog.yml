@@ -1,0 +1,22 @@
+name: EOD schedule watchdog
+on:
+  schedule:
+    - cron: '15 4 * * *'
+  workflow_dispatch:
+permissions:
+  actions: read
+  issues: write
+  contents: read
+concurrency:
+  group: eod-schedule-watchdog
+  cancel-in-progress: false
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect missing or failed scheduled scans
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -m scripts.watchdog --repo "$GITHUB_REPOSITORY"
