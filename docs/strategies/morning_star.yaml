@@ -60,7 +60,7 @@ logic:
   third_candle_bullish: "C3 > O3"
   third_body: "(C3 - O3) / (H3 - L3) >= third_body_to_range_min"
   third_recovery: "(C3 - C1) / (O1 - C1) >= third_recovery_of_first_body_min"
-  candle_validity: "Every H >= max(O,C), L <= min(O,C), H > L, O/H/L/C finite positive"
+  candle_validity: "Every H >= max(O,C), L <= min(O,C), H >= L, O/H/L/C finite positive; flat H=L bars valid in trend context but cannot pass first/third body thresholds"
   intersection: all_requirements_true
   equality: "All threshold comparisons are inclusive; direction comparisons are strict."
   insufficient_bars: "Return matched=false and insufficient_history; no fabricated signal"
