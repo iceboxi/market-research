@@ -1,0 +1,27 @@
+# Research-only five-candle continuation specification; no execution orders.
+schema_version: 1
+strategy_id: sakata_falling_three_methods
+spec_version: "0.1.0"
+status: implemented
+family: san_pou
+direction: bearish
+minimum_complete_bars: 10
+confirmation: fifth_candle_close
+input: completed_daily_ohlc
+execution_policy: observation_only
+parameters:
+  prior_trend_bars: 5
+  prior_trend_min_pct: 2.0
+  impulse_body_to_range_min: 0.6
+  middle_body_to_first_body_max: 0.5
+  final_body_to_range_min: 0.5
+rules:
+  prior: "5 completed closes with >=2 percent directional change"
+  impulse: "First strong bearish candle, body / high-low >= 0.6"
+  consolidation: "Exactly 3 opposite-color candles, full high-low inside first full high-low; body <= 0.5 first body"
+  confirmation: "Fifth candle bearish body/range >= 0.5; close strictly below first close"
+  no_lookahead: "Only complete candles ending at confirmation close"
+  validity: "Finite positive and consistent OHLC; flat candles valid in history but cannot form impulse or confirmation"
+notes:
+  - "All proportions are project research assumptions, not traditional source facts or evidence of profitability."
+  - "Bearish continuation is observation only; long-only backtest is not applied."
