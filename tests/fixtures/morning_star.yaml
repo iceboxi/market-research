@@ -1,0 +1,70 @@
+schema_version: 1
+strategy_id: sakata_morning_star
+spec_version: "0.1.0"
+# Eight bars: five descending closes followed by candle 1/2/3.
+# Each case is a self-contained candle series. Expected is a specification oracle,
+# not an invocation of an implemented Strategy.
+cases:
+  - id: positive_no_strict_gap
+    expected: match
+    rows:
+      - [112, 113, 110, 111]
+      - [111, 112, 109, 110]
+      - [110, 111, 108, 109]
+      - [109, 110, 107, 108]
+      - [108, 109, 106, 107]
+      - [107, 108, 99, 100]
+      - [99, 101, 98, 100]
+      - [100, 105, 99, 104]
+  - id: recovery_at_halfway_is_inclusive
+    expected: match
+    rows:
+      - [112, 113, 110, 111]
+      - [111, 112, 109, 110]
+      - [110, 111, 108, 109]
+      - [109, 110, 107, 108]
+      - [108, 109, 106, 107]
+      - [107, 108, 99, 100]
+      - [99, 101, 98, 100]
+      - [100, 104, 99, 103.5]
+  - id: insufficient_history
+    expected: insufficient_history
+    rows:
+      - [109, 110, 107, 108]
+      - [108, 109, 106, 107]
+      - [107, 108, 99, 100]
+      - [99, 101, 98, 100]
+      - [100, 105, 99, 104]
+  - id: weak_recovery
+    expected: no_match
+    rows:
+      - [112, 113, 110, 111]
+      - [111, 112, 109, 110]
+      - [110, 111, 108, 109]
+      - [109, 110, 107, 108]
+      - [108, 109, 106, 107]
+      - [107, 108, 99, 100]
+      - [99, 101, 98, 100]
+      - [100, 103, 99, 102]
+  - id: star_above_first_close
+    expected: no_match
+    rows:
+      - [112, 113, 110, 111]
+      - [111, 112, 109, 110]
+      - [110, 111, 108, 109]
+      - [109, 110, 107, 108]
+      - [108, 109, 106, 107]
+      - [107, 108, 99, 100]
+      - [101, 102, 100, 101.5]
+      - [101, 105, 100, 104]
+  - id: invalid_high_low
+    expected: invalid_data
+    rows:
+      - [112, 113, 110, 111]
+      - [111, 112, 109, 110]
+      - [110, 111, 108, 109]
+      - [109, 110, 107, 108]
+      - [108, 109, 106, 107]
+      - [107, 108, 99, 100]
+      - [99, 101, 98, 100]
+      - [100, 103, 105, 104]
