@@ -1,0 +1,44 @@
+name: On-demand company research
+on:
+  push:
+    paths:
+      - 'src/market_research/fundamentals.py'
+      - 'scripts/company_report.py'
+      - 'tests/test_company_report.py'
+      - '.github/workflows/company-research.yml'
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'TWSE 2330.TW or US AAPL'
+        required: true
+        type: string
+        default: 2330.TW
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RESEARCH_SYMBOL: ${{ inputs.symbol || '2330.TW' }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - run: uv run --no-sync pytest
+      - name: Produce company report
+        run: uv run --no-sync python -m scripts.company_report --symbol "$RESEARCH_SYMBOL" --out company_output
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f company_output/report.md ]; then cat company_output/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: company-report-${{ github.run_id }}
+          path: company_output/
+          retention-days: 14
+          if-no-files-found: warn
