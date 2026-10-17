@@ -62,6 +62,7 @@ class TwseDailyProvider:
     get: object = None
     today: object = None
     request_pause_seconds: float = 0.20
+    timeout_retries: int = 2
     source: str = "twse_stock_day_official_raw_ohlcv"
 
     def load(self, symbol: str, period: str = "1y") -> pd.DataFrame:
@@ -69,6 +70,8 @@ class TwseDailyProvider:
             raise ValueError(f"TWSE provider supports listed .TW ticker, got {symbol}")
         # Exact 1-year lookback includes a warm-up month for 14/20-day signals.
         lookbacks = {"3mo": 4, "6mo": 7, "1y": 13, "2y": 25}
+        if type(self.timeout_retries) is not int or not 0 <= self.timeout_retries <= 5:
+            raise ValueError("timeout_retries must be an integer from 0 to 5")
         if period not in lookbacks:
             raise ValueError(f"Unsupported TWSE period: {period}")
         current = self.today or datetime.now(ZoneInfo("Asia/Taipei")).date()
@@ -86,18 +89,33 @@ class TwseDailyProvider:
         with client as session:
             request = self.get or session.get
             for index, month in enumerate(months):
-                try:
-                    response = request(
-                        TWSE_URL, params={"response": "json",
-                                          "date": month.strftime("%Y%m01"),
-                                          "stockNo": symbol.split(".")[0]}, timeout=20,
-                    )
-                    response.raise_for_status()
-                    frame = parse_stock_day(response.json(), symbol)
-                    if not frame.empty:
-                        frames.append(frame)
-                except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-                    failures.append(f"{month}: {exc}")
+                for attempt in range(self.timeout_retries + 1):
+                    try:
+                        response = request(
+                            TWSE_URL, params={"response": "json",
+                                              "date": month.strftime("%Y%m01"),
+                                              "stockNo": symbol.split(".")[0]}, timeout=20,
+                        )
+                        response.raise_for_status()
+                        frame = parse_stock_day(response.json(), symbol)
+                        if not frame.empty:
+                            frames.append(frame)
+                        break
+                    except (httpx.TimeoutException, httpx.NetworkError,
+                            httpx.HTTPStatusError) as exc:
+                        # Only retry timeouts, broken connections and HTTP
+                        # 429/5xx. Malformed official data must fail closed.
+                        retryable = not isinstance(exc, httpx.HTTPStatusError) or (
+                            exc.response.status_code == 429 or
+                            500 <= exc.response.status_code <= 599
+                        )
+                        if not retryable or attempt == self.timeout_retries:
+                            failures.append(f"{month}: {exc}")
+                            break
+                        time.sleep(min(2 ** attempt, 4))
+                    except (ValueError, KeyError, TypeError) as exc:
+                        failures.append(f"{month}: {exc}")
+                        break
                 if self.request_pause_seconds > 0 and index != len(months) - 1:
                     time.sleep(self.request_pause_seconds)
         if failures:

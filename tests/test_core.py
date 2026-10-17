@@ -197,3 +197,42 @@ def test_default_strategy_is_sakata_not_rsi():
     assert [x["id"] for x in config["strategies"] if x["enabled"]] == [
         "sakata_three_soldiers"
     ]
+
+
+def test_twse_retries_transient_timeout_without_losing_month():
+    import httpx
+    calls = []
+    class Response:
+        def __init__(self, month): self.month = month
+        def raise_for_status(self): pass
+        def json(self):
+            year = int(self.month[:4])-1911
+            month = int(self.month[4:6])
+            return {"stat":"OK","fields":["日期","成交股數","開盤價","最高價","最低價","收盤價"],
+                    "data":[[f"{year}/{month:02d}/15","1000","20","21","19","20"]]}
+    def flaky(url, **kwargs):
+        month = kwargs["params"]["date"]
+        calls.append(month)
+        if len(calls) == 1:
+            raise httpx.ReadTimeout("temporary TWSE read timeout")
+        return Response(month)
+    provider = TwseDailyProvider(get=flaky, today=date(2026,10,17),
+                                  request_pause_seconds=0, timeout_retries=2)
+    result = provider.load("2330.TW", "3mo")
+    assert len(result) == 4
+    assert len(calls) == 5  # first month twice; remaining three months once
+
+
+def test_twse_does_not_retry_invalid_official_payload():
+    class Response:
+        def raise_for_status(self): pass
+        def json(self): return {"stat": "Unexpected format"}
+    calls = []
+    def bad(url, **kwargs):
+        calls.append(1)
+        return Response()
+    provider = TwseDailyProvider(get=bad, today=date(2026,10,17),
+                                  request_pause_seconds=0, timeout_retries=2)
+    with pytest.raises(ValueError, match="failed months"):
+        provider.load("2330.TW", "3mo")
+    assert len(calls) == 4
