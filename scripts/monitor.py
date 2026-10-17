@@ -129,7 +129,7 @@ def archive(record):
 
 def alert(record, repo):
     """Deduplicate issues per market; successful subsequent scans close them."""
-    title = "[market-health] EOD scan " + record["market"]
+    title = ("[market-watchdog] Scheduled scan " if record.get("kind") == "watchdog" else "[market-health] EOD scan ") + record["market"]
     issues = json.loads(command(
         "gh", "issue", "list", "--repo", repo,
         "--state", "open", "--limit", "100",
