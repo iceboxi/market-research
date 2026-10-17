@@ -4,6 +4,8 @@ on:
     paths:
       - 'scripts/strategy_research.py'
       - 'src/market_research/evening_star.py'
+      - 'src/market_research/twse.py'
+      - 'tests/test_core.py'
       - 'tests/test_evening_star.py'
       - 'docs/strategies/evening_star.yaml'
       - 'tests/fixtures/evening_star.yaml'
