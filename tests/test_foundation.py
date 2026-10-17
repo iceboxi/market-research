@@ -102,3 +102,21 @@ def test_backtest_uses_same_verified_replay_and_data_hash(tmp_path):
     scan_quality = json.loads((tmp_path / "scan" / "data_quality.json").read_text())
     backtest_inputs = json.loads((tmp_path / "backtest" / "inputs.json").read_text())
     assert scan_quality["symbols"][0]["input_sha256"] == backtest_inputs[0]["input_sha256"]
+
+
+def test_snapshot_replay_preserves_full_precision_ohlcv_hash(tmp_path):
+    from hashlib import sha256
+    from market_research.snapshots import write_snapshot, write_index, ReplayProvider
+    df = sample().astype(float)
+    df["open"] = [10.123456789123456 + i * 0.00000000123456789
+                  for i in range(len(df))]
+    df["high"] = df["open"] + 2.0
+    df["low"] = df["open"] - 2.0
+    df["close"] = df["open"] + 0.1000000001234
+    df["adj_close"] = df["open"] * 0.9734567891234
+    df["execution_open"] = df["open"] * 1.0234567891234
+    record = write_snapshot(tmp_path, "AAPL", df, "yahoo_fixture")
+    write_index(tmp_path, [record])
+    replay = ReplayProvider(tmp_path).load("AAPL")
+    assert sha256(df.to_csv().encode()).hexdigest() == sha256(
+        replay.to_csv().encode()).hexdigest()
