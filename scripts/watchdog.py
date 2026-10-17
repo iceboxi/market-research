@@ -61,6 +61,24 @@ def get_scheduled_runs(repo):
 
 
 def record_for(market, runs, repo, now):
+    # A new installation cannot be responsible for scheduled slots before
+    # its first active cron. Store this in versioned operations configuration.
+    with open("config/operations.json", encoding="utf-8") as source:
+        baseline = json.load(source)["first_due_slot_utc"]
+    first = utc_time(baseline[market])
+    due = latest_due_slot(market, now)
+    if due < first:
+        return {
+            "kind": "watchdog", "market": market, "health": "warming_up",
+            "reasons": ["first_scheduled_slot_not_due"],
+            "scheduled_utc": due.isoformat(), "activation_utc": first.isoformat(),
+            "run_url": f"https://github.com/{repo}/actions/workflows/scan.yml",
+            "scanned": None, "requested": None, "errors": None,
+            "signals": None, "expected_warnings": 0,
+            "unexpected_warnings": 0, "mismatches": None,
+            "session_dates": {},
+        }
+
     state, reason, due, selected = evaluate(market, runs, now)
     url = selected.get("html_url") if selected else (
         f"https://github.com/{repo}/actions/workflows/scan.yml")
@@ -91,7 +109,7 @@ def main():
             f"- {market}: {rec['health']} / {rec['reasons'][0]} "
             f"(expected {rec['scheduled_utc']}; {rec['run_url']})"
         )
-        if not args.dry_run:
+        if not args.dry_run and rec['health'] != 'warming_up':
             monitor.alert(rec, args.repo)
     report = "\n".join(lines) + "\n"
     print(report)

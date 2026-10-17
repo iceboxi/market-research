@@ -67,3 +67,19 @@ def test_issue_namespace_is_separate(monkeypatch):
     monitor.alert(record, "owner/repo")
     creation = next(c for c in calls if c[:3] == ("gh", "issue", "create"))
     assert "[market-watchdog]" in creation[creation.index("--title") + 1]
+
+def test_before_installation_does_not_create_false_incident(monkeypatch):
+    from scripts import watchdog
+    # Saturday pre-deployment slots must not be called failures.
+    t = when("2026-10-17")
+    for market in ("tw", "us"):
+        record = watchdog.record_for(market, [], "owner/repo", t)
+        assert record["health"] == "warming_up"
+        assert record["reasons"] == ["first_scheduled_slot_not_due"]
+
+def test_first_live_due_slot_is_monitored():
+    at = when("2026-10-20")
+    for market in ("tw", "us"):
+        record = watchdog.record_for(market, [], "owner/repo", at)
+        assert record["health"] == "critical"
+        assert "scheduled_run_missing" in record["reasons"]

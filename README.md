@@ -108,3 +108,8 @@ these Issue events reach you.
 Push-triggered validation scans deliberately do not archive history or open
 operator Issues. Branch push restrictions can prevent archiving, in which case
 the Action records an error rather than pretending history was saved.
+
+
+## Watchdog onboarding gate
+
+`EOD schedule watchdog` checks the actual scheduled GitHub Actions events, not push/manual run success. First eligible monitored slots are explicit in `config/operations.json` (TW 2026-10-19 11:30 UTC, US 2026-10-20 00:45 UTC), preventing false missing-run alerts for cron slots that preceded deployment. Before the first due slot the watchdog reports `warming_up` without creating Issues. Its own cron is a best-effort GitHub schedule; a separate external heartbeat would be needed to detect GitHub-wide scheduler failure.

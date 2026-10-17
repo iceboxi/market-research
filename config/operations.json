@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "description": "UTC first scheduled run eligible for watchdog alerts; previous slots predate installation.",
+  "first_due_slot_utc": {
+    "tw": "2026-10-19T11:30:00Z",
+    "us": "2026-10-20T00:45:00Z"
+  }
+}
