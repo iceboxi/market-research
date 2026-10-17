@@ -36,11 +36,13 @@ variants:
     family: san_sen
     name: 晨星
     direction: bullish
-    status: draft
-    version: null
+    status: specified
+    version: 0.1.0
     confirmation: third_candle_close
     required_columns: [open, high, low, close]
-    open_decisions: [prior_trend, long_body_threshold, star_body_threshold, recovery_threshold, gap_policy]
+    specification: docs/strategies/morning_star.yaml
+    fixtures: tests/fixtures/morning_star.yaml
+    open_decisions: [corporate_actions, tradability, entry_and_exit_policy]
   - id: sakata_evening_star
     family: san_sen
     name: 暮星
