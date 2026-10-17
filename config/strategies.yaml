@@ -25,6 +25,13 @@ strategies:
       star_to_first_body_max: 0.3
       third_body_to_range_min: 0.5
       third_reversal_of_first_body_min: 0.5
+  - id: sakata_black_three_crows
+    enabled: false
+    params:
+      prior_trend_bars: 5
+      prior_rise_min_pct: 2.0
+      min_body_to_range: 0.5
+      max_lower_shadow_to_range: 0.25
   - id: rsi_volume
     enabled: false
     params:

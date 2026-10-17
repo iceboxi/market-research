@@ -4,6 +4,10 @@ on:
     paths:
       - 'scripts/strategy_research.py'
       - 'src/market_research/evening_star.py'
+      - 'src/market_research/black_three_crows.py'
+      - 'tests/test_black_three_crows.py'
+      - 'docs/strategies/black_three_crows.yaml'
+      - 'tests/fixtures/black_three_crows.yaml'
       - 'src/market_research/twse.py'
       - 'tests/test_core.py'
       - 'tests/test_evening_star.py'
@@ -43,7 +47,7 @@ jobs:
       matrix:
         market: ${{ fromJSON(inputs.market == 'tw' && '["tw"]' || inputs.market == 'us' && '["us"]' || '["tw","us"]') }}
     env:
-      RESEARCH_STRATEGY: ${{ inputs.strategy || 'sakata_evening_star' }}
+      RESEARCH_STRATEGY: ${{ inputs.strategy || 'sakata_black_three_crows' }}
       RESEARCH_PERIOD: ${{ inputs.period || '1y' }}
     steps:
       - uses: actions/checkout@v4

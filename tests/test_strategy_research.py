@@ -43,7 +43,7 @@ def test_catalog_allows_only_implemented_variants():
     variant = research.select_variant("sakata_morning_star")
     assert variant["version"] == "0.1.0"
     with pytest.raises(ValueError, match="not implemented"):
-        research.select_variant("sakata_black_three_crows")
+        research.select_variant("sakata_three_gaps_up")
     with pytest.raises(ValueError, match="exactly once"):
         research.select_variant("does_not_exist")
 

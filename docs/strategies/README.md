@@ -51,3 +51,8 @@
 ## 暮星：implemented v0.1.0（正式停用）
 
 詳細量化條件見 [evening_star.yaml](evening_star.yaml)，案例見 [evening_star fixtures](../../tests/fixtures/evening_star.yaml)。暮星研究版採晨星的價格方向鏡像：先有五根收盤價累積漲幅至少 2%，首根強陽實體／振幅至少 60%，次根星體不超過首根實體 30%、且星體最低點不低於第一根收盤價；第三根強陰實體／振幅至少 50%，收盤回落首根陽線實體至少 50%。不強制影線跳空，嚴格陰陽比較，門檻含等號。數值為研究假設而非獲利保證。訊號只在第三根完成後確認；偏空觀察不等於做空訂單，目前通用研究 Runner 僅會輸出掃描與歷史觀察，不使用只做多回測模型。
+
+
+## 黑三兵（Three Black Crows） v0.1.0 — Implemented / disabled
+
+本專案採與紅三兵方向對稱的研究型定義：之前五根收盤價首尾上漲至少 2%；接著三根陰線且收盤逐根下降；後兩根開盤位於前一根陰線實體範圍；每根陰線實體佔振幅至少 50%、下影線最多 25%。合法零振幅歷史 K 棒不當成損壞資料，但零振幅訊號 K 棒不能形成黑三兵。第三根完成後才確認。完整參數見 [black_three_crows.yaml](black_three_crows.yaml)，測試案例見 [fixtures](../../tests/fixtures/black_three_crows.yaml)。這些比例是研究假設，不代表傳統唯一標準或經驗證的預測效果。策略 `enabled: false`，研究 Runner 僅輸出偏空觀察，不會執行做空交易或套用做多回測。

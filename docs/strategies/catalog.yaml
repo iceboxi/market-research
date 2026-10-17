@@ -87,11 +87,14 @@ variants:
     family: san_pei
     name: 黑三兵
     direction: bearish
-    status: draft
-    version: null
+    status: implemented
+    version: 0.1.0
     confirmation: third_candle_close
+    min_completed_bars: 8
     required_columns: [open, high, low, close]
-    open_decisions: [independent_vs_mirrored_rule, prior_uptrend, lower_shadow_and_body_threshold]
+    specification: docs/strategies/black_three_crows.yaml
+    fixtures: tests/fixtures/black_three_crows.yaml
+    open_decisions: [corporate_actions, short_execution_model, entry_and_exit_policy]
   - id: sakata_rising_three_methods
     family: san_pou
     name: 上升三法延續型態
