@@ -43,6 +43,28 @@ strategies:
   - id: sakata_falling_three_methods
     enabled: false
     params: *three_methods_params
+  - id: sakata_three_gaps_up
+    enabled: false
+    params: &gaps
+      prior_trend_bars: 5
+      prior_trend_min_pct: 2.0
+      minimum_full_gap_pct: 0.2
+  - id: sakata_three_gaps_down
+    enabled: false
+    params: *gaps
+  - id: sakata_three_mountains_triple_top
+    enabled: false
+    params: &peaks
+      pivot_side_bars: 2
+      prior_trend_bars: 5
+      prior_rise_min_pct: 2.0
+      peak_tolerance_pct: 5.0
+      min_peak_separation_bars: 3
+      max_pattern_bars: 90
+      neckline_break_min_pct: 0.2
+  - id: sakata_three_mountains_head_shoulders
+    enabled: false
+    params: *peaks
   - id: rsi_volume
     enabled: false
     params:

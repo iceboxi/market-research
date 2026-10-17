@@ -7,6 +7,8 @@ from .morning_star import SakataMorningStar
 from .evening_star import SakataEveningStar
 from .black_three_crows import SakataBlackThreeCrows
 from .three_methods import SakataRisingThreeMethods, SakataFallingThreeMethods
+from .three_gaps import SakataThreeGapsUp, SakataThreeGapsDown
+from .three_peaks import SakataTripleTop, SakataHeadShoulders
 
 
 class RsiVolume:
@@ -110,7 +112,11 @@ STRATEGIES = {"rsi_volume": RsiVolume, "ma_breakout": MaBreakout,
               "sakata_evening_star": SakataEveningStar,
               "sakata_black_three_crows": SakataBlackThreeCrows,
               "sakata_rising_three_methods": SakataRisingThreeMethods,
-              "sakata_falling_three_methods": SakataFallingThreeMethods}
+              "sakata_falling_three_methods": SakataFallingThreeMethods,
+              "sakata_three_gaps_up": SakataThreeGapsUp,
+              "sakata_three_gaps_down": SakataThreeGapsDown,
+              "sakata_three_mountains_triple_top": SakataTripleTop,
+              "sakata_three_mountains_head_shoulders": SakataHeadShoulders}
 
 
 def get_strategy(name: str) -> ScreeningStrategy:

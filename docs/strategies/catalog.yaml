@@ -18,8 +18,10 @@ variants:
     family: san_zan
     name: 三重頂
     direction: bearish
-    status: draft
-    version: null
+    status: implemented
+    version: 0.1.0
+    min_completed_bars: 22
+    specification: docs/strategies/triple_top.yaml
     confirmation: neckline_break_close
     required_columns: [high, low, close]
     open_decisions: [pivot_confirmation_bars, peak_tolerance, neckline_algorithm, pattern_span]
@@ -27,8 +29,10 @@ variants:
     family: san_zan
     name: 頭肩頂
     direction: bearish
-    status: draft
-    version: null
+    status: implemented
+    version: 0.1.0
+    min_completed_bars: 22
+    specification: docs/strategies/head_shoulders.yaml
     confirmation: neckline_break_close
     required_columns: [high, low, close]
     open_decisions: [pivot_confirmation_bars, shoulders_tolerance, neckline_slope, pattern_span]
@@ -59,8 +63,10 @@ variants:
     family: san_ku
     name: 向上三空
     direction: exhaustion_observation
-    status: draft
-    version: null
+    status: implemented
+    version: 0.1.0
+    min_completed_bars: 9
+    specification: docs/strategies/three_gaps_up.yaml
     confirmation: last_gap_candle_close
     required_columns: [open, high, low, close]
     open_decisions: [full_range_vs_open_gap, gap_threshold, gap_continuity, corporate_actions]
@@ -68,8 +74,10 @@ variants:
     family: san_ku
     name: 向下三空
     direction: exhaustion_observation
-    status: draft
-    version: null
+    status: implemented
+    version: 0.1.0
+    min_completed_bars: 9
+    specification: docs/strategies/three_gaps_down.yaml
     confirmation: last_gap_candle_close
     required_columns: [open, high, low, close]
     open_decisions: [full_range_vs_open_gap, gap_threshold, gap_continuity, corporate_actions]
