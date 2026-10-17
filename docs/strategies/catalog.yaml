@@ -47,11 +47,14 @@ variants:
     family: san_sen
     name: 暮星
     direction: bearish
-    status: draft
-    version: null
+    status: implemented
+    version: 0.1.0
     confirmation: third_candle_close
     required_columns: [open, high, low, close]
-    open_decisions: [prior_trend, long_body_threshold, star_body_threshold, reversal_threshold, gap_policy]
+    min_completed_bars: 8
+    specification: docs/strategies/evening_star.yaml
+    fixtures: tests/fixtures/evening_star.yaml
+    open_decisions: [corporate_actions, short_execution_model, entry_and_exit_policy]
   - id: sakata_three_gaps_up
     family: san_ku
     name: 向上三空

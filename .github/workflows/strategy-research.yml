@@ -3,6 +3,12 @@ on:
   push:
     paths:
       - 'scripts/strategy_research.py'
+      - 'src/market_research/evening_star.py'
+      - 'tests/test_evening_star.py'
+      - 'docs/strategies/evening_star.yaml'
+      - 'tests/fixtures/evening_star.yaml'
+      - 'docs/strategies/catalog.yaml'
+      - 'config/strategies.yaml'
       - 'tests/test_strategy_research.py'
       - '.github/workflows/strategy-research.yml'
   workflow_dispatch:

@@ -16,6 +16,15 @@ strategies:
       star_to_first_body_max: 0.3
       third_body_to_range_min: 0.5
       third_recovery_of_first_body_min: 0.5
+  - id: sakata_evening_star
+    enabled: false
+    params:
+      prior_trend_bars: 5
+      prior_rise_min_pct: 2.0
+      first_body_to_range_min: 0.6
+      star_to_first_body_max: 0.3
+      third_body_to_range_min: 0.5
+      third_reversal_of_first_body_min: 0.5
   - id: rsi_volume
     enabled: false
     params:
