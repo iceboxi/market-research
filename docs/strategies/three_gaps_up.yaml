@@ -1,0 +1,18 @@
+schema_version: 1
+strategy_id: sakata_three_gaps_up
+spec_version: "0.1.0"
+status: implemented
+direction: exhaustion_observation
+minimum_complete_bars: 9
+confirmation: latest_completed_close_only
+execution: research_observation_not_order
+market_data:
+  tw: abstain_unadjusted_corporate_actions_unverified
+  us: yahoo_adjusted_analysis_ohlc
+research_parameters:
+  prior_trend_bars: 5
+  prior_trend_min_pct: 2.0
+  minimum_full_gap_pct: 0.2
+limitations:
+  - Research convention, not a universally accepted Sakata numeric definition
+  - No claim of profitability, short-selling or executable gap fills
