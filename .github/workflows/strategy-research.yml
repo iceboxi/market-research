@@ -41,7 +41,7 @@ jobs:
       matrix:
         market: ${{ fromJSON(inputs.market == 'tw' && '["tw"]' || inputs.market == 'us' && '["us"]' || '["tw","us"]') }}
     env:
-      RESEARCH_STRATEGY: ${{ inputs.strategy || 'sakata_morning_star' }}
+      RESEARCH_STRATEGY: ${{ inputs.strategy || 'sakata_evening_star' }}
       RESEARCH_PERIOD: ${{ inputs.period || '1y' }}
     steps:
       - uses: actions/checkout@v4
