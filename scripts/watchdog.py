@@ -97,7 +97,11 @@ def main():
     p.add_argument("--repo", required=True)
     p.add_argument("--dry-run", action="store_true",
                    help="Do not query GitHub or change Issues")
+    p.add_argument("--probe", action="store_true",
+                   help="Read the real GitHub Actions API without creating issues or failing on missing slots")
     args = p.parse_args()
+    if args.dry_run and args.probe:
+        p.error("--dry-run and --probe cannot be combined")
     now = datetime.now(timezone.utc)
     runs = [] if args.dry_run else get_scheduled_runs(args.repo)
     critical = False
@@ -109,14 +113,14 @@ def main():
             f"- {market}: {rec['health']} / {rec['reasons'][0]} "
             f"(expected {rec['scheduled_utc']}; {rec['run_url']})"
         )
-        if not args.dry_run and rec['health'] != 'warming_up':
+        if not (args.dry_run or args.probe) and rec['health'] != 'warming_up':
             monitor.alert(rec, args.repo)
     report = "\n".join(lines) + "\n"
     print(report)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
             handle.write(report)
-    if critical and not args.dry_run:
+    if critical and not (args.dry_run or args.probe):
         raise SystemExit(1)
 
 

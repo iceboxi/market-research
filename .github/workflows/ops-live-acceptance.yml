@@ -1,0 +1,23 @@
+name: Operations live acceptance
+on:
+  push:
+    paths:
+      - '.github/workflows/ops-live-acceptance.yml'
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe the real scheduled-runs API without touching Issues
+        run: python3 -m scripts.watchdog --repo "$GITHUB_REPOSITORY" --probe
+      - name: Trigger actual workflow_dispatch scan on Taiwan market
+        run: |
+          gh workflow run scan.yml --repo "$GITHUB_REPOSITORY" --ref main -f market=tw
+          echo "Dispatched a real TW scan. Check the resulting EOD market scan run for the archive and Issue steps." >> "$GITHUB_STEP_SUMMARY"

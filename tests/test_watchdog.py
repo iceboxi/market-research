@@ -83,3 +83,18 @@ def test_first_live_due_slot_is_monitored():
         record = watchdog.record_for(market, [], "owner/repo", at)
         assert record["health"] == "critical"
         assert "scheduled_run_missing" in record["reasons"]
+
+
+def test_github_scheduled_run_schema_and_query(monkeypatch):
+    from scripts import monitor
+    calls = []
+    def fake(*args, **kwargs):
+        calls.append(args)
+        class Result:
+            stdout = '{"workflow_runs":[{"event":"schedule","created_at":"2026-10-20T00:47:00Z","status":"completed","conclusion":"success"}]}'
+        return Result()
+    monkeypatch.setattr(monitor, "command", fake)
+    actual = watchdog.get_scheduled_runs("owner/repo")
+    assert actual[0]["event"] == "schedule"
+    assert "event=schedule" in calls[0][-1]
+    assert watchdog.evaluate("us", actual, when("2026-10-20"))[0] == "healthy"

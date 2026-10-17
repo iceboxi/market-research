@@ -58,7 +58,7 @@ Symbols are in config/markets.yaml; toggle strategies in config/strategies.yaml.
 
 TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.
 
-This repository currently covers only a handful of example tickers. It is **not** a whole-exchange scanner. No automatic trading, VPS, AI API, Serenity analysis, or backtesting is included. Dependency versions are constrained but there is no checked-in uv.lock yet; generate and commit one after networked resolution.
+This repository currently covers only a handful of example tickers. It is **not** a whole-exchange scanner. No automatic trading, VPS, AI API, or Serenity analysis is included. An exploratory backtesting module exists, but no automated broker execution is supported. Python dependency resolution is pinned in the committed uv.lock.
 
 
 ## Foundation: freshness and offline replay
@@ -113,3 +113,8 @@ the Action records an error rather than pretending history was saved.
 ## Watchdog onboarding gate
 
 `EOD schedule watchdog` checks the actual scheduled GitHub Actions events, not push/manual run success. First eligible monitored slots are explicit in `config/operations.json` (TW 2026-10-19 11:30 UTC, US 2026-10-20 00:45 UTC), preventing false missing-run alerts for cron slots that preceded deployment. Before the first due slot the watchdog reports `warming_up` without creating Issues. Its own cron is a best-effort GitHub schedule; a separate external heartbeat would be needed to detect GitHub-wide scheduler failure.
+
+
+## Operational acceptance and first live schedule
+
+The `Operations live acceptance` workflow probes GitHub scheduled-run metadata in read-only mode (`python3 -m scripts.watchdog --repo OWNER/REPO --probe`) and triggers a real `workflow_dispatch` TW scan. The dispatched scan exercises long-term metadata archiving and issue sync; its run/Artifact must be inspected separately. No test Issue is created by the probe. The independent watchdog does not alarm for slots preceding `config/operations.json`'s first live slot. Metadata-only `history/` commits do not trigger unnecessary unit-test workflows.
