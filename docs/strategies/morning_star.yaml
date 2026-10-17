@@ -1,0 +1,74 @@
+# Candidate specification only; never loaded into runtime strategy registry.
+schema_version: 1
+strategy_id: sakata_morning_star
+spec_version: "0.1.0"
+status: specified
+family: san_sen
+direction: bullish
+purpose: completed_daily_bar_pattern_observation
+supported_markets: [tw, us]
+frequency: 1d
+required_columns: [open, high, low, close]
+minimum_complete_bars: 8
+confirmation: third_candle_close
+execution_policy: no_orders_no_entry_no_exit
+price_basis: consume_normalized_DailyBars_analysis_ohlc
+gap_policy: no_strict_gap_required_but_star_body_not_above_first_close
+assumptions:
+  thresholds_are_research_conventions_not_traditional_authoritative_numbers: true
+  no_volume_filter: true
+  company_actions_must_be_checked_upstream: true
+  all_bars_must_be_completed: true
+parameters:
+  prior_trend_bars:
+    type: integer
+    default: 5
+    min: 2
+    max: 50
+  prior_decline_min_pct:
+    type: number
+    default: 2.0
+    min: 0.0
+    max: 100.0
+  first_body_to_range_min:
+    type: number
+    default: 0.6
+    exclusive_min: 0.0
+    max: 1.0
+  star_to_first_body_max:
+    type: number
+    default: 0.3
+    min: 0.0
+    max: 1.0
+  third_body_to_range_min:
+    type: number
+    default: 0.5
+    exclusive_min: 0.0
+    max: 1.0
+  third_recovery_of_first_body_min:
+    type: number
+    default: 0.5
+    min: 0.0
+    max: 1.0
+logic:
+  prior_closes: "Five completed closes before candle 1; P0=first, P4=last."
+  prior_decline: "(P0 - P4) / P0 * 100 >= prior_decline_min_pct"
+  first_candle_bearish: "C1 < O1"
+  first_body: "(O1 - C1) / (H1 - L1) >= first_body_to_range_min"
+  star_size: "abs(C2 - O2) <= star_to_first_body_max * (O1 - C1)"
+  star_position: "max(O2, C2) <= C1; equality allowed; wicks need not gap"
+  third_candle_bullish: "C3 > O3"
+  third_body: "(C3 - O3) / (H3 - L3) >= third_body_to_range_min"
+  third_recovery: "(C3 - C1) / (O1 - C1) >= third_recovery_of_first_body_min"
+  candle_validity: "Every H >= max(O,C), L <= min(O,C), H > L, O/H/L/C finite positive"
+  intersection: all_requirements_true
+  equality: "All threshold comparisons are inclusive; direction comparisons are strict."
+  insufficient_bars: "Return matched=false and insufficient_history; no fabricated signal"
+  invalid_bars: "Reject with data-quality error; do not report an ordinary nonmatch"
+  evaluation: "Evaluate the final three completed bars only; no data after candle 3"
+  source_of_truth: "StrategySpec + tests/fixtures/morning_star.yaml; runtime not implemented"
+provenance:
+  classic_shape_sources:
+    - https://www.candlescanner.com/candlestick-patterns/morning-star/
+    - https://patterntests.com/en-us/chart-patterns/morning-star
+  note: "Numbers above are locally specified, not validated predictions."
