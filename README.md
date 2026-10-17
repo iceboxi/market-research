@@ -90,3 +90,21 @@ dividend-handling limitations, and SHA-256 of the complete input, including
 ## Reproducible CI dependencies
 
 The GitHub Runner-generated `uv.lock` is committed to main. Unit, scan and backtest workflows verify `uv lock --check` and install with `uv sync --locked`. Dependency updates are reviewed through the separate `Generate dependency lock` workflow. A generated lock file is not itself a full market-data snapshot.
+
+## Operations history and issue alerts
+
+For scheduled and manually dispatched scans, a small metadata-only JSON report
+is appended under history/YYYY/MM, with run ID, dates, status, strategy versions
+and input hashes. Full raw OHLCV is **not committed to public GitHub**.
+Each run also produces health_report.json and health_report.md as Artifacts.
+
+Expected provisional-session warnings do not create an incident. Missing
+results, partial coverage and failed sources create a critical incident;
+unexpected warnings are degraded. Issues named "[market-health] EOD scan MARKET"
+are deduplicated: future failures comment on the same open Issue, and a healthy
+later run closes it. GitHub's Watch/notification settings determine whether
+these Issue events reach you.
+
+Push-triggered validation scans deliberately do not archive history or open
+operator Issues. Branch push restrictions can prevent archiving, in which case
+the Action records an error rather than pretending history was saved.

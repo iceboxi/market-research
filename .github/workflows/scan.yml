@@ -20,7 +20,8 @@ on:
     - cron: '30 11 * * 1-5'
     - cron: '45 0 * * 2-6'
 permissions:
-  contents: read
+  contents: write
+  issues: write
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -35,11 +36,18 @@ jobs:
       - run: uv sync --extra dev --locked
       - run: uv run --no-sync pytest
       - name: Fetch actual daily market prices and screen
+        id: scan
         run: uv run --no-sync market-scan --market "$SCAN_MARKET" --period 6mo --check-twse --strict-freshness --out output
+      - name: Emit health report on success or failure
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+        run: python3 scripts/monitor.py report --repo "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" --event "$GITHUB_EVENT_NAME" --market "$SCAN_MARKET" --outcome "$SCAN_OUTCOME" --out output
       - name: Add job summary
         if: always()
         run: |
           if [ -f output/summary.md ]; then cat output/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -f output/health_report.md ]; then cat output/health_report.md >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Upload research artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,3 +56,11 @@ jobs:
           path: output/
           if-no-files-found: warn
           retention-days: 14
+      - name: Archive compact history
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        run: python3 scripts/monitor.py archive --report output/health_report.json
+      - name: Sync incident Issue
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/monitor.py alert --report output/health_report.json --repo "$GITHUB_REPOSITORY"
