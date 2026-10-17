@@ -1,0 +1,38 @@
+name: Historical holdout quality evaluation
+on:
+  push:
+    paths:
+      - 'scripts/holdout_evaluation.py'
+      - 'tests/test_holdout_evaluation.py'
+      - '.github/workflows/holdout.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    strategy:
+      fail-fast: false
+      matrix:
+        market: [tw, us]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - run: uv run --no-sync pytest
+      - name: Evaluate fixed historical holdout
+        run: uv run --no-sync python -m scripts.holdout_evaluation --market "${{ matrix.market }}" --strategies sakata_morning_star,sakata_evening_star --period 1y --out holdout_output
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f holdout_output/holdout.md ]; then cat holdout_output/holdout.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: holdout-${{ matrix.market }}-${{ github.run_id }}
+          path: holdout_output/
+          if-no-files-found: warn
+          retention-days: 14
