@@ -118,3 +118,8 @@ the Action records an error rather than pretending history was saved.
 ## Operational acceptance and first live schedule
 
 The `Operations live acceptance` workflow probes GitHub scheduled-run metadata in read-only mode (`python3 -m scripts.watchdog --repo OWNER/REPO --probe`) and triggers a real `workflow_dispatch` TW scan. The dispatched scan exercises long-term metadata archiving and issue sync; its run/Artifact must be inspected separately. No test Issue is created by the probe. The independent watchdog does not alarm for slots preceding `config/operations.json`'s first live slot. Metadata-only `history/` commits do not trigger unnecessary unit-test workflows.
+
+
+## Strategy-independent isolated research
+
+Use the GitHub Actions workflow Isolated strategy research to choose a catalog strategy ID, market (tw/us/both), and history period. The generic code path is scripts/strategy_research.py. Only catalog entries marked implemented or validated_for_research, with explicitly disabled production config entries, may run; the normal scan is unchanged. The legacy Morning Star CLI now delegates to this common runner for compatibility. One temporary data snapshot feeds the research scan and (bullish-only) backtest, with input-hash parity checked before publication. Bearish or exhaustion observations never become long-only backtest trades. Published artifacts omit full raw market OHLCV. A new strategy only needs its specification, implementation, tests, catalog registration and explicit disabled config entry, not a new workflow.

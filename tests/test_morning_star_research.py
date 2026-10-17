@@ -53,12 +53,12 @@ def test_fails_if_production_strategy_is_enabled(tmp_path):
         research_config(cfg, tmp_path/"alternate")
 
 def test_hash_mismatch_is_rejected():
-    backtest = {"strategies": [{"id":"sakata_morning_star","params":{}}],
+    backtest = {"strategies": [{"id":"sakata_morning_star","version":"0.1.0","params":{}}],
         "requested":1,"scanned":1,"error_count":0,"strict_freshness":False}
-    scan = {"strategies":[{"id":"sakata_morning_star"}],
+    scan = {"strategies":[{"id":"sakata_morning_star","version":"0.1.0","params":{}}],
         "requested_symbols":1,"scanned_symbols":1,"error_count":0,
         "strict_freshness":False,"matching_signals":0}
-    rows=[{"market":"tw","symbol":"2330.TW","input_sha256":"a"}]
-    quality={"symbols":[{"market":"tw","symbol":"2330.TW","input_sha256":"b"}]}
+    rows=[{"market":"tw","symbol":"2330.TW","input_sha256":"a","last_date":"2026-10-16"}]
+    quality={"symbols":[{"market":"tw","symbol":"2330.TW","input_sha256":"b","last_date":"2026-10-16"}]}
     with pytest.raises(ValueError, match="different OHLCV hashes"):
         verify(backtest,scan,rows,quality,[],{"params":{}},"tw")
