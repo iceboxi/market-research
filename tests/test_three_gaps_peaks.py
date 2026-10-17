@@ -68,3 +68,34 @@ def test_only_red_soldiers_live():
     from pathlib import Path
     cfg=yaml.safe_load((Path(__file__).resolve().parents[1]/"config/strategies.yaml").read_text())
     assert [x["id"] for x in cfg["strategies"] if x["enabled"]]==["sakata_three_soldiers"]
+
+
+def peaks_fixture(head=False):
+    # Local highs at indices 12, 20, 28; their two-bar right-side
+    # confirmations are known before the neckline break on index 35.
+    close = [97+i*1.5 for i in range(12)] + [105.0]*24
+    heights = [106.0]*36
+    for i, value in ((12,118.),(20,125. if head else 119.),(28,118.5)):
+        heights[i] = value
+    lows = [v-2 for v in close]
+    for i in (16,24):
+        lows[i]=95.0
+    close[34]=105.0
+    close[35]=92.0
+    highs=[max(h,c+1) for h,c in zip(heights,close)]
+    opens=[c+0.3 for c in close]
+    return frame(list(zip(opens,highs,lows,close)))
+
+
+@pytest.mark.parametrize("strategy_id,head",[
+    ("sakata_three_mountains_triple_top",False),
+    ("sakata_three_mountains_head_shoulders",True),
+])
+def test_confirmed_three_peaks_only_on_breakout(strategy_id,head):
+    s=get_strategy(strategy_id)
+    df=peaks_fixture(head)
+    assert not s.scan("us","TEST",df.iloc[:-1],{}).matched
+    result=s.scan("us","TEST",df,{})
+    assert result.matched,result.metrics
+    assert result.metrics["breakout_confirmation_date"]==str(df.index[-1])
+    assert result.metrics["third_pivot_confirmed"]!=str(df.index[-1])
