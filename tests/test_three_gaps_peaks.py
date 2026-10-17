@@ -82,6 +82,7 @@ def peaks_fixture(head=False):
         lows[i]=95.0
     close[34]=105.0
     close[35]=92.0
+    lows[35]=90.0
     highs=[max(h,c+1) for h,c in zip(heights,close)]
     opens=[c+0.3 for c in close]
     return frame(list(zip(opens,highs,lows,close)))
