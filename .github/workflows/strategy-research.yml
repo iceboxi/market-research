@@ -1,0 +1,60 @@
+name: Isolated strategy research
+on:
+  push:
+    paths:
+      - 'scripts/strategy_research.py'
+      - 'tests/test_strategy_research.py'
+      - '.github/workflows/strategy-research.yml'
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: Strategy ID from catalog (implemented but disabled)
+        required: true
+        type: string
+        default: sakata_morning_star
+      market:
+        description: Research market
+        required: true
+        type: choice
+        options: [both, tw, us]
+        default: both
+      period:
+        description: Lookback
+        required: true
+        type: choice
+        options: [6mo, 1y, 2y]
+        default: 1y
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        market: ${{ fromJSON(inputs.market == 'tw' && '["tw"]' || inputs.market == 'us' && '["us"]' || '["tw","us"]') }}
+    env:
+      RESEARCH_STRATEGY: ${{ inputs.strategy || 'sakata_morning_star' }}
+      RESEARCH_PERIOD: ${{ inputs.period || '1y' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - run: uv run --no-sync pytest
+      - name: Run isolated research with selected strategy
+        run: uv run --no-sync python -m scripts.strategy_research --strategy "$RESEARCH_STRATEGY" --market "${{ matrix.market }}" --period "$RESEARCH_PERIOD" --out research_output
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f research_output/study.md ]; then cat research_output/study.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Upload research reports without raw OHLCV CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strategy-${{ matrix.market }}-${{ github.run_id }}
+          path: research_output/
+          if-no-files-found: warn
+          retention-days: 14
