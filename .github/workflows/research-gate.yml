@@ -5,6 +5,7 @@ on:
       - 'scripts/research_gate.py'
       - 'config/research_policy.yaml'
       - 'tests/test_research_gate.py'
+      - 'tests/test_prospective_journal.py'
       - '.github/workflows/research-gate.yml'
   workflow_dispatch:
 permissions:
