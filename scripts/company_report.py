@@ -1,0 +1,122 @@
+"""Source-grounded, on-demand company snapshot. Never generates price targets."""
+import argparse
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import re
+
+import yaml
+
+from market_research.fundamentals import sec_fundamentals, twse_fundamentals
+from market_research.market_data import load_daily_bars
+from market_research.provider import RoutedDailyProvider
+from market_research.strategies import get_strategy
+
+ROOT = Path(__file__).resolve().parents[1]
+
+def classify(symbol):
+    symbol = symbol.strip().upper()
+    if re.fullmatch(r"[0-9]{4,6}\.TW", symbol):
+        return symbol, "tw"
+    if re.fullmatch(r"[A-Z][A-Z0-9.-]{0,9}", symbol):
+        return symbol, "us"
+    raise ValueError("Provide TWSE-listed 2330.TW or US ticker such as AAPL")
+
+def run(symbol, out=Path("company_output"), now=None, provider=None,
+        facts_get=None, sec_user_agent=None, config_dir=ROOT/"config"):
+    symbol, market = classify(symbol)
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError("now requires timezone")
+    if market == "tw":
+        kwargs = {"get":facts_get} if facts_get else {}
+        issuer = twse_fundamentals(symbol, **kwargs)
+    else:
+        kwargs = {"user_agent":sec_user_agent}
+        if facts_get:
+            kwargs["get"] = facts_get
+        issuer = sec_fundamentals(symbol, now.date(), **kwargs)
+    market_cfg = yaml.safe_load((Path(config_dir)/"markets.yaml").read_text())["markets"]
+    strategy_cfg = yaml.safe_load((Path(config_dir)/"strategies.yaml").read_text())["strategies"]
+    technical = {"status":"unavailable","observations":[],"errors":[]}
+    try:
+        daily = load_daily_bars(provider or RoutedDailyProvider(),market,symbol,"6mo",
+                                now,market_cfg[market]["timezone"],strict_freshness=False)
+        technical = {"status":"available",
+            "last_session":daily.metadata["last_date"],
+            "analytical_close":round(float(daily.frame.close.iloc[-1]),6),
+            "currency":"TWD" if market=="tw" else "USD",
+            "price_basis":daily.metadata["price_basis"],
+            "source":daily.metadata["source"],
+            "input_sha256":daily.metadata["input_sha256"],
+            "warnings":list(daily.warnings),"observations":[],"errors":[]}
+        for entry in strategy_cfg:
+            if not entry["id"].startswith("sakata_"):
+                continue
+            strat = get_strategy(entry["id"])
+            try:
+                r = strat.scan(market,symbol,daily.frame,entry.get("params",{}))
+                technical["observations"].append({
+                    "strategy_id":r.strategy_id,"strategy_version":r.strategy_version,
+                    "matched":bool(r.matched),"active":bool(entry["enabled"]),
+                    "as_of_session":r.trade_date,
+                    "observation_state":r.metrics.get("observation")})
+            except Exception as exc:
+                technical["errors"].append({"strategy_id":entry["id"],"type":type(exc).__name__})
+        if technical["errors"]:
+            technical["status"]="partial"
+    except Exception as exc:
+        technical["errors"].append({"type":type(exc).__name__,"detail":str(exc)})
+    result={"schema_version":1,"report_type":"preliminary_company_research",
+        "symbol":symbol,"market":market,"generated_utc":now.astimezone(timezone.utc).isoformat(),
+        "issuer":issuer,"technical":technical,
+        "valuation":{"status":"not_evaluated","fair_value_scenarios":None,
+            "entry_zone":None,"stop_loss":None,"target_price":None,
+            "why":"Audited normalized history, capitalization and model assumptions not yet implemented"},
+        "decision":"no_buy_or_sell_recommendation",
+        "complete":bool(issuer.get("company_name")) and technical["status"]=="available",
+        "limitations":["TW latest monthly revenue is not audited annual profit or TTM revenue",
+           "US SEC annual XBRL tag conventions vary by issuer",
+           "Analytical closes and pattern matches are not executable trading prices",
+           "No company competitive-analysis, valuation or independent forward strategy evidence"]}
+    out=Path(out)
+    out.mkdir(parents=True,exist_ok=True)
+    (out/"report.json").write_text(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False)+"\n")
+    lines=[f"# {issuer.get('company_name') or symbol} — {symbol}","",
+       "Preliminary source-grounded research, **not an investment recommendation**.","",
+       f"Generated (UTC): {result['generated_utc']}",
+       f"Company source: {issuer['profile']['source']}","","## Reported fundamentals","",
+       "| Metric | Value and original unit | Period | Source |",
+       "| --- | ---: | --- | --- |"]
+    for fact in issuer["facts"]:
+        period=fact.get("period_end") or fact.get("period") or "not available"
+        lines.append(f"| {fact['metric']} | {fact['value']:,.2f} {fact['unit']} | {period} | {fact['source']} |")
+    if not issuer["facts"]:
+        lines.append("| Unavailable | — | — | — |")
+    lines += ["","## Technical patterns","",f"Data status: {technical['status']}"]
+    if technical["status"] in ("available","partial"):
+        lines += [f"Latest complete date: {technical['last_session']}",
+                  f"Analytical close: {technical['analytical_close']} {technical['currency']}",
+                  "","| Pattern | Observed | Status |","| --- | --- | --- |"]
+        for row in technical["observations"]:
+            lines.append(f"| {row['strategy_id']} | {'yes' if row['matched'] else 'no'} | {'active' if row['active'] else 'research-only'} |")
+    if technical["errors"]:
+        lines.append("Some technical checks failed; refer to report.json.")
+    lines += ["","## Valuation and entry/exit plan","",
+       "**Not evaluated.** No fabricated fair value, target, entry or stop-loss.","",
+       "## Limitations",""]
+    lines.extend("- "+w for w in issuer["warnings"]+result["limitations"])
+    (out/"report.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+    return result
+
+def main():
+    p=argparse.ArgumentParser()
+    p.add_argument("--symbol",required=True)
+    p.add_argument("--out",type=Path,default=Path("company_output"))
+    a=p.parse_args()
+    result=run(a.symbol,a.out)
+    print((a.out/"report.md").read_text(encoding="utf-8"))
+    if not result["complete"]:
+        raise SystemExit("Incomplete report, see JSON warnings")
+if __name__=="__main__":
+    main()
