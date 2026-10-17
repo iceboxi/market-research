@@ -1,4 +1,5 @@
 name: Morning Star isolated research
+# Shared verified snapshots: no market CSV is uploaded to the public repository.
 on:
   push:
     paths:
