@@ -1,0 +1,44 @@
+name: Final Sakata research acceptance
+on:
+  push:
+    paths:
+      - '.github/workflows/final-acceptance.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        market: [tw, us]
+        pattern:
+          - sakata_three_gaps_up
+          - sakata_three_gaps_down
+          - sakata_three_mountains_triple_top
+          - sakata_three_mountains_head_shoulders
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - name: Validate all implemented strategies
+        run: uv run --no-sync pytest
+      - name: Run candidate on real completed sessions
+        run: uv run --no-sync python -m scripts.strategy_research --strategy "${{ matrix.pattern }}" --market "${{ matrix.market }}" --period 1y --out research_output
+      - name: Add structured research summary
+        if: always()
+        run: |
+          if [ -f research_output/study.md ]; then cat research_output/study.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Publish sanitized research only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-${{ matrix.pattern }}-${{ matrix.market }}-${{ github.run_id }}
+          path: research_output/
+          if-no-files-found: warn
+          retention-days: 14
