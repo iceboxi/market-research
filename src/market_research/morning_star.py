@@ -52,20 +52,22 @@ class SakataMorningStar:
             raise DataQualityError(f"{symbol}: invalid OHLC")
         if ((values["high"] < values[["open", "low", "close"]].max(axis=1)) |
             (values["low"] > values[["open", "high", "close"]].min(axis=1)) |
-            (values["high"] <= values["low"])).any():
+            (values["high"] < values["low"])).any():
             raise DataQualityError(f"{symbol}: inconsistent OHLC")
         previous = values.iloc[:n]["close"]
         decline = (previous.iloc[0] - previous.iloc[-1]) / previous.iloc[0] * 100
         one, star, three = [values.iloc[-i] for i in (3, 2, 1)]
         first_body = one["open"] - one["close"]
+        first_range = one["high"] - one["low"]
+        third_range = three["high"] - three["low"]
         checks = {
             "prior_decline": decline >= config["prior_decline_min_pct"],
             "first_bearish": first_body > 0,
-            "first_long_body": first_body / (one["high"]-one["low"]) >= config["first_body_to_range_min"],
+            "first_long_body": first_range > 0 and first_body / first_range >= config["first_body_to_range_min"],
             "star_small_body": abs(star["close"]-star["open"]) <= config["star_to_first_body_max"] * first_body,
             "star_below_first_close": max(star["open"], star["close"]) <= one["close"],
             "third_bullish": three["close"] > three["open"],
-            "third_body": (three["close"]-three["open"]) / (three["high"]-three["low"]) >= config["third_body_to_range_min"],
+            "third_body": third_range > 0 and (three["close"]-three["open"]) / third_range >= config["third_body_to_range_min"],
             "third_recovery": first_body > 0 and (
                 (three["close"]-one["close"]) / first_body >= config["third_recovery_of_first_body_min"]),
         }
