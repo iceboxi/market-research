@@ -27,5 +27,6 @@ market-scan = "market_research.cli:main"
 packages = ["src/market_research"]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q"
