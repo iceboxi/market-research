@@ -2,7 +2,7 @@
 schema_version: 1
 strategy_id: sakata_morning_star
 spec_version: "0.1.0"
-status: specified
+status: implemented
 family: san_sen
 direction: bullish
 purpose: completed_daily_bar_pattern_observation
@@ -66,7 +66,7 @@ logic:
   insufficient_bars: "Return matched=false and insufficient_history; no fabricated signal"
   invalid_bars: "Reject with data-quality error; do not report an ordinary nonmatch"
   evaluation: "Evaluate the final three completed bars only; no data after candle 3"
-  source_of_truth: "StrategySpec + tests/fixtures/morning_star.yaml; runtime not implemented"
+  source_of_truth: "StrategySpec + fixtures/morning_star.yaml; runtime in src/market_research/morning_star.py"
 provenance:
   classic_shape_sources:
     - https://www.candlescanner.com/candlestick-patterns/morning-star/

@@ -37,10 +37,11 @@ def test_catalog_has_unique_family_partition():
 def test_only_existing_three_soldiers_is_implemented_and_enabled():
     catalog = yaml.safe_load(CATALOG.read_text())
     implemented = [v["id"] for v in catalog["variants"] if v["status"] == "implemented"]
-    assert implemented == ["sakata_three_soldiers"]
+    assert implemented == ["sakata_morning_star", "sakata_three_soldiers"]
     cfg = yaml.safe_load((ROOT / "config/strategies.yaml").read_text())
     enabled = [v["id"] for v in cfg["strategies"] if v["enabled"]]
-    assert enabled == implemented
+    assert enabled == ["sakata_three_soldiers"]
+    assert set(enabled).issubset(set(implemented))
     assert get_strategy("sakata_three_soldiers").version == "0.1.0"
 
 def test_candidate_specs_never_enable_by_merely_adding_catalog_entry():
@@ -56,7 +57,7 @@ def test_morning_star_spec_and_test_vectors_are_self_consistent():
     cases = yaml.safe_load((ROOT / "tests/fixtures/morning_star.yaml").read_text())
     assert spec["strategy_id"] == cases["strategy_id"] == "sakata_morning_star"
     assert spec["spec_version"] == cases["spec_version"] == "0.1.0"
-    assert spec["status"] == "specified"
+    assert spec["status"] == "implemented"
     assert spec["minimum_complete_bars"] == 8
     assert spec["gap_policy"] == "no_strict_gap_required_but_star_body_not_above_first_close"
     assert len(cases["cases"]) >= 6

@@ -36,7 +36,7 @@ variants:
     family: san_sen
     name: 晨星
     direction: bullish
-    status: specified
+    status: implemented
     version: 0.1.0
     confirmation: third_candle_close
     required_columns: [open, high, low, close]
