@@ -1,0 +1,49 @@
+# Research-specific quantified Evening Star variant. NOT an execution rule.
+schema_version: 1
+strategy_id: sakata_evening_star
+spec_version: "0.1.0"
+status: implemented
+family: san_sen
+direction: bearish
+purpose: completed_daily_bar_pattern_observation
+supported_markets: [tw, us]
+frequency: 1d
+required_columns: [open, high, low, close]
+minimum_complete_bars: 8
+confirmation: third_candle_close
+execution_policy: observation_only_no_orders_no_short_backtest
+price_basis: consume_normalized_DailyBars_analysis_ohlc
+gap_policy: no_strict_gap_required_but_star_body_not_below_first_close
+assumptions:
+  thresholds_are_project_research_conventions_not_classical_authoritative_numbers: true
+  no_volume_filter: true
+  all_bars_must_be_completed: true
+  corporate_actions_reviewed_at_market_data_boundary: true
+parameters:
+  prior_trend_bars: {type: integer, default: 5, min: 2, max: 50}
+  prior_rise_min_pct: {type: number, default: 2.0, min: 0.0, max: 100.0}
+  first_body_to_range_min: {type: number, default: 0.6, exclusive_min: 0.0, max: 1.0}
+  star_to_first_body_max: {type: number, default: 0.3, min: 0.0, max: 1.0}
+  third_body_to_range_min: {type: number, default: 0.5, exclusive_min: 0.0, max: 1.0}
+  third_reversal_of_first_body_min: {type: number, default: 0.5, min: 0.0, max: 1.0}
+logic:
+  prior_closes: "Five complete closes before candle 1; P0=first, P4=last."
+  prior_rise: "(P4 - P0) / P0 * 100 >= prior_rise_min_pct"
+  first_bullish: "C1 > O1"
+  first_body: "(C1 - O1) / (H1 - L1) >= first_body_to_range_min"
+  star_size: "abs(C2 - O2) <= star_to_first_body_max * (C1 - O1)"
+  star_position: "min(O2, C2) >= C1; equality allowed; wicks need not gap"
+  third_bearish: "C3 < O3"
+  third_body: "(O3 - C3) / (H3 - L3) >= third_body_to_range_min"
+  third_reversal: "(C1 - C3) / (C1 - O1) >= third_reversal_of_first_body_min"
+  validity: "Finite positive OHLC, high>=max(open,close), low<=min(open,close), high>=low. Flat bars are legal; first and third flat bars never match."
+  equality: "Thresholds inclusive; bearish/bullish direction strict."
+  insufficient_bars: "matched=false; explicit insufficient_history reason"
+  invalid_bars: "DataQualityError, never ordinary no_match"
+  lookahead: "Evaluate only as-of third candle close; no later candles available."
+  signal_is_not_execution: true
+provenance:
+  references:
+    - https://corporatefinanceinstitute.com/resources/capital_markets/evening-star-pattern/
+    - https://patterntests.com/en-us/chart-patterns/evening-star
+  note: "Numerical thresholds are this project's hypotheses, not sourced historical claims or evidence of returns."
