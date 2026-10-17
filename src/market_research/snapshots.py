@@ -61,7 +61,7 @@ class ReplayProvider:
         payload = (self.directory / record["file"]).read_bytes()
         if sha256(payload).hexdigest() != record["sha256"]:
             raise ValueError(f"{symbol}: snapshot checksum mismatch")
-        frame = pd.read_csv(BytesIO(payload), index_col=0)
+        frame = pd.read_csv(BytesIO(payload), index_col=0, float_precision="round_trip")
         frame.index = pd.Index(pd.to_datetime(frame.index).date, name="date")
         if len(frame) != record["rows"]:
             raise ValueError(f"{symbol}: snapshot row count mismatch")
