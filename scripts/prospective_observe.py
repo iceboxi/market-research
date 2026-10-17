@@ -39,7 +39,7 @@ def collect(health, market, output, config_dir=Path("config"), now=None,
         raise ValueError("Production strategy activation has changed; new freeze required")
     research = []
     for row in original:
-        if row["enabled"]:
+        if row["enabled"] or not row["id"].startswith("sakata_"):
             continue
         variant = select_variant(row["id"])
         research.append({"id": row["id"], "enabled": True, "params": row.get("params", {})})
