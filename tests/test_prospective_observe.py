@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import pytest
+import json
 from scripts.prospective_observe import collect
 from scripts.prospective_archive import archive
 
@@ -47,3 +48,46 @@ def test_prospective_archive_rejects_conflicting_session_without_git(monkeypatch
     with pytest.raises(ValueError,match="Immutable"):
         archive({**receipt,"run_id":"12"})
     assert len([c for c in calls if c[:2]==("git","push")])==1
+
+
+def test_prospective_collect_valid_receipt_and_hash_mismatch(monkeypatch,tmp_path):
+    from datetime import date
+    from pathlib import Path
+    import shutil
+    import scripts.prospective_observe as obs
+    from scripts.prospective_observe import collect
+    root=Path(__file__).resolve().parents[1]
+    cfg=tmp_path/"config"
+    cfg.mkdir()
+    shutil.copyfile(root/"config/strategies.yaml",cfg/"strategies.yaml")
+    shutil.copyfile(root/"config/markets.yaml",cfg/"markets.yaml")
+    monkeypatch.setattr(obs,"expected_complete_session",lambda market,now: date(2026,10,19))
+    monkeypatch.setattr(obs,"fingerprint",lambda: "abcd"*16)
+    def mock_scan(market,period,out,config_dir,provider,now,strict_freshness):
+        assert strict_freshness is True
+        assert market=="tw" and period=="6mo"
+        assert len(__import__("yaml").safe_load((config_dir/"strategies.yaml").read_text())["strategies"])==9
+        out.mkdir(parents=True,exist_ok=True)
+        rows=[{"market":"tw","symbol":f"T{i}","input_sha256":f"hash{i}"}
+              for i in range(10)]
+        (out/"data_quality.json").write_text(json.dumps({"symbols":rows}))
+        observations=[{"symbol":f"T{i}","strategy_id":f"S{j}",
+            "strategy_version":"0.1.0","trade_date":"2026-10-19",
+            "matched":False,"metrics":{}} for i in range(10) for j in range(9)]
+        (out/"screening_results.json").write_text(json.dumps(observations))
+        return {"error_count":0,"scanned_symbols":10,
+            "strategies":[{"id":f"S{j}","version":"0.1.0"} for j in range(9)]}
+    monkeypatch.setattr(obs,"run_scan",mock_scan)
+    h=health()
+    h["input_hashes"]=[{"market":"tw","symbol":f"T{i}","sha256":f"hash{i}"} for i in range(10)]
+    monkeypatch.setattr(obs,"select_variant",lambda candidate: {"status":"implemented"})
+    out=tmp_path/"receipt.json"
+    result=collect(h,"tw",out,cfg,now=datetime(2026,10,19,13,tzinfo=timezone.utc))
+    assert result["freeze_hash"]=="abcd"*16
+    assert not result["observations"]
+    assert len(result["strategy_versions"])==9
+    assert not result["is_strategy_performance_evidence"]
+    h["input_hashes"][0]["sha256"]="different"
+    with pytest.raises(ValueError,match="hashes differ"):
+        collect(h,"tw",tmp_path/"rejected.json",cfg,
+                now=datetime(2026,10,19,13,tzinfo=timezone.utc))
