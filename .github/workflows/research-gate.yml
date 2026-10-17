@@ -1,0 +1,41 @@
+name: Research readiness gate
+on:
+  push:
+    paths:
+      - 'scripts/research_gate.py'
+      - 'config/research_policy.yaml'
+      - 'tests/test_research_gate.py'
+      - '.github/workflows/research-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - run: uv run --no-sync pytest
+      - name: Historical holdouts with frozen strategies and source completeness
+        run: |
+          uv run --no-sync python -m scripts.holdout_evaluation --market us --period 1y --out holdout_us
+          uv run --no-sync python -m scripts.holdout_evaluation --market tw --period 1y --out holdout_tw
+      - name: Enforce readiness gate without authorizing deployment
+        run: python3 scripts/research_gate.py --tw holdout_tw/holdout.json --us holdout_us/holdout.json --out quality_gate
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f quality_gate/gate.md ]; then cat quality_gate/gate.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-readiness-${{ github.run_id }}
+          path: |
+            holdout_us/
+            holdout_tw/
+            quality_gate/
+          retention-days: 14
