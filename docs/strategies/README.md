@@ -14,16 +14,16 @@
 
 | 分類 | 候選 ID | 初步觀察 | 尚待決定 |
 |---|---|---|---|
-| 三山 | sakata_three_mountains_triple_top | 三個已確認高點與跌破頸線 | pivot 右側確認、峰值誤差、頸線算法 |
-| 三山 | sakata_three_mountains_head_shoulders | 中峰高於左右肩與頸線跌破 | 肩高容差、趨勢、確認時間 |
+| 三山 | sakata_three_mountains_triple_top | 已實作（研究版），三峰與確認後頸線跌破 | pivot／價格調整假設仍需市場驗證 |
+| 三山 | sakata_three_mountains_head_shoulders | 已實作（研究版），頭肩頂確認後頸線跌破 | 肩部容差與量化門檻仍屬研究假設 |
 | 三川 | sakata_morning_star | 陰線、小實體、陽線反轉 | 前段下跌、缺口、實體及收復比例 |
 | 三川 | sakata_evening_star | 陽線、小實體、陰線反轉 | 前段上漲、缺口、實體及回落比例 |
-| 三空 | sakata_three_gaps_up | 三次連續向上跳空 | 全區間或開盤缺口、最小幅度、除權息 |
-| 三空 | sakata_three_gaps_down | 三次連續向下跳空 | 同上；觀察不等於反向下單 |
+| 三空 | sakata_three_gaps_up | 已實作，三個全區間向上缺口 | 台股未查證公司行動必須 abstain |
+| 三空 | sakata_three_gaps_down | 已實作，三個全區間向下缺口 | 台股 abstain；不等於反向下單 |
 | 三兵 | sakata_three_soldiers | **既有紅三兵 v0.1.0，已實作** | 不修改原有門檻 |
 | 三兵 | sakata_black_three_crows | 三根陰線偏空型態 | 是否鏡射、前段漲勢及下影線門檻 |
-| 三法 | sakata_rising_three_methods | 強勢 K、整理 K、續漲確認 K | 整理根數、包覆範圍、突破標準 |
-| 三法 | sakata_falling_three_methods | 弱勢 K、整理 K、續跌確認 K | 同上；不可默認反向下單 |
+| 三法 | sakata_rising_three_methods | 已實作五 K 延續研究版 | 長期績效與實際交易仍未驗證 |
+| 三法 | sakata_falling_three_methods | 已實作五 K 延續研究版 | 不使用現有做多回測 |
 
 ## 策略生命週期
 
@@ -38,7 +38,7 @@
 
 每個候選未來完成規格後需準備：正例、反例、恰等於閾值的邊界例、資料不足、資料異常、prefix/no-lookahead、同快照重跑一致性，以及 Scan／Backtest 共用資料契約測試。型態辨識和進出場規則分開定義；目前回測固定持有五個交易日只是研究假設。
 
-**目前優先順序**：先將晨星的長／短實體、回補幅度和跳空政策定義清楚，再實作測試；下一批考慮暮星、黑三兵。三山與三空因 pivot 時間及價格調整較敏感，暫後。
+**目前階段**：十種型態皆有研究版 Plugin；驗收與市場有效性是不同階段。三山的 pivot 延遲與三空公司行動限制必須保留。
 
 
 ## 晨星：implemented v0.1.0（預設停用）
