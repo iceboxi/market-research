@@ -1,0 +1,18 @@
+policy_version: 1
+# Conservative, predeclared thresholds for research adequacy; not a p-value
+# or a performance guarantee. CI passing does not mean strategy acceptance.
+minimums:
+  per_market_events: 20
+  per_market_symbols: 3
+  each_test_half_events: 8
+cost_sensitivity:
+  stress_roundtrip_bps: [30, 60, 120]
+  status: illustrative_only_not_verified_fill_model
+data_requirements:
+  taiwan_corporate_actions: independent_verified_feed_required
+  execution_cashflow_and_borrow: independent_model_required
+  post_freeze_prospective_sample: required
+  multiple_testing_adjustment: required
+deployment:
+  auto_enable_strategies: false
+  broker_orders_allowed: false
