@@ -1,0 +1,46 @@
+# Quantified research-only variant, not an instruction to open short positions.
+schema_version: 1
+strategy_id: sakata_black_three_crows
+spec_version: "0.1.0"
+status: implemented
+family: san_pei
+direction: bearish
+purpose: completed_daily_bar_pattern_observation
+supported_markets: [tw, us]
+frequency: 1d
+required_columns: [open, high, low, close]
+minimum_complete_bars: 8
+confirmation: third_candle_close
+execution_policy: observation_only_no_orders_no_short_backtest
+price_basis: consume_normalized_DailyBars_analysis_ohlc
+gap_policy: no_gap_required_open_of_next_crow_inside_previous_real_body
+assumptions:
+  thresholds_are_project_conventions_not_claimed_traditional_numbers: true
+  no_volume_filter: true
+  no_short_entry_or_profitability_claim: true
+  all_bars_must_be_completed: true
+  corporate_actions_reviewed_by_upstream_data_contract: true
+parameters:
+  prior_trend_bars: {type: integer, default: 5, min: 2, max: 50}
+  prior_rise_min_pct: {type: number, default: 2.0, min: 0.0, max: 100.0}
+  min_body_to_range: {type: number, default: 0.5, exclusive_min: 0.0, max: 1.0}
+  max_lower_shadow_to_range: {type: number, default: 0.25, min: 0.0, max: 1.0}
+logic:
+  prior_closes: "n closes before first crow; P0=first, P(n-1)=last"
+  prior_rise: "(P(n-1) - P0) / P0 * 100 >= prior_rise_min_pct"
+  candle_direction: "Every crow C[i] < O[i]"
+  close_sequence: "C2 < C1 and C3 < C2"
+  inside_previous_body: "C1 <= O2 <= O1 and C2 <= O3 <= O2"
+  body_ratio: "Every (O[i] - C[i]) / (H[i] - L[i]) >= min_body_to_range"
+  lower_shadow_ratio: "Every 0 <= (C[i] - L[i]) / (H[i] - L[i]) <= max_lower_shadow_to_range"
+  zero_range: "Flat H=L bars are valid historical data but cannot form any of three crows"
+  price_validation: "Positive finite OHLC, H>=max(O,C), L<=min(O,C)"
+  equality: "All numeric thresholds inclusive, C<O and falling closes strict"
+  insufficient_bars: "matched=false and explicit insufficient_history"
+  invalid_bars: "DataQualityError, not ordinary no_match"
+  lookahead: "No observations until third candle completed; scan prefix only"
+provenance:
+  references:
+    - https://patterntests.com/en-us/chart-patterns/three-black-crows
+    - https://www.motilaloswal.com/personal-finance/technical-analysis/three-black-crows-pattern-definition-formation-how-to-trade-example
+  note: "Prior trend and proportions are independently selected research settings, not validated investment performance."
