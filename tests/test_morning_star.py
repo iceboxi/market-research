@@ -69,6 +69,7 @@ def test_morning_star_backtest_uses_next_session_open():
     df["execution_open"] = df["open"] * 1.03
     post = candles([[106, 107, 105, 106]] * 7)
     post.index = pd.Index(pd.bdate_range(df.index[-1], periods=8).date[1:], name="date")
+    post["execution_open"] = post["open"] * 1.03
     df = pd.concat([df, post])
     strategy = get_strategy("sakata_morning_star")
     summary, trades = backtest_symbol(df, "us", "TEST", strategy, {}, Settings(trials=5))
