@@ -24,5 +24,5 @@ def test_push_and_unhealthy_runs_not_eligible():
         journal_entry(item,"sha",None,date(2026,10,20))
     item=health()
     item["health"]="critical"
-    with pytest.raises(ValueError,match="healthy"):
+    with pytest.raises(ValueError,match="successful complete"):
         journal_entry(item,"sha",None,date(2026,10,20))
