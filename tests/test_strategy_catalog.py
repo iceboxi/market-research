@@ -37,7 +37,7 @@ def test_catalog_has_unique_family_partition():
 def test_only_existing_three_soldiers_is_implemented_and_enabled():
     catalog = yaml.safe_load(CATALOG.read_text())
     implemented = [v["id"] for v in catalog["variants"] if v["status"] == "implemented"]
-    assert implemented == ["sakata_morning_star", "sakata_evening_star", "sakata_three_soldiers", "sakata_black_three_crows"]
+    assert implemented == ["sakata_morning_star", "sakata_evening_star", "sakata_three_soldiers", "sakata_black_three_crows", "sakata_rising_three_methods", "sakata_falling_three_methods"]
     cfg = yaml.safe_load((ROOT / "config/strategies.yaml").read_text())
     enabled = [v["id"] for v in cfg["strategies"] if v["enabled"]]
     assert enabled == ["sakata_three_soldiers"]

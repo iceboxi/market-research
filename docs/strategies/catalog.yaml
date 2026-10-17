@@ -99,17 +99,21 @@ variants:
     family: san_pou
     name: 上升三法延續型態
     direction: bullish
-    status: draft
-    version: null
+    status: implemented
+    version: 0.1.0
     confirmation: final_confirmation_candle_close
+    min_completed_bars: 10
     required_columns: [open, high, low, close]
-    open_decisions: [middle_candle_count, containment_rule, preceding_trend, breakout_confirmation]
+    specification: docs/strategies/rising_three_methods.yaml
+    open_decisions: [corporate_actions, entry_exit_and_cost_model]
   - id: sakata_falling_three_methods
     family: san_pou
     name: 下降三法延續型態
     direction: bearish
-    status: draft
-    version: null
+    status: implemented
+    version: 0.1.0
     confirmation: final_confirmation_candle_close
+    min_completed_bars: 10
     required_columns: [open, high, low, close]
-    open_decisions: [middle_candle_count, containment_rule, preceding_trend, breakout_confirmation]
+    specification: docs/strategies/falling_three_methods.yaml
+    open_decisions: [corporate_actions, entry_exit_and_cost_model]

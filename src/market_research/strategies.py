@@ -6,6 +6,7 @@ from .strategy_contract import ScreenResult, ScreeningStrategy
 from .morning_star import SakataMorningStar
 from .evening_star import SakataEveningStar
 from .black_three_crows import SakataBlackThreeCrows
+from .three_methods import SakataRisingThreeMethods, SakataFallingThreeMethods
 
 
 class RsiVolume:
@@ -107,7 +108,9 @@ STRATEGIES = {"rsi_volume": RsiVolume, "ma_breakout": MaBreakout,
               "sakata_three_soldiers": SakataThreeSoldiers,
               "sakata_morning_star": SakataMorningStar,
               "sakata_evening_star": SakataEveningStar,
-              "sakata_black_three_crows": SakataBlackThreeCrows}
+              "sakata_black_three_crows": SakataBlackThreeCrows,
+              "sakata_rising_three_methods": SakataRisingThreeMethods,
+              "sakata_falling_three_methods": SakataFallingThreeMethods}
 
 
 def get_strategy(name: str) -> ScreeningStrategy:

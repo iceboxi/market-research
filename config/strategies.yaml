@@ -32,6 +32,17 @@ strategies:
       prior_rise_min_pct: 2.0
       min_body_to_range: 0.5
       max_lower_shadow_to_range: 0.25
+  - id: sakata_rising_three_methods
+    enabled: false
+    params: &three_methods_params
+      prior_trend_bars: 5
+      prior_trend_min_pct: 2.0
+      impulse_body_to_range_min: 0.6
+      middle_body_to_first_body_max: 0.5
+      final_body_to_range_min: 0.5
+  - id: sakata_falling_three_methods
+    enabled: false
+    params: *three_methods_params
   - id: rsi_volume
     enabled: false
     params:
