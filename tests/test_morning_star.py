@@ -84,3 +84,22 @@ def test_not_enabled_by_default():
     enabled = [x["id"] for x in yaml.safe_load(
         (ROOT / "config/strategies.yaml").read_text())["strategies"] if x["enabled"]]
     assert enabled == ["sakata_three_soldiers"]
+
+
+def test_flat_daily_bar_is_valid_but_not_a_morning_star():
+    # TWSE sometimes reports a legitimate flat trading bar (H = L = O = C).
+    # Validation must not reject the whole ticker or divide by zero.
+    df = candles(VECTORS[0]["rows"])
+    df.iloc[1, df.columns.get_loc("open")] = 109
+    df.iloc[1, df.columns.get_loc("high")] = 109
+    df.iloc[1, df.columns.get_loc("low")] = 109
+    df.iloc[1, df.columns.get_loc("close")] = 109
+    assert get_strategy("sakata_morning_star").scan("tw", "TEST.TW", df, {}).matched
+    first_flat = candles(VECTORS[0]["rows"])
+    for key in ("open", "high", "low", "close"):
+        first_flat.loc[first_flat.index[-3], key] = 100
+    assert not get_strategy("sakata_morning_star").scan("tw", "TEST.TW", first_flat, {}).matched
+    third_flat = candles(VECTORS[0]["rows"])
+    for key in ("open", "high", "low", "close"):
+        third_flat.loc[third_flat.index[-1], key] = 101
+    assert not get_strategy("sakata_morning_star").scan("tw", "TEST.TW", third_flat, {}).matched
