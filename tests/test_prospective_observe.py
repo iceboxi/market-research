@@ -86,6 +86,7 @@ def test_prospective_collect_valid_receipt_and_hash_mismatch(monkeypatch,tmp_pat
     assert result["freeze_hash"]=="abcd"*16
     assert not result["observations"]
     assert len(result["strategy_versions"])==9
+    assert all(not row["id"].startswith(("rsi_","ma_")) for row in result["strategy_versions"])
     assert not result["is_strategy_performance_evidence"]
     h["input_hashes"][0]["sha256"]="different"
     with pytest.raises(ValueError,match="hashes differ"):
