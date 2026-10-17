@@ -1,0 +1,61 @@
+name: Operations permission smoke test
+on:
+  push:
+    paths:
+      - '.github/workflows/ops-validation.yml'
+permissions:
+  contents: write
+  issues: write
+jobs:
+  validate-operations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify GitHub write permission with synthetic metadata and incident
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          from scripts import monitor
+          import os
+          repo = os.environ["GITHUB_REPOSITORY"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          market = "validation-" + run_id
+          record = {
+              "schema_version": 1, "kind": "watchdog", "run_id": run_id,
+              "observed_at_utc": datetime.now(timezone.utc).isoformat(),
+              "run_url": "https://github.com/" + repo + "/actions/runs/" + run_id,
+              "event": "ops_validation", "market": market,
+              "health": "critical", "reasons": ["synthetic_validation_only"],
+              "requested": None, "scanned": None, "errors": None, "signals": None,
+              "mismatches": None, "expected_warnings": 0,
+              "unexpected_warnings": 0, "session_dates": {},
+              "input_hashes": [], "strategies": [],
+          }
+          location = monitor.archive(record)
+          print("Archive verified:", location)
+          try:
+              result = monitor.alert(record, repo)
+              print("Create alert:", result)
+              record["health"] = "healthy"
+              record["reasons"] = ["synthetic_validation_resolved"]
+              recovered = monitor.alert(record, repo)
+              print("Close alert:", recovered)
+              if result != "created" or recovered != "recovered":
+                  raise AssertionError("Issue lifecycle did not verify")
+          except BaseException:
+              # Cleanup any synthetic Issue if its lifecycle failed partway.
+              from scripts.monitor import command
+              title = "[market-watchdog] Scheduled scan " + market
+              result = command("gh", "issue", "list", "--repo", repo,
+                               "--state", "open", "--limit", "100",
+                               "--json", "number,title")
+              import json
+              for issue in json.loads(result.stdout):
+                  if issue["title"] == title:
+                      command("gh", "issue", "close", str(issue["number"]),
+                              "--repo", repo)
+              raise
+          PY
