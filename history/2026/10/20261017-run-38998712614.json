@@ -1,0 +1,23 @@
+{
+  "errors": null,
+  "event": "ops_validation",
+  "expected_warnings": 0,
+  "health": "critical",
+  "input_hashes": [],
+  "kind": "watchdog",
+  "market": "validation-38998712614",
+  "mismatches": null,
+  "observed_at_utc": "2026-10-17T03:25:24.356735+00:00",
+  "reasons": [
+    "synthetic_validation_only"
+  ],
+  "requested": null,
+  "run_id": "38998712614",
+  "run_url": "https://github.com/iceboxi/market-research/actions/runs/38998712614",
+  "scanned": null,
+  "schema_version": 1,
+  "session_dates": {},
+  "signals": null,
+  "strategies": [],
+  "unexpected_warnings": 0
+}
