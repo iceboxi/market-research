@@ -14,6 +14,7 @@ from market_research.strategies import get_strategy
 from market_research.valuation import evaluate_valuation
 from market_research.company_analysis import compare_financials, research_status, render_financial_research
 from market_research.price_context import analyze_price_context, render_price_context
+from market_research.event_risk import tw_material_events, evaluate_events, render_events
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,7 +36,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         kwargs = {"get":facts_get} if facts_get else {}
         issuer = twse_fundamentals(symbol, **kwargs)
     else:
-        kwargs = {"user_agent":sec_user_agent}
+        kwargs = {"user_agent":sec_user_agent, "evaluated_at":now}
         if facts_get:
             kwargs["get"] = facts_get
         issuer = sec_fundamentals(symbol, now.date(), **kwargs)
@@ -71,13 +72,24 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
             technical["status"]="partial"
     except Exception as exc:
         technical["errors"].append({"type":type(exc).__name__,"detail":str(exc)})
+    if market == "tw":
+        from market_research.fundamentals import json_get
+        event_feed = tw_material_events(symbol, now, facts_get or json_get)
+    else:
+        from market_research.fundamentals import SEC_SUBMISSIONS
+        from market_research.event_risk import unknown
+        event_feed = issuer.get("event_feed") or unknown(
+            SEC_SUBMISSIONS.format(cik=int(issuer["cik"])), "SEC filing feed not retrieved"
+        )
+    event_risk = evaluate_events(event_feed, now)
     valuation = evaluate_valuation(issuer, now.date())
     financial = compare_financials(issuer, now.date())
     readiness = research_status(financial, valuation, technical)
-    result={"schema_version":2,"report_type":"preliminary_company_research",
+    result={"schema_version":3,"report_type":"preliminary_company_research",
         "symbol":symbol,"market":market,"generated_utc":now.astimezone(timezone.utc).isoformat(),
         "issuer":issuer,"technical":technical,
         "financial_comparison":financial,"research_readiness":readiness,
+        "official_events":event_feed, "event_risk":event_risk,
         "valuation":valuation,
         "decision":"no_buy_or_sell_recommendation",
         "complete":bool(issuer.get("company_name")) and technical["status"]=="available",
@@ -111,6 +123,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     if technical.get("price_context"):
         lines.extend(render_price_context(technical["price_context"]))
     lines.extend(render_financial_research(financial, readiness))
+    lines.extend(render_events(event_feed, event_risk))
     lines += ["","## Valuation and entry/exit plan",""]
     v = result["valuation"]
     if v["status"] == "illustrative_only":
