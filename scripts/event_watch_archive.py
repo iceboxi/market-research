@@ -21,9 +21,9 @@ class EventArchiveError(StateError):
 def validate_records(records):
     for path, value in records.items():
         parts = path.split("/")
-        if len(parts) != 2 or not parts[1].endswith(".json"):
+        if len(parts) != 3 or parts[0] != "event_state" or not parts[2].endswith(".json"):
             raise StateError("Invalid event state path")
-        market, symbol = parts[0], parts[1][:-5]
+        market, symbol = parts[1], parts[2][:-5]
         from market_research.event_monitor import build_snapshot
         build_snapshot(symbol, market, {"status": "unavailable"}, 
                        __import__("datetime").datetime.now(__import__("datetime").timezone.utc))
@@ -66,7 +66,7 @@ def archive(proposed_root, store=None, run_url=None):
         for path in sorted(source.glob("*/*.json")):
             market, symbol = path.parent.name, path.stem
             value = json.loads(path.read_text(encoding="utf-8"))
-            key = market + "/" + symbol + ".json"
+            key = "event_state/" + market + "/" + symbol + ".json"
             proposed[key] = value
         validate_records(proposed)
         receipt["eligible"] = len(proposed)
