@@ -11,6 +11,7 @@ from market_research.fundamentals import sec_fundamentals, twse_fundamentals
 from market_research.market_data import load_daily_bars
 from market_research.provider import RoutedDailyProvider
 from market_research.strategies import get_strategy
+from market_research.valuation import evaluate_valuation
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,15 +71,13 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     result={"schema_version":1,"report_type":"preliminary_company_research",
         "symbol":symbol,"market":market,"generated_utc":now.astimezone(timezone.utc).isoformat(),
         "issuer":issuer,"technical":technical,
-        "valuation":{"status":"not_evaluated","fair_value_scenarios":None,
-            "entry_zone":None,"stop_loss":None,"target_price":None,
-            "why":"Audited normalized history, capitalization and model assumptions not yet implemented"},
+        "valuation":evaluate_valuation(issuer, now.date()),
         "decision":"no_buy_or_sell_recommendation",
         "complete":bool(issuer.get("company_name")) and technical["status"]=="available",
         "limitations":["TW latest monthly revenue is not audited annual profit or TTM revenue",
            "US SEC annual XBRL tag conventions vary by issuer",
            "Analytical closes and pattern matches are not executable trading prices",
-           "No company competitive-analysis, valuation or independent forward strategy evidence"]}
+           "No company competitive-analysis, validated intrinsic valuation or independent forward strategy evidence"]}
     out=Path(out)
     out.mkdir(parents=True,exist_ok=True)
     (out/"report.json").write_text(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False)+"\n")
@@ -102,9 +101,20 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
             lines.append(f"| {row['strategy_id']} | {'yes' if row['matched'] else 'no'} | {'active' if row['active'] else 'research-only'} |")
     if technical["errors"]:
         lines.append("Some technical checks failed; refer to report.json.")
-    lines += ["","## Valuation and entry/exit plan","",
-       "**Not evaluated.** No fabricated fair value, target, entry or stop-loss.","",
-       "## Limitations",""]
+    lines += ["","## Valuation and entry/exit plan",""]
+    v = result["valuation"]
+    if v["status"] == "illustrative_only":
+        lines += ["**Illustrative historical P/FCF sensitivity only — NOT a buy/target price.**",
+                  "Historical 3-year median FCF: {:,.0f} USD".format(v["normalized_annual_fcf_usd"]),
+                  "Latest diluted annual average shares: {:,.0f}".format(v["denominator"]["value"]),
+                  "", "| Scenario | Assumed multiple | Illustrative USD/share |",
+                  "| --- | ---: | ---: |"]
+        for name, row in v["fair_value_scenarios"].items():
+            lines.append(f"| {name} | {row['fcf_multiple']}x | {row['indicative_usd_per_share']:,.2f} |")
+        lines += ["", "No forward FCF or net debt reconciliation. No buy, stop-loss or target."]
+    else:
+        lines.append("**Not evaluated.** " + v["why"])
+    lines += ["","## Limitations",""]
     lines.extend("- "+w for w in issuer["warnings"]+result["limitations"])
     (out/"report.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
     return result

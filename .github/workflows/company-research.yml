@@ -3,6 +3,9 @@ on:
   push:
     paths:
       - 'src/market_research/fundamentals.py'
+      - 'src/market_research/financial_history.py'
+      - 'src/market_research/valuation.py'
+      - 'tests/test_financial_valuation.py'
       - 'scripts/company_report.py'
       - 'tests/test_company_report.py'
       - '.github/workflows/company-research.yml'
