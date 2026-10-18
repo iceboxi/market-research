@@ -13,6 +13,7 @@ from market_research.provider import RoutedDailyProvider
 from market_research.strategies import get_strategy
 from market_research.valuation import evaluate_valuation
 from market_research.company_analysis import compare_financials, research_status, render_financial_research
+from market_research.price_context import analyze_price_context, render_price_context
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,7 +41,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         issuer = sec_fundamentals(symbol, now.date(), **kwargs)
     market_cfg = yaml.safe_load((Path(config_dir)/"markets.yaml").read_text())["markets"]
     strategy_cfg = yaml.safe_load((Path(config_dir)/"strategies.yaml").read_text())["strategies"]
-    technical = {"status":"unavailable","observations":[],"errors":[]}
+    technical = {"status":"unavailable","observations":[],"errors":[],"price_context":None}
     try:
         daily = load_daily_bars(provider or RoutedDailyProvider(),market,symbol,"6mo",
                                 now,market_cfg[market]["timezone"],strict_freshness=False)
@@ -51,7 +52,8 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
             "price_basis":daily.metadata["price_basis"],
             "source":daily.metadata["source"],
             "input_sha256":daily.metadata["input_sha256"],
-            "warnings":list(daily.warnings),"observations":[],"errors":[]}
+            "warnings":list(daily.warnings),"observations":[],"errors":[],
+            "price_context":analyze_price_context(daily,market)}
         for entry in strategy_cfg:
             if not entry["id"].startswith("sakata_"):
                 continue
@@ -106,6 +108,8 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
             lines.append(f"| {row['strategy_id']} | {'yes' if row['matched'] else 'no'} | {'active' if row['active'] else 'research-only'} |")
     if technical["errors"]:
         lines.append("Some technical checks failed; refer to report.json.")
+    if technical.get("price_context"):
+        lines.extend(render_price_context(technical["price_context"]))
     lines.extend(render_financial_research(financial, readiness))
     lines += ["","## Valuation and entry/exit plan",""]
     v = result["valuation"]
