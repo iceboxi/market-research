@@ -74,4 +74,4 @@ main tree 當時只有 history，沒有 event_state / prospective；這只反映
 
 既有 tests 有 annual future/restatement/period mismatch、financial sector gate、價格 stale/no-lookahead、watch baseline/new ID/source failure、watchdog 暖機與 prospective hash/immutable checks。這些測試可以重用，但不能取代 persistence race、官方來源 live、自然 cron 與 notification crash-window 驗收。
 
-此規劃不把原功能分支的未提交 archive 原型當成已完成實作；後續實作須依有效 spec 重新整合。
+此規劃不把原功能分支的未驗收 archive 原型當成已完成實作；後續實作須依有效 spec 重新整合。舊原型已保存於 [superseded WIP branch](https://github.com/iceboxi/market-research/tree/feat/codex-event-state-reliability)，分支內交接說明標示其舊 `event-state` 與 workflow CLI 限制；它不代表 Issue #9 已認領或可直接合併。

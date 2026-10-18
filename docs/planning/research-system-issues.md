@@ -522,7 +522,7 @@ flowchart TD
 
 - [ ] 真實Git race/restore/legacy migration/partial/rejected push/main unchanged tests。
 - [ ] runner真實TWSE初次與第二次dispatch查Artifact；不把無新事件假裝通知驗收。
-- [ ] namespace切換後缺state不能回退legacy並初始化；本地未提交原型不是完成證據。
+- [ ] namespace切換後缺state不能回退legacy並初始化；未驗收原型不是完成證據。
 
 **既有接點 / Handoff：**現有watch/compare接口與fixtures；#9發布時重新定義branch與依賴，不另造重複Issue。 Design Reference：獨立設計的 Runtime Behavior / State ownership；發布時附固定文件revision，依有效spec實作。
 
