@@ -54,7 +54,8 @@ def test_matching_three_year_fcf_and_sources():
 
 def test_valuation_produces_labelled_research_only_scenarios():
     issuer, _ = issuer_data()
-    result = evaluate_valuation(issuer, date(2026, 10, 18))
+    # Fixture ends in FY2024; evaluate inside its valid freshness window.
+    result = evaluate_valuation(issuer, date(2026, 4, 18))
     assert result["status"] == "illustrative_only"
     assert result["fair_value_scenarios"]["base"]["fcf_multiple"] == 15
     assert result["entry_zone"] is None
