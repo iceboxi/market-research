@@ -1,6 +1,6 @@
 # Research System — Independent Review
 
-Review skill：[本機 review SKILL.md](/Users/ice/Documents/agent-skills/skills/review/SKILL.md)。本紀錄保存技術規劃審查，並非程式或運作驗收。
+Review skill：使用者已安裝的本地 `review`（Independent Technical Review）。本紀錄保存技術規劃審查，並非程式或運作驗收。
 
 ## Final verdict
 
