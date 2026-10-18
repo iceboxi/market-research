@@ -17,7 +17,9 @@ BOT = ("-c", "user.name=github-actions[bot]", "-c",
 
 
 class StateError(RuntimeError):
-    pass
+    def __init__(self, message, context=None):
+        self.context = context or {}
+        super().__init__(message)
 
 
 def canonical(value):
@@ -142,7 +144,7 @@ class GitStateStore:
                 "records": {p[len(namespace) + 1:]: v for p, v in files.items()
                             if p.startswith(namespace + "/")}}
 
-    def commit(self, namespace, merge, *, legacy_prefix=None):
+    def commit(self, namespace, merge, *, legacy_prefix=None, initialize=False):
         if not re.fullmatch(r"[a-z][a-z0-9_-]*", namespace):
             raise StateError("Invalid namespace")
         code_sha = self._git("rev-parse", "HEAD").stdout.strip()
@@ -152,6 +154,8 @@ class GitStateStore:
             records = {p[len(namespace) + 1:]: v for p, v in files.items()
                        if p.startswith(namespace + "/")}
             if authority is None:
+                if not initialize:
+                    raise StateError("Namespace authority is missing; explicit migration required")
                 if legacy_prefix is None or not re.fullmatch(r"[a-z][a-z0-9_-]*", legacy_prefix):
                     raise StateError("Explicit legacy import is required for namespace initialization")
                 legacy_sha = self._fetch("main")
@@ -161,7 +165,13 @@ class GitStateStore:
                                                "prefix": legacy_prefix,
                                                "record_count": len(records),
                                                "content_sha256": digest(records)}}
-            updated = merge(json.loads(canonical(records)))
+            context = {"read_state_commit": head, "authority": authority,
+                       "attempts": attempt, "code_sha": code_sha}
+            try:
+                updated = merge(json.loads(canonical(records)))
+            except StateError as error:
+                error.context.update(context)
+                raise
             if not isinstance(updated, dict) or not records.keys() <= updated.keys():
                 raise StateError("Merge must preserve all previously owned records")
             for path in updated:
@@ -193,13 +203,22 @@ class GitStateStore:
                     self._git("add", "--", namespace, MANIFEST, cwd=worktree)
                     self._git(*BOT, "commit", "-m", "state: update " + namespace, cwd=worktree)
                     saved = self._git("rev-parse", "HEAD", cwd=worktree).stdout.strip()
+                    context["candidate_commit"] = saved
                     pushed = self._git("push", "origin", "HEAD:refs/heads/" + self.branch,
                                        cwd=worktree, check=False)
                     if pushed.returncode == 0:
+                        context.update(state_commit=saved, persistence_status="archived")
                         return {"schema_version": 1, "status": "archived", "state_branch": self.branch,
                                 "state_commit": saved, "namespace": namespace,
                                 "attempts": attempt, "code_sha": code_sha,
                                 "authority": authority}
+                except StateError as error:
+                    error.context.update(context)
+                    raise
                 finally:
-                    self._git("worktree", "remove", "--force", str(worktree))
-        raise StateError("Fast-forward state write failed after 3 attempts: " + pushed.stderr.strip())
+                    try:
+                        self._git("worktree", "remove", "--force", str(worktree))
+                    except StateError as error:
+                        error.context.update(context)
+                        raise
+        raise StateError("Fast-forward state write failed after 3 attempts: " + pushed.stderr.strip(), context)

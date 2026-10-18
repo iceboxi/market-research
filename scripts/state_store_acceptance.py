@@ -17,6 +17,8 @@ def accept(out):
                "scope": "real Git persistence with synthetic metadata; no market-data acceptance"}
     try:
         store = GitStateStore(branch="research-state-validation")
+        # Explicit test initialization, never an implicit production fallback.
+        monitor.initialize_history(store)
         code_before = subprocess.run(["git", "rev-parse", "HEAD"], check=True,
                                      text=True, capture_output=True).stdout.strip()
         run_id = os.environ["GITHUB_RUN_ID"]
@@ -62,7 +64,55 @@ def accept(out):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("state_acceptance"))
-    accept(parser.parse_args().out)
+    parser.add_argument("--bootstrap-operations", action="store_true")
+    args = parser.parse_args()
+    if args.bootstrap_operations:
+        bootstrap_operations(args.out)
+    else:
+        accept(args.out)
+
+
+def bootstrap_operations(out):
+    """One-time production migration, after verifying all legacy writers paused."""
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    receipt = {"schema_version": 1, "acceptance": "failed", "scope": "explicit operations cutover",
+               "code_sha": os.getenv("GITHUB_SHA"), "writer_checks": []}
+    try:
+        if (os.getenv("GITHUB_REF") != "refs/heads/main" or
+                os.getenv("GITHUB_EVENT_NAME") != "workflow_dispatch"):
+            raise ValueError("Production bootstrap requires explicit dispatch on main")
+        repo = os.environ["GITHUB_REPOSITORY"]
+        for workflow in ("scan.yml", "ops-validation.yml"):
+            path = "repos/" + repo + "/actions/workflows/" + workflow
+            result = subprocess.run(["gh", "api", path], check=True, text=True,
+                                    capture_output=True, timeout=30)
+            state = json.loads(result.stdout)["state"]
+            if state != "disabled_manually":
+                raise ValueError("Pause legacy workflow before cutover: " + workflow)
+            runs = subprocess.run(["gh", "api", "--paginate", path + "/runs?per_page=100",
+                                   "--jq", '.workflow_runs[] | select(.status != "completed") | .id'],
+                                  check=True, text=True, capture_output=True, timeout=30)
+            if runs.stdout.strip():
+                raise ValueError("Legacy workflow still has unfinished jobs: " + workflow)
+            receipt["writer_checks"].append({"workflow": workflow, "state": state, "active_runs": 0})
+        store = GitStateStore()
+        receipt["main_before"] = store.main_head()
+        if receipt["main_before"] != receipt["code_sha"]:
+            raise ValueError("Deploy and bootstrap the latest main revision")
+        receipt["migration"] = monitor.initialize_history(store)
+        snapshot = monitor.history(GitStateStore())
+        receipt["main_after"] = store.main_head()
+        if receipt["main_after"] != receipt["main_before"]:
+            raise ValueError("Main moved during cutover; inspect before resuming writers")
+        (out / "state_snapshot.json").write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+        receipt["acceptance"] = "passed"
+    except Exception as error:
+        receipt["error"] = str(error)
+        raise
+    finally:
+        (out / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(receipt, indent=2))
 
 
 if __name__ == "__main__":

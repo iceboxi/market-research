@@ -3,7 +3,7 @@
 No external Python packages: this runs even after dependency/scan failures.
 """
 import argparse
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -21,6 +21,12 @@ HISTORY_FIELDS = {"schema_version", "run_id", "run_url", "observed_at_utc", "eve
                   "errors", "signals", "mismatches", "expected_warnings",
                   "unexpected_warnings", "session_dates", "input_hashes", "strategies",
                   "source_sha", "kind"}
+
+
+class HistoryArchiveError(StateError):
+    def __init__(self, receipt):
+        self.receipt = receipt
+        super().__init__(receipt["error"])
 
 
 def read(path):
@@ -122,11 +128,48 @@ def history_key(record):
     d = datetime.fromisoformat(record["observed_at_utc"])
     if d.tzinfo is None:
         raise StateError("History needs a timezone and numeric run ID")
+    for key in ("requested", "scanned", "errors", "signals", "mismatches",
+                "expected_warnings", "unexpected_warnings"):
+        value = record.get(key)
+        if value is not None and (type(value) is not int or value < 0):
+            raise StateError("Health counters must be nonnegative integers or null")
+    for key in ("run_url", "market", "event"):
+        if not isinstance(record.get(key), str) or not 0 < len(record[key]) <= 512:
+            raise StateError("Invalid health metadata identity")
+    if not re.fullmatch(r"tw|us|both|validation-[0-9]+", record["market"]):
+        raise StateError("Invalid health market")
+    for key in ("kind", "scan_outcome"):
+        if key in record and (not isinstance(record[key], str) or len(record[key]) > 80):
+            raise StateError("Invalid health metadata classification")
+    if record.get("source_sha") is not None and (not isinstance(record["source_sha"], str) or
+            not re.fullmatch(r"[a-f0-9]{40,64}", record["source_sha"])):
+        raise StateError("Invalid source code hash")
+    if (not isinstance(record.get("reasons"), list) or
+            any(not isinstance(reason, str) or len(reason) > 512 for reason in record["reasons"])):
+        raise StateError("Reasons must be bounded metadata strings")
+    sessions = record.get("session_dates")
+    if not isinstance(sessions, dict):
+        raise StateError("Invalid session metadata")
+    for market, days in sessions.items():
+        if market not in ("tw", "us") or not isinstance(days, list):
+            raise StateError("Invalid session metadata")
+        for day in days:
+            date.fromisoformat(day)
+    if not isinstance(record.get("input_hashes"), list):
+        raise StateError("Input hashes must be a list")
     for item in record.get("input_hashes", []):
         if not isinstance(item, dict) or set(item) != {"market", "symbol", "date", "sha256"}:
             raise StateError("Only input identities/hashes may be archived")
+        if (item["market"] not in ("tw", "us") or not isinstance(item["symbol"], str) or
+                not 1 <= len(item["symbol"]) <= 30 or not isinstance(item["sha256"], str) or
+                not re.fullmatch(r"[a-f0-9]{64}", item["sha256"])):
+            raise StateError("Invalid input identity/hash")
+        date.fromisoformat(item["date"])
+    if not isinstance(record.get("strategies"), list):
+        raise StateError("Strategy metadata must be a list")
     for strategy in record.get("strategies", []):
         if (not isinstance(strategy, dict) or not strategy.keys() <= {"id", "version", "params"}
+                or any(not isinstance(strategy.get(key), str) for key in ("id", "version"))
                 or not isinstance(strategy.get("params", {}), dict) or
                 any(isinstance(v, (dict, list)) for v in strategy.get("params", {}).values())):
             raise StateError("Only strategy metadata may be archived")
@@ -136,23 +179,49 @@ def history_key(record):
     return "history/" + d.strftime("%Y/%m/") + filename
 
 
+def validate_history(records):
+    for key, record in records.items():
+        if key != history_key(record):
+            raise StateError("History path/identity mismatch")
+    return records
+
+
+def initialize_history(store=None):
+    """Explicit cutover only; normal archive/read never initialize authority."""
+    return (store or GitStateStore()).commit("operations", validate_history,
+                                             legacy_prefix="history", initialize=True)
+
+
 def archive_history(record, store=None):
     """Persist metadata immutably; preserve source health independently of IO."""
     path = history_key(record)
-    store = store or GitStateStore()
+    store = store or GitStateStore(branch=("research-state-validation"
+        if record["event"] == "ops_validation" else "research-state"))
 
     def merge(records):
-        for key, previous in records.items():
-            if key != history_key(previous):
-                raise StateError("History path/identity mismatch")
+        validate_history(records)
         if path in records and canonical(records[path]) != canonical(record):
             raise StateError("Immutable history key already has different content")
         return {**records, path: record}
 
-    before = store.main_head()
-    result = store.commit("operations", merge, legacy_prefix="history")
-    return {**result, "path": path, "main_before": before, "main_after": store.main_head(),
-            "run_url": record["run_url"], "source_health": record["health"]}
+    receipt = {"schema_version": 1, "status": "failed", "path": path,
+               "code_sha": os.getenv("GITHUB_SHA"), "state_commit": None,
+               "main_before": None, "main_after": None, "stage": "read_main_before",
+               "persistence_status": "not_attempted", "state_branch": store.branch,
+               "run_url": record["run_url"], "source_health": record["health"]}
+    try:
+        receipt["main_before"] = store.main_head()
+        receipt.update(stage="commit_state", persistence_status="outcome_unknown")
+        result = store.commit("operations", merge)
+        receipt.update(result)
+        receipt.update(stage="verify_main_after", persistence_status=result["status"])
+        receipt["main_after"] = store.main_head()
+        receipt["stage"] = "complete"
+        return receipt
+    except (StateError, ValueError, KeyError, TypeError) as error:
+        receipt.update(getattr(error, "context", {}))
+        receipt.update(status="failed", error=str(error))
+        raise HistoryArchiveError(receipt) from error
 
 
 def archive(record):
@@ -164,9 +233,7 @@ def history(store=None):
     result = (store or GitStateStore()).read("operations")
     if result["status"] != "available":
         raise StateError("Operations state is not initialized; no legacy fallback")
-    for key, record in result["records"].items():
-        if key != history_key(record):
-            raise StateError("History path/identity mismatch")
+    validate_history(result["records"])
     return result
 
 
@@ -225,7 +292,10 @@ def main():
                 receipt["run_url"] = record.get("run_url")
             receipt = archive_history(record)
         except (StateError, ValueError, KeyError, TypeError) as error:
-            receipt["error"] = str(error)
+            if isinstance(error, HistoryArchiveError):
+                receipt = error.receipt
+            else:
+                receipt["error"] = str(error)
             raise
         finally:
             a.receipt.parent.mkdir(parents=True, exist_ok=True)

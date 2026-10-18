@@ -8,9 +8,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts import monitor
 from scripts.state_store import GitStateStore, StateError
+from scripts.state_store_acceptance import bootstrap_operations
 
 
 class HealthStateTests(unittest.TestCase):
@@ -34,6 +36,7 @@ class HealthStateTests(unittest.TestCase):
         self.git("push", "origin", "main", cwd=self.repo)
         self.main_sha = self.git("rev-parse", "main", cwd=self.remote)
         self.git("switch", "-c", "feature", cwd=self.repo)
+        monitor.initialize_history(GitStateStore(self.repo))
 
     def git(self, *args, cwd=None, check=True):
         result = subprocess.run(["git", *args], cwd=cwd, check=check,
@@ -91,14 +94,18 @@ class HealthStateTests(unittest.TestCase):
         self.assertEqual(saved, failed)
 
     def test_raw_prices_and_unsafe_identity_are_rejected_before_write(self):
+        head = self.git("rev-parse", "research-state", cwd=self.remote)
         for bad in ({**self.record(), "close": [1, 2, 3]},
+                    {**self.record(), "input_hashes": [{"market": "tw", "symbol": "2330.TW",
+                     "date": "2026-10-19", "sha256": {"close": [1, 2, 3]}}]},
+                    {**self.record(), "reasons": [{"close": [1, 2, 3]}]},
+                    {**self.record(), "scanned": {"close": [1, 2, 3]}},
                     {**self.record(), "run_id": "../main"},
                     {**self.record(), "observed_at_utc": "2026-10-19T12:00:00"}):
             with self.subTest(bad=bad):
                 with self.assertRaises((StateError, ValueError)):
                     monitor.archive_history(bad, GitStateStore(self.repo))
-        self.assertNotEqual(self.git("show-ref", "--verify", "refs/heads/research-state",
-                                     cwd=self.remote, check=False).returncode, 0)
+        self.assertEqual(self.git("rev-parse", "research-state", cwd=self.remote), head)
 
     def peer(self):
         peer = self.root / "peer"
@@ -168,8 +175,64 @@ class HealthStateTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(json.loads(receipt.read_text())["status"], "failed")
         self.assertIn("after 3 attempts", json.loads(receipt.read_text())["error"])
+        self.assertEqual(json.loads(receipt.read_text())["main_before"], self.main_sha)
+        self.assertEqual(json.loads(receipt.read_text())["authority"]["legacy_import"]["source_sha"], self.main_sha)
         self.assertEqual(self.git("worktree", "list", "--porcelain", cwd=self.repo).count("worktree "), 1)
         self.assertEqual(self.git("branch", "--show-current", cwd=self.repo), "feature")
+
+    def test_deleted_branch_cannot_silently_rebootstrap(self):
+        monitor.archive_history(self.record(), GitStateStore(self.repo))
+        self.git("update-ref", "-d", "refs/heads/research-state", cwd=self.remote)
+        with self.assertRaises(StateError):
+            monitor.archive_history(self.record("102"), GitStateStore(self.repo))
+        self.assertNotEqual(self.git("show-ref", "--verify", "refs/heads/research-state",
+                                     cwd=self.remote, check=False).returncode, 0)
+
+    def test_successful_push_then_failed_probe_keeps_known_commit(self):
+        class ProbeFailure(GitStateStore):
+            probes = 0
+
+            def main_head(inner):
+                inner.probes += 1
+                if inner.probes > 1:
+                    raise StateError("Simulated post-push transport failure")
+                return super().main_head()
+
+        with self.assertRaises(StateError) as caught:
+            monitor.archive_history(self.record(), ProbeFailure(self.repo))
+        self.assertTrue(hasattr(caught.exception, "receipt"))
+        receipt = caught.exception.receipt
+        self.assertEqual(receipt["persistence_status"], "archived")
+        self.assertEqual(receipt["state_commit"],
+                         self.git("rev-parse", "research-state", cwd=self.remote))
+        self.assertEqual(receipt["main_before"], self.main_sha)
+
+    def test_production_bootstrap_rejects_feature_branch_dispatch(self):
+        out = self.root / "blocked-bootstrap"
+        with patch.dict("os.environ", {"GITHUB_REF": "refs/heads/feature",
+                                        "GITHUB_EVENT_NAME": "workflow_dispatch"}):
+            with self.assertRaises(ValueError):
+                bootstrap_operations(out)
+        receipt = json.loads(out.joinpath("receipt.json").read_text())
+        self.assertEqual(receipt["acceptance"], "failed")
+        self.assertEqual(receipt["writer_checks"], [])
+
+    def test_uncertain_push_keeps_candidate_and_migration_evidence(self):
+        class LostAcknowledgement(GitStateStore):
+            def _git(inner, *args, **kwargs):
+                result = super()._git(*args, **kwargs)
+                if args[0] == "push":
+                    raise StateError("Transport lost after sending write")
+                return result
+
+        with self.assertRaises(StateError) as caught:
+            monitor.archive_history(self.record(), LostAcknowledgement(self.repo))
+        receipt = caught.exception.receipt
+        self.assertEqual(receipt["persistence_status"], "outcome_unknown")
+        self.assertIsNone(receipt["state_commit"])
+        self.assertEqual(receipt["candidate_commit"],
+                         self.git("rev-parse", "research-state", cwd=self.remote))
+        self.assertEqual(receipt["authority"]["legacy_import"]["source_sha"], self.main_sha)
 
     def race_hook(self, competing_record):
         peer = self.peer()
@@ -226,7 +289,7 @@ class HealthStateTests(unittest.TestCase):
         store = GitStateStore(self.repo)
         monitor.archive_history(self.record(), store)
         store.commit("audit", lambda old: {**old, "checks/probe.json": {"status": "test"}},
-                     legacy_prefix="absent")
+                     legacy_prefix="absent", initialize=True)
         monitor.archive_history(self.record("102"), store)
         self.assertEqual(store.read("audit")["records"], {"checks/probe.json": {"status": "test"}})
 
