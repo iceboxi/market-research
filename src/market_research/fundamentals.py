@@ -14,6 +14,9 @@ TW_PROFILE = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TW_REVENUE = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 SEC_FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
+SEC_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
+
+from .financial_history import normalize_sec_history
 
 def json_get(url, user_agent=None, client=None):
     headers = {"User-Agent": user_agent or "MarketResearch/0.1 public-research"}
@@ -175,7 +178,20 @@ def sec_fundamentals(symbol, asof, get=json_get, user_agent=None):
             output["warnings"].append(f"SEC comparable {metric} 10-K concept unavailable")
             continue
         output["facts"].append({"metric":metric,**value,"source":url})
+    output["financial_history"] = normalize_sec_history(raw, asof, url)
+    # SIC is a hard sector gate, not an inferred industry from ticker/name.
+    try:
+        submission_url = SEC_SUBMISSIONS.format(cik=cik)
+        submission = fetch(submission_url)
+        sic_raw = str(submission.get("sic") or "").strip()
+        sic = int(sic_raw) if re.fullmatch(r"[0-9]{4}", sic_raw) else None
+        output["industry"] = {"sic": sic, "source": submission_url}
+        if sic is None:
+            output["warnings"].append("SEC SIC classification unavailable; valuation blocked")
+    except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        output["industry"] = {"sic": None, "source": SEC_SUBMISSIONS.format(cik=cik)}
+        output["warnings"].append("SEC industry classification unavailable: "+type(exc).__name__)
     output["warnings"].append(
-        "SEC financial concepts vary by issuer and filing; no unverified EPS, TTM or valuation inferred"
+        "Historical P/FCF scenarios are illustrative, not intrinsic value or executable trading levels"
     )
     return output
