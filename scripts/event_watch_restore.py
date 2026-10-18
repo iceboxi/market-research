@@ -10,7 +10,7 @@ def restore(out):
     state = event_state()
     root = Path(out)
     for key, snapshot in state["records"].items():
-        target = root / key
+        target = root / key.removeprefix("event_state/")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
     return {"schema_version": 1, "status": "restored",
