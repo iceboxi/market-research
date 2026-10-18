@@ -11,7 +11,7 @@ import re
 
 from scripts.company_report import run as run_company_report
 
-SAFE_TICKER = re.compile(r"(?:[0-9]{4,6}\\.TW|[A-Z][A-Z0-9.-]{0,9})\\Z")
+SAFE_TICKER = re.compile(r"(?:[0-9]{4,6}\.TW|[A-Z][A-Z0-9.-]{0,9})\Z")
 
 
 def load(path):
