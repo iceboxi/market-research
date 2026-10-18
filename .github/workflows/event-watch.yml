@@ -48,8 +48,12 @@ jobs:
             cat event_watch_output/watch_summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Archive verified events
-        if: always() && steps.restore.outcome == 'success' && steps.watcher.outcome == 'success'
+        if: steps.restore.outcome == 'success' && steps.watcher.outcome == 'success'
         run: uv run --no-sync python -m scripts.event_watch_archive --proposed event_watch_output/proposed_state --receipt event_watch_output/state_receipt.json
+      - name: Fail on incomplete source coverage after persistence
+        if: steps.watcher.outcome == 'success'
+        run: |
+          uv run --no-sync python -c "import json,sys; d=json.load(open('event_watch_output/watch_receipt.json')); sys.exit(0 if d['status']=='complete' else 1)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
