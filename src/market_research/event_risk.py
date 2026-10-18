@@ -128,7 +128,10 @@ def sec_filing_events(submissions, now, source, max_events=20):
             continue
         try:
             day = date.fromisoformat(filed[i])
-            if day > now.date() or day < floor.date():
+            if day >= now.astimezone(timezone.utc).date() or day < floor.date():
+                # SEC submissions acceptanceDateTime is not reliably UTC for
+                # intraday ordering. Block same-UTC-day filings until verified.
+                continue
                 continue
             timestamp = accepted[i] if i < len(accepted) else None
             published = None
@@ -140,9 +143,8 @@ def sec_filing_events(submissions, now, source, max_events=20):
             if published is not None and published.tzinfo is not None:
                 if published.astimezone(timezone.utc) > now.astimezone(timezone.utc):
                     continue
-            elif day >= now.date():
-                # Filing date alone has no time-of-day certainty.
-                continue
+            # Older filing dates are safe to treat as past-day metadata.
+            # Do not use acceptanceDateTime to determine intraday ordering.
             accession = accessions[i]
             if not re.fullmatch(r"[0-9]{10}-[0-9]{2}-[0-9]{6}", accession):
                 raise ValueError("Invalid SEC accession")

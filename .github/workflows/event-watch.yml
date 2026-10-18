@@ -1,0 +1,46 @@
+name: Official disclosure watch
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 12 * * 1-5'
+    - cron: '30 2 * * 2-6'
+permissions:
+  contents: write
+concurrency:
+  group: official-event-watch
+  cancel-in-progress: false
+jobs:
+  event-watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - name: Run offline validation
+        run: uv run --no-sync pytest tests/test_event_watch.py tests/test_event_risk.py
+      - name: Collect source-grounded changes
+        id: watcher
+        run: uv run --no-sync python -m scripts.event_watch --config config/event_watchlist.yaml --state event_state --out event_watch_output
+      - name: Summarize
+        if: always()
+        run: |
+          if [ -f event_watch_output/watch_summary.md ]; then
+            cat event_watch_output/watch_summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: official-event-watch-${{ github.run_id }}
+          path: event_watch_output/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Archive verified event state
+        if: steps.watcher.outcome == 'success'
+        run: uv run --no-sync python -m scripts.event_watch_archive --proposed event_watch_output/proposed_state
