@@ -17,6 +17,7 @@ SEC_FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 SEC_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 
 from .financial_history import normalize_sec_history
+from .event_risk import sec_filing_events, unknown
 
 def json_get(url, user_agent=None, client=None):
     headers = {"User-Agent": user_agent or "MarketResearch/0.1 public-research"}
@@ -144,7 +145,7 @@ def annual_filing_fact(facts, tags, unit, asof):
             "accession":accn,"form":"10-K"}
 
 
-def sec_fundamentals(symbol, asof, get=json_get, user_agent=None):
+def sec_fundamentals(symbol, asof, get=json_get, user_agent=None, evaluated_at=None):
     if not re.fullmatch(r"[A-Z][A-Z0-9.-]{0,9}", symbol):
         raise ValueError("Unsupported US ticker format")
     ua = user_agent or os.getenv("SEC_USER_AGENT")
@@ -183,6 +184,8 @@ def sec_fundamentals(symbol, asof, get=json_get, user_agent=None):
     try:
         submission_url = SEC_SUBMISSIONS.format(cik=cik)
         submission = fetch(submission_url)
+        from datetime import datetime, timezone
+        output["event_feed"] = sec_filing_events(submission, evaluated_at or datetime.combine(asof, datetime.min.time(), timezone.utc), submission_url)
         sic_raw = str(submission.get("sic") or "").strip()
         sic = int(sic_raw) if re.fullmatch(r"[0-9]{4}", sic_raw) else None
         output["industry"] = {"sic": sic, "source": submission_url}
@@ -190,6 +193,7 @@ def sec_fundamentals(symbol, asof, get=json_get, user_agent=None):
             output["warnings"].append("SEC SIC classification unavailable; valuation blocked")
     except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
         output["industry"] = {"sic": None, "source": SEC_SUBMISSIONS.format(cik=cik)}
+        output["event_feed"] = unknown(SEC_SUBMISSIONS.format(cik=cik), "SEC submission metadata unavailable")
         output["warnings"].append("SEC industry classification unavailable: "+type(exc).__name__)
     output["warnings"].append(
         "Historical P/FCF scenarios are illustrative, not intrinsic value or executable trading levels"
