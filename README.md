@@ -1,5 +1,12 @@
 # Market Research v0.1
 
+Development uses GitHub Issues for work state, PRs for delivery, and Actions
+for validation. Read [AGENTS.md](AGENTS.md) before taking work. The current
+system planning proposal includes the [technical design](docs/design/research-system.md),
+[implementation spec draft](docs/design/research-system-spec.md),
+[Epic / Issue publication draft](docs/planning/research-system-issues.md), and
+[repository evidence](docs/design/research-system-evidence.md).
+
 Public-source research proof of concept for **Taiwan and US end-of-day stocks**. It is not a trading or order execution system.
 
 Python package with authoritative TWSE daily historical OHLCV for listed Taiwan stocks and Yahoo/yfinance for US symbols, defensive quality checks, and interchangeable screening strategies. The default is a Sakata-inspired bullish three soldiers pattern; legacy RSI and MA examples are disabled.
