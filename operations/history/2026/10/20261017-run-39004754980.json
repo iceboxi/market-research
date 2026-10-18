@@ -1,0 +1,110 @@
+{
+  "errors": 0,
+  "event": "schedule",
+  "expected_warnings": 0,
+  "health": "healthy",
+  "input_hashes": [
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "7d769494f15565f96af626334c4c625164315d3244ff4c87fd435a32f5eb8673",
+      "symbol": "AAPL"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "e2c11cd6c77e4acf9e3ee58315283682163b0fad73e524b918287cdb98f92447",
+      "symbol": "MSFT"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "d9771cb8e1e65e077b1bd3c379e807b9a958549d757e820cbbf2aeff561b7987",
+      "symbol": "NVDA"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "e20a59bab6077976d54d2db6bdb0d1832a3bf3d6c131b39414e89d326b35ffbf",
+      "symbol": "SPY"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "3d1ebacd7310d1e3a6a5ea4036b8a4807e9e636865b6233eaaca38d65b18bffa",
+      "symbol": "AMZN"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "fd7b2289ba9c495c8f4030136f9d31a3151124de4c28f4a33863e38867e397d7",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "fd7a6640b569b3a2ec3cdd53617d749d9d1b6bfbf9edee5ca7f5431d028a48b2",
+      "symbol": "META"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "27eb8546d43c066a44d93edb92689cf41e6ec3f8420c1f14af883b348ce0327f",
+      "symbol": "TSLA"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "ae82fe37ea30ba08ac48d2590b19107ada8ad7d9a9f85d9c6ca3d14af9496e64",
+      "symbol": "AMD"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "f4efb6d8b5f5d424d5610b53cece0b98ad3943b35c0ee10dbbf7c169ab60584e",
+      "symbol": "AVGO"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "1b8d2ecb6b9d91127f4f050da4dd70683208773f5d080e562a5bfcaf2f50dc53",
+      "symbol": "JPM"
+    },
+    {
+      "date": "2026-10-16",
+      "market": "us",
+      "sha256": "4250502de7e0e01a63da23c5c0c15f90f32fdae70c1a3c3ef4e65d82255b359d",
+      "symbol": "XOM"
+    }
+  ],
+  "market": "us",
+  "mismatches": 0,
+  "observed_at_utc": "2026-10-17T05:02:06.726370+00:00",
+  "reasons": [],
+  "requested": 12,
+  "run_id": "39004754980",
+  "run_url": "https://github.com/iceboxi/market-research/actions/runs/39004754980",
+  "scan_outcome": "success",
+  "scanned": 12,
+  "schema_version": 1,
+  "session_dates": {
+    "us": [
+      "2026-10-16"
+    ]
+  },
+  "signals": 0,
+  "source_sha": "22a639142b4b9dfe7d816079d22803ed9a86694c",
+  "strategies": [
+    {
+      "id": "sakata_three_soldiers",
+      "params": {
+        "max_upper_shadow_to_range": 0.25,
+        "min_body_to_range": 0.5,
+        "prior_decline_min_pct": 2.0,
+        "prior_trend_bars": 5
+      },
+      "version": "0.1.0"
+    }
+  ],
+  "unexpected_warnings": 0
+}
