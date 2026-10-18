@@ -1,0 +1,3 @@
+# On-demand company research v2
+
+Financial history now appears as an annual multi-year table with SEC filing provenance, revenue, earnings, operating cash flows, capital expenses, FCF, share counts and margins. Missing entries remain null rather than zero. Fiscal periods are never joined across mismatched start/end dates. `research_readiness` separates preliminary issuer information, financial-review availability and illustrative valuation from an investment recommendation. Existing `complete` means pipeline completeness only; JSON schema is version 2. No entry or target prices are generated. TW monthly revenue is not audited IFRS.

@@ -4,6 +4,8 @@ on:
     paths:
       - 'src/market_research/fundamentals.py'
       - 'src/market_research/financial_history.py'
+      - 'src/market_research/company_analysis.py'
+      - 'tests/test_company_analysis.py'
       - 'src/market_research/valuation.py'
       - 'tests/test_financial_valuation.py'
       - 'scripts/company_report.py'
