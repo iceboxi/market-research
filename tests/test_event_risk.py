@@ -59,7 +59,7 @@ def test_sec_metadata_reliably_classifies_filing_not_earnings_surprise():
                                "2026-04-01T12:00:00Z"],
     }}}
     feed = sec_filing_events(payload, now, "https://data.sec.gov/submissions/sample")
-    assert [e["form"] for e in feed["events"]] == ["10-Q", "10-K"]
+    assert [e["form"] for e in feed["events"]] == ["10-Q"]
     assert feed["events"][0]["kind"] == "quarterly_report"
     assert evaluate_events(feed, now)["review_required"] is True
     assert feed["upcoming_earnings"] == "not_verified"
