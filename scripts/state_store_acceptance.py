@@ -83,6 +83,8 @@ def bootstrap_operations(out):
                 os.getenv("GITHUB_EVENT_NAME") != "workflow_dispatch"):
             raise ValueError("Production bootstrap requires explicit dispatch on main")
         repo = os.environ["GITHUB_REPOSITORY"]
+        receipt["run_url"] = ("https://github.com/" + repo + "/actions/runs/" +
+                              os.environ["GITHUB_RUN_ID"])
         for workflow in ("scan.yml", "ops-validation.yml"):
             path = "repos/" + repo + "/actions/workflows/" + workflow
             result = subprocess.run(["gh", "api", path], check=True, text=True,

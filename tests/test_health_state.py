@@ -234,6 +234,22 @@ class HealthStateTests(unittest.TestCase):
                          self.git("rev-parse", "research-state", cwd=self.remote))
         self.assertEqual(receipt["authority"]["legacy_import"]["source_sha"], self.main_sha)
 
+    def test_cleanup_failure_retains_authority_of_the_persisted_commit(self):
+        class CleanupFailure(GitStateStore):
+            def _git(inner, *args, **kwargs):
+                result = super()._git(*args, **kwargs)
+                if args[:2] == ("worktree", "remove"):
+                    raise StateError("Cleanup verification failed after write")
+                return result
+
+        with self.assertRaises(StateError) as caught:
+            monitor.archive_history(self.record(), CleanupFailure(self.repo))
+        receipt = caught.exception.receipt
+        snapshot = monitor.history(GitStateStore(self.repo))
+        self.assertEqual(receipt["persistence_status"], "archived")
+        self.assertEqual(receipt["state_commit"], snapshot["head"])
+        self.assertEqual(receipt["authority"], snapshot["authority"])
+
     def race_hook(self, competing_record):
         peer = self.peer()
         relative = monitor.history_key(competing_record)

@@ -182,6 +182,7 @@ class GitStateStore:
                         "code_sha": code_sha, "authority": authority}
             authority = {**authority, "record_count": len(updated),
                          "content_sha256": digest(updated)}
+            context["authority"] = authority
             manifest["namespaces"][namespace] = authority
             base = head
             if base is None:
