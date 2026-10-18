@@ -49,11 +49,11 @@ def test_stale_and_incomplete_history_fail_closed():
     data.metadata["expected_completed_session"] = "2026-10-19"
     assert analyze_price_context(data, "tw")["status"] == "not_evaluated"
     data = daily()
-    data.frame = data.frame.iloc[-40:]
-    assert analyze_price_context(data, "tw")["status"] == "not_evaluated"
+    short = DailyBars(data.frame.iloc[-40:], data.metadata, data.warnings)
+    assert analyze_price_context(short, "tw")["status"] == "not_evaluated"
     data = daily()
-    data.warnings = ({"reason": "stale_history_allowed_for_research"},)
-    assert analyze_price_context(data, "tw")["status"] == "not_evaluated"
+    stale = DailyBars(data.frame, data.metadata, ({"reason": "stale_history_allowed_for_research"},))
+    assert analyze_price_context(stale, "tw")["status"] == "not_evaluated"
 
 
 def test_large_unexplained_gap_blocks_levels():
