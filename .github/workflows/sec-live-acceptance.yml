@@ -1,0 +1,43 @@
+name: SEC live annual financial acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'SEC US-listed ticker, e.g. AAPL'
+        required: true
+        default: AAPL
+        type: string
+permissions:
+  contents: read
+jobs:
+  sec-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      RESEARCH_SYMBOL: ${{ inputs.symbol }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - name: Require SEC contact identity
+        run: |
+          if [ -z "$SEC_USER_AGENT" ]; then
+            echo "::error::Set repository secret SEC_USER_AGENT to a real contact name and email before SEC live acceptance."
+            exit 1
+          fi
+      - name: Fetch SEC and verify annual coverage
+        run: uv run --no-sync python -m scripts.sec_live_acceptance --symbol "$RESEARCH_SYMBOL" --out sec_acceptance
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f sec_acceptance/acceptance.md ]; then cat sec_acceptance/acceptance.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sec-live-acceptance-${{ github.run_id }}
+          path: sec_acceptance/
+          retention-days: 14
+          if-no-files-found: warn
