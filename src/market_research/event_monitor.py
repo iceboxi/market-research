@@ -53,6 +53,24 @@ def build_snapshot(symbol, market, feed, now):
     }
 
 
+def validate_snapshot(state):
+    """Reject corrupt persisted state before it can silently reset a baseline."""
+    if not isinstance(state, dict) or state.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError("Unsupported event state schema")
+    try:
+        now = _timestamp(state["observed_at_utc"])
+        build_snapshot(state["symbol"], state["market"], {"status": "unavailable"}, now)
+        for key in ("source", "coverage"):
+            if not isinstance(state[key], str) or not state[key] or state[key] == "not_verified":
+                raise ValueError("Unverified event state coverage/source")
+        ids = state["seen_ids"]
+        if (not isinstance(ids, list) or len(ids) > MAX_IDS or
+                len(ids) != len(_ids([{"event_id": value} for value in ids]))):
+            raise ValueError("Invalid event state IDs")
+    except (KeyError, TypeError, AttributeError) as error:
+        raise ValueError("Invalid event state contract") from error
+
+
 def compare_snapshots(previous, current):
     """Return a safe receipt and proposed merged state (or no update)."""
     if current is None:
