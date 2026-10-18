@@ -68,6 +68,14 @@ jobs:
           if [ -f output/candidate_research/candidate_summary.md ]; then
             cat output/candidate_research/candidate_summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Upload candidate company reports
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-research-${{ env.SCAN_MARKET }}-${{ github.run_id }}
+          path: output/candidate_research/
+          retention-days: 14
+          if-no-files-found: ignore
       - name: Archive compact history
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         run: python3 scripts/monitor.py archive --report output/health_report.json
