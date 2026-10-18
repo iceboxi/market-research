@@ -1,6 +1,6 @@
 # Market Research — Shared Research System Design
 
-Revision: 2026-10-19-r1。狀態：PROPOSED，待本次獨立技術審閱。
+Revision: 2026-10-19-r2。狀態：PROPOSED，待本次獨立技術審閱。
 Current code baseline：`759947836c329edda8017805a8c6842fc8f337d8`。
 
 本文件是獨立技術說明，整理同版 implementation spec 與工作規劃。CURRENT 表示 code 可證實；DECIDED 表示使用者已確認；PLANNED 表示本次工程提案；UNRESOLVED 表示尚須來源或產品決策。技術審閱不等於功能、真實資料或排程已驗收。
@@ -142,6 +142,8 @@ PLANNED：source document identity 與 normalized content hash 決定 evidence v
 model/schema 變更走 migration/rebaseline review，不當成新財報。delivery key 由穩定 change identity 與通知契約產生，不以 run ID 當事件 identity。
 
 replay 只承諾持有且有權保留的 inputs。精簡 financial/事件 facts 若保留可重算對應推導；未持有完整行情時，不能重算技術指標或策略績效。Artifact index 過期時不能偷偷下載最新資料冒充舊 snapshot。
+
+US 先行路徑不自動覆蓋 TW。台股 cash/debt/shares 分類、幣別/scale、模型適用性、真實財報差異與 C 觸發必須有 source-specific 整合與驗收承接；單純 TW 財報正規化或固定輸入 parity 不能替代。完整里程碑等待這些證據，模型不適用時回到明確決策 gate。
 
 ### Output compatibility
 

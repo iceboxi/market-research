@@ -1,6 +1,6 @@
 # Research System — Epic / Issue 發布草案
 
-Revision: 2026-10-19-r1。以下代碼是本次規劃的識別名稱，**不是已存在的 GitHub Issue 編號**。只有既有官方事件工作是 Issue #9，將重用並更新其 scope。尚未批次發布，需使用者確認。
+Revision: 2026-10-19-r2。以下代碼是本次規劃的識別名稱，**不是已存在的 GitHub Issue 編號**。只有既有官方事件工作是 Issue #9，將重用並更新其 scope。尚未批次發布，需使用者確認。
 
 這是初始工作拆分提案，不持續手動更新任務狀態；發布後狀態以 GitHub Issues / PR / blocking links 為準。spec 草案見 [research-system-spec.md](../design/research-system-spec.md)，獨立設計見 [research-system.md](../design/research-system.md)，現況證據見 [research-system-evidence.md](../design/research-system-evidence.md)。
 
@@ -117,6 +117,13 @@ flowchart TD
   D02 --> I04
   D05 --> I04
   O07 --> I04
+  F08["F08 台股估值輸入與財報變更整合"]
+  F07 --> F08
+  V01 --> F08
+  V03 --> F08
+  D06 --> F08
+  M02 --> F08
+  F08 --> I04
 ```
 
 ## 建議執行順序
@@ -238,6 +245,22 @@ flowchart TD
 - [ ] 來源不可用/不相容舊版本不產生數字；取得方式與權利依 F05。
 
 **既有接點 / Handoff：**與 SEC 共享期間/metric 語意，保留台股來源特有 provenance。 Design Reference：獨立設計的 Design Realization & Interfaces / Data contracts；發布時附固定文件revision，依有效spec實作。
+
+### F08：台股估值輸入對帳與財報變更追蹤整合
+
+性質：implementation。Blocked by：F07、V01、V03、D06、M02。
+
+**Goal / Scope：**明確承接 US 先行後的台股 source-specific 路徑：cash/debt/shares 對帳、真實財報新期/修訂差異，以及 C 重新研究。
+
+**Input / Output contract：**輸入為已核准 TW 季度/修訂/公司行動與 valuation contract；輸出 TW normalized model inputs、研究差異、pending trigger 與共享報告。F07 或 US 模型通過不等於此台股路徑通過。
+
+**Acceptance criteria：**
+
+- [ ] 逐欄核對 TWD/scale、合併 scope、cash/debt 分類、current/diluted shares 及公司行動，有 TW 獨立 fixtures 與 runner 證據。
+- [ ] 以 TW 真實新期/更正資料作受控重播，驗證財報差異→C pending→shared engine、去重與來源失敗恢復；不冒充自然新事件驗收。
+- [ ] 確認 V02/V03 模型對該 TW issuer 適用；需新模型或來源契約時回 spec/模型決策明列工作，未完成不能關閉。I04 必須依賴本工作。
+
+**既有接點 / Handoff：**此工作承接 V01、D06、M02 留待台股的 source-specific 驗收與必要 adapter 整合；I03 仍專注固定輸入 parity。Design Reference：Data contracts / Time 與版本 / Runtime Behavior。
 
 ## E2 — Valuation & Risk
 
@@ -471,7 +494,7 @@ flowchart TD
 
 ### I04：完整研究里程碑的整體驗收
 
-性質：acceptance。Blocked by：I03、V05、D02、D05、O07。
+性質：acceptance。Blocked by：I03、V05、D02、D05、O07、F08。
 
 **Goal / Scope：**分項能力與自然運作 gates 完成後，才核對第一個完整研究里程碑；不以核心 pipeline success 提早宣稱完成。
 
@@ -651,7 +674,7 @@ flowchart TD
 
 ## 發布前確認
 
-- 六個Epic、32個工作（其中M01重用既有Issue #9），加一個spec；預計新建38個Issues，另更新既有工作。此數量不包含後續由discovery新產生的市場/模型專用slice。
+- 六個Epic、33個工作（其中M01重用既有Issue #9），加一個spec；預計新建39個Issues，另更新既有工作。此數量不包含後續由discovery新產生的市場/模型專用slice。
 - 批次發布前核對使用者已同意的最新spec revision、Design review verdict與清單；若要合併/拆分工作先更新本草案。
 - 初始Ready frontier只是候選，發布/認領時重新核對main、assignee、Open PR與native dependencies。
 - 未決外部來源不是架構已通過live的證據；discovery未通過時下游不得自動Ready。

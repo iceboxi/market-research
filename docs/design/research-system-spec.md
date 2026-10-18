@@ -1,6 +1,6 @@
 # Research System — Implementation Spec 草案
 
-Revision: 2026-10-19-r1。基準：`main@759947836c329edda8017805a8c6842fc8f337d8`。
+Revision: 2026-10-19-r2。基準：`main@759947836c329edda8017805a8c6842fc8f337d8`。
 此為待發布至 GitHub 的 spec 草案，供本次確認與設計說明使用；尚非已發布 Issue，也不是工作進度表。GitHub 發布後以該 spec 的明確版本與已確認決策為 implementation authority。
 
 ## Problem Statement
@@ -70,6 +70,7 @@ Revision: 2026-10-19-r1。基準：`main@759947836c329edda8017805a8c6842fc8f337d
 - output 分開 pipeline outcome、source coverage、financial availability、valuation status、event coverage、research readiness、persistence、delivery。既有 complete 保留相容性且標明 legacy 意義；新增契約明確升 schema，不偷偷改義。
 - snapshot identity 由 canonical normalized inputs、cutoff、code/parser/model/config versions 與資料 hash 決定；不以每次 generated_at 當內容變更。
 - D 事件 metadata、內容證據、未來行程與財務影響分別處理；公告不等於方向。官方無法證實行程時維持 unknown。
+- US 先行後的 TW cash/debt/shares 對帳、模型適用性、財報差異與 C 觸發，有明確的 source-specific 整合工作承接。TW 年度/季度正規化或固定輸入 parity 通過，不能代替這條完整路徑的 runner 證據；最終完整里程碑需等待它完成。
 
 ### State / runtime
 
