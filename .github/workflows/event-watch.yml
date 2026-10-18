@@ -1,6 +1,11 @@
 name: Official disclosure watch
 on:
   workflow_dispatch:
+    inputs:
+      bootstrap_events:
+        description: "Explicit one-time migration from tracked legacy event_state"
+        type: boolean
+        default: false
   schedule:
     - cron: '15 12 * * 1-5'
     - cron: '30 2 * * 2-6'
@@ -25,15 +30,26 @@ jobs:
       - run: uv sync --extra dev --locked
       - name: Run offline validation
         run: uv run --no-sync pytest tests/test_event_watch.py tests/test_event_risk.py
+      - name: Explicit migration (main dispatch only)
+        if: github.event_name == 'workflow_dispatch' && inputs.bootstrap_events == true
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          uv run --no-sync python -m scripts.event_watch_bootstrap --out event_watch_output
+      - name: Restore canonical event baseline
+        id: restore
+        run: uv run --no-sync python -m scripts.event_watch_restore --out event_watch_input --receipt event_watch_output/restore_receipt.json
       - name: Collect source-grounded changes
         id: watcher
-        run: uv run --no-sync python -m scripts.event_watch --config config/event_watchlist.yaml --state event_state --out event_watch_output
+        run: uv run --no-sync python -m scripts.event_watch --config config/event_watchlist.yaml --state event_watch_input --out event_watch_output
       - name: Summarize
         if: always()
         run: |
           if [ -f event_watch_output/watch_summary.md ]; then
             cat event_watch_output/watch_summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Archive verified events
+        if: always() && steps.restore.outcome == 'success' && steps.watcher.outcome == 'success'
+        run: uv run --no-sync python -m scripts.event_watch_archive --proposed event_watch_output/proposed_state --receipt event_watch_output/state_receipt.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -41,6 +57,3 @@ jobs:
           path: event_watch_output/
           retention-days: 14
           if-no-files-found: warn
-      - name: Archive verified event state
-        if: steps.watcher.outcome == 'success'
-        run: uv run --no-sync python -m scripts.event_watch_archive --proposed event_watch_output/proposed_state
