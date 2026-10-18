@@ -1,0 +1,42 @@
+name: State-store live acceptance
+on:
+  push:
+    paths:
+      - 'scripts/state_store.py'
+      - 'scripts/monitor.py'
+      - 'scripts/state_store_acceptance.py'
+      - 'tests/test_health_state.py'
+      - '.github/workflows/state-store-acceptance.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: research-state-validation
+  cancel-in-progress: false
+jobs:
+  accept:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - name: Real Git integration and health contract tests
+        run: uv run --no-sync pytest tests/test_health_state.py tests/test_monitor.py
+      - name: Write, fresh read, and rerun on the isolated validation branch
+        run: uv run --no-sync python -m scripts.state_store_acceptance --out state_acceptance
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f state_acceptance/summary.md ]; then
+            cat state_acceptance/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: state-store-acceptance-${{ github.run_id }}
+          path: state_acceptance/
+          retention-days: 14
+          if-no-files-found: warn

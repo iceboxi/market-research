@@ -5,11 +5,22 @@ No external Python packages: this runs even after dependency/scan failures.
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
+import re
 import subprocess
-import time
+
+if __package__:
+    from .state_store import GitStateStore, StateError, canonical
+else:
+    from state_store import GitStateStore, StateError, canonical
 
 EXPECTED_WARNINGS = {"unfinalized_session_bars_excluded"}
+HISTORY_FIELDS = {"schema_version", "run_id", "run_url", "observed_at_utc", "event",
+                  "market", "scan_outcome", "health", "reasons", "requested", "scanned",
+                  "errors", "signals", "mismatches", "expected_warnings",
+                  "unexpected_warnings", "session_dates", "input_hashes", "strategies",
+                  "source_sha", "kind"}
 
 
 def read(path):
@@ -101,30 +112,62 @@ def command(*args, check=True):
     return subprocess.run(args, capture_output=True, text=True, check=check)
 
 
-def archive(record):
-    """Rebase-free fast-forward-only retry; commit only sanitized metadata."""
+def history_key(record):
+    if (not isinstance(record, dict) or record.get("schema_version") != 1 or
+            not record.keys() <= HISTORY_FIELDS or
+            record.get("health") not in ("healthy", "degraded", "critical")):
+        raise StateError("Only versioned health metadata may be archived")
+    if not isinstance(record.get("run_id"), str) or not re.fullmatch(r"[0-9]+", record["run_id"]):
+        raise StateError("History needs a numeric run ID")
     d = datetime.fromisoformat(record["observed_at_utc"])
+    if d.tzinfo is None:
+        raise StateError("History needs a timezone and numeric run ID")
+    for item in record.get("input_hashes", []):
+        if not isinstance(item, dict) or set(item) != {"market", "symbol", "date", "sha256"}:
+            raise StateError("Only input identities/hashes may be archived")
+    for strategy in record.get("strategies", []):
+        if (not isinstance(strategy, dict) or not strategy.keys() <= {"id", "version", "params"}
+                or not isinstance(strategy.get("params", {}), dict) or
+                any(isinstance(v, (dict, list)) for v in strategy.get("params", {}).values())):
+            raise StateError("Only strategy metadata may be archived")
+    canonical(record)
+    d = d.astimezone(timezone.utc)
     filename = d.strftime("%Y%m%d") + "-run-" + record["run_id"] + ".json"
-    path = Path("history") / d.strftime("%Y/%m") / filename
-    payload = json.dumps(record, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
-    for attempt in range(3):
-        command("git", "fetch", "origin", "main")
-        command("git", "switch", "-C", "health-archive", "origin/main")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists() and path.read_text(encoding="utf-8") == payload:
-            return str(path)
-        path.write_text(payload, encoding="utf-8")
-        command("git", "add", "--", str(path))
-        command("git", "-c", "user.name=github-actions[bot]",
-                "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
-                "commit", "-m", "history: EOD run " + record["run_id"])
-        pushed = command("git", "push", "origin", "HEAD:main", check=False)
-        if pushed.returncode == 0:
-            return str(path)
-        if attempt == 2:
-            raise RuntimeError("Archive push failed: " + pushed.stderr)
-        time.sleep(attempt + 1)
-    raise RuntimeError("Archive retry exhausted")
+    return "history/" + d.strftime("%Y/%m/") + filename
+
+
+def archive_history(record, store=None):
+    """Persist metadata immutably; preserve source health independently of IO."""
+    path = history_key(record)
+    store = store or GitStateStore()
+
+    def merge(records):
+        for key, previous in records.items():
+            if key != history_key(previous):
+                raise StateError("History path/identity mismatch")
+        if path in records and canonical(records[path]) != canonical(record):
+            raise StateError("Immutable history key already has different content")
+        return {**records, path: record}
+
+    before = store.main_head()
+    result = store.commit("operations", merge, legacy_prefix="history")
+    return {**result, "path": path, "main_before": before, "main_after": store.main_head(),
+            "run_url": record["run_url"], "source_health": record["health"]}
+
+
+def archive(record):
+    """Compatibility entry point; returns the logical history key."""
+    return archive_history(record)["path"]
+
+
+def history(store=None):
+    result = (store or GitStateStore()).read("operations")
+    if result["status"] != "available":
+        raise StateError("Operations state is not initialized; no legacy fallback")
+    for key, record in result["records"].items():
+        if key != history_key(record):
+            raise StateError("History path/identity mismatch")
+    return result
 
 
 def alert(record, repo):
@@ -161,6 +204,7 @@ def main():
     p.add_argument("--out", type=Path, default=Path("output"))
     p = subs.add_parser("archive")
     p.add_argument("--report", type=Path, required=True)
+    p.add_argument("--receipt", type=Path, default=Path("output/state_receipt.json"))
     p = subs.add_parser("alert")
     p.add_argument("--report", type=Path, required=True)
     p.add_argument("--repo", required=True)
@@ -174,7 +218,19 @@ def main():
         (a.out / "health_report.md").write_text(markdown(record), encoding="utf-8")
         print(markdown(record))
     elif a.action == "archive":
-        print("Archived:", archive(read(a.report)))
+        receipt = {"schema_version": 1, "status": "failed", "code_sha": os.getenv("GITHUB_SHA")}
+        try:
+            record = read(a.report)
+            if isinstance(record, dict):
+                receipt["run_url"] = record.get("run_url")
+            receipt = archive_history(record)
+        except (StateError, ValueError, KeyError, TypeError) as error:
+            receipt["error"] = str(error)
+            raise
+        finally:
+            a.receipt.parent.mkdir(parents=True, exist_ok=True)
+            a.receipt.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+            print(json.dumps(receipt, indent=2))
     else:
         print("GitHub issue:", alert(read(a.report), a.repo))
 
