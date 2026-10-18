@@ -56,6 +56,18 @@ jobs:
           path: output/
           if-no-files-found: warn
           retention-days: 14
+      - name: Candidate company research from verified scan
+        id: candidate_research
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && steps.scan.outcome == 'success'
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: uv run --no-sync python -m scripts.scan_company_research --scan-dir output --out output/candidate_research --max-candidates 3
+      - name: Candidate research summary
+        if: always()
+        run: |
+          if [ -f output/candidate_research/candidate_summary.md ]; then
+            cat output/candidate_research/candidate_summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Archive compact history
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         run: python3 scripts/monitor.py archive --report output/health_report.json
