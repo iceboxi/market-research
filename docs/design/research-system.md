@@ -1,9 +1,9 @@
 # Market Research — Shared Research System Design
 
-Revision: 2026-10-19-r2。狀態：PROPOSED，待本次獨立技術審閱。
+Revision: 2026-10-19-r2。狀態：PROPOSED；獨立技術審閱 ACCEPT，產品待決事項仍須確認。
 Current code baseline：`759947836c329edda8017805a8c6842fc8f337d8`。
 
-本文件是獨立技術說明，整理同版 implementation spec 與工作規劃。CURRENT 表示 code 可證實；DECIDED 表示使用者已確認；PLANNED 表示本次工程提案；UNRESOLVED 表示尚須來源或產品決策。技術審閱不等於功能、真實資料或排程已驗收。
+本文件是獨立技術說明，整理同版 implementation spec 與工作規劃。CURRENT 表示上述基準 code 可證實；DECIDED 表示使用者已確認；PLANNED 表示本次工程提案；UNRESOLVED 表示尚須來源或產品決策。後續實作查核見 [現況與證據](research-system-evidence.md)，不將基準快照當成最新進度。文件合併不核准待決提案；技術審閱不等於功能、真實資料或排程已驗收。
 
 ## 1. Executive Summary
 

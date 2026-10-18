@@ -1,6 +1,6 @@
 # Research System — Epic / Issue 發布草案
 
-Revision: 2026-10-19-r2。以下代碼是本次規劃的識別名稱，**不是已存在的 GitHub Issue 編號**。只有既有官方事件工作是 Issue #9，將重用並更新其 scope。尚未批次發布，需使用者確認。
+Revision: 2026-10-19-r2。以下代碼是本次規劃的識別名稱，**不是 GitHub Issue 編號**。粒度與依賴已獲使用者確認，批次發布仍待 compact evidence / discovery gates 決策。已單項發布的 O01 重用 [Issue #12](https://github.com/iceboxi/market-research/issues/12)，M01 重用 [Issue #9](https://github.com/iceboxi/market-research/issues/9)；operations 自然排程 gate 為 [Issue #14](https://github.com/iceboxi/market-research/issues/14)，後續 O07 引用而不複製。
 
 這是初始工作拆分提案，不持續手動更新任務狀態；發布後狀態以 GitHub Issues / PR / blocking links 為準。spec 草案見 [research-system-spec.md](../design/research-system-spec.md)，獨立設計見 [research-system.md](../design/research-system.md)，現況證據見 [research-system-evidence.md](../design/research-system-evidence.md)。
 
@@ -562,7 +562,7 @@ flowchart TD
 
 ### O01：共享 state-store 與 health history 垂直遷移
 
-性質：implementation。Blocked by：None，可開始。
+性質：implementation。Blocked by：None。發布時重用既有 Issue #12；交付與最新狀態見該 Issue / PR #13，不另開重複工作。
 
 **Goal / Scope：**先以現有health history驗證research-state持久化interface及main不變，再供其他domain重用。
 
@@ -660,6 +660,8 @@ flowchart TD
 
 性質：acceptance。Blocked by：I03、O05、O06。
 
+已存在的 operations 切換後自然排程 gate #14 是本工作的部分前置證據；引用其 run / Artifact，不重開同一 gate，也不將其視為整體 O07 完成。
+
 **Goal / Scope：**在明確觀察窗口驗證真實A/B/C/D整合、持久化、復原與通知。
 
 **Input / Output contract：**發布時設定未來TW/US due slots與deadline；至少連續兩個各市場eligible自然slot、完整coverage/state/receipt，另留sourceoutage/recovery證據。無自然新事件時通知證據由已標明受控測試補足，不假造自然事件。
@@ -674,7 +676,7 @@ flowchart TD
 
 ## 發布前確認
 
-- 六個Epic、33個工作（其中M01重用既有Issue #9），加一個spec；預計新建39個Issues，另更新既有工作。此數量不包含後續由discovery新產生的市場/模型專用slice。
+- 六個Epic、33個工作，加一個spec；M01重用#9，O01重用已單項建立的#12。原先39張新Issue的批次因此剩38張待建，另引用既有#14 operations gate。此數量不包含後續由discovery新產生的市場/模型專用slice。
 - 批次發布前核對使用者已同意的最新spec revision、Design review verdict與清單；若要合併/拆分工作先更新本草案。
 - 初始Ready frontier只是候選，發布/認領時重新核對main、assignee、Open PR與native dependencies。
 - 未決外部來源不是架構已通過live的證據；discovery未通過時下游不得自動Ready。

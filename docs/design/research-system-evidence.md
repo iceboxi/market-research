@@ -3,7 +3,17 @@
 查核日期：2026-10-19。程式基準：`759947836c329edda8017805a8c6842fc8f337d8`。
 本文件是規劃時的 evidence snapshot，不是持續維護的工作進度表。工作狀態從 GitHub Issues / PR 讀取。
 
-## GitHub 實際觀察
+## 後續查核 — shared store 交付
+
+2026-10-19 核對 `main@70402a7c921c0737661fac08ded8361113e1cf3c`：[PR #13](https://github.com/iceboxi/market-research/pull/13) / [Issue #12](https://github.com/iceboxi/market-research/issues/12) 已完成 shared store 與 operations history 遷移。以下是該 SHA 的 evidence addendum，不取代 Issues 的工作狀態。
+
+- `scripts/state_store.py:147` 使用最多三次重新讀取合併與 fast-forward push；`scripts/monitor.py:189` 明確初始化、`:195` archive receipt、`:232` canonical reader。一般 archive/read 遇到缺失 authority 不自動重建，也不回退 legacy main；analysis checkout 不切換。
+- [main Unit](https://github.com/iceboxi/market-research/actions/runs/39176223828)：200 passed、6 subtests；[production bootstrap](https://github.com/iceboxi/market-research/actions/runs/39176235449)：Artifact 證實 paused/quiescent writers、3 筆 legacy count/hash、fresh read 與 main unchanged。
+- [TW/US 真實 dispatch](https://github.com/iceboxi/market-research/actions/runs/39176319790)：22/22、errors=0、official mismatches=0、source health healthy、signals=0、session 2026-10-16。state commit `8b331df52631c0743e63e3a399c4cd2730ba3eb5` 的獨立 fresh read 與 health-state Artifact 一致；main before/after 同為上述 code SHA。
+- health writer 不再寫 main；event/prospective/lock 及其他 smoke side effects 仍待各自遷移，不能宣稱全 repo PR-only。兩個暫停的 legacy workflows 已恢復 active；操作契約見 [STATE_STORE.md](../STATE_STORE.md)。
+- [Issue #9](https://github.com/iceboxi/market-research/issues/9) 重用 shared store；[Issue #14](https://github.com/iceboxi/market-research/issues/14) 另追蹤自然 schedule，dispatch 不替代。SEC_USER_AGENT 名稱清單仍未見設定；整批 Issues 發布仍待 compact evidence / discovery gates 決策。
+
+## 原規劃基準的 GitHub 觀察
 
 | 項目 | 實際結果 | 證據 |
 | --- | --- | --- |

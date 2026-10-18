@@ -46,4 +46,4 @@ Reviewer 使用未參與設計的 fresh agent context。審查範圍為 implemen
 - 實作證據無法維持單一 owner、固定 revision、原子 pending 保存或安全對帳。
 - 正式模型與價格契約改變輸入、輸出或驗收範圍。
 
-下一步是由使用者確認 r2 工作清單與未決決策；確認前不批次發布 Issues、不開始新功能實作。所有 planned unit/integration/live/schedule gates 仍未通過。
+r2 工作清單的粒度與依賴已獲使用者確認；compact evidence 與 discovery gates 兩項仍未回答，批次發布維持等待。使用者另已授權實作不受這兩題影響的 shared-store / operations 範圍，以及將文件 push / merge 供交接；其結果見 [後續證據](research-system-evidence.md#後續查核--shared-store-交付)。文件合併不變更本審查 subject 或代答未決事項，其餘 planned gates 不因文件合併自動通過。

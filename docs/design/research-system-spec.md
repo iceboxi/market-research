@@ -1,7 +1,7 @@
 # Research System — Implementation Spec 草案
 
 Revision: 2026-10-19-r2。基準：`main@759947836c329edda8017805a8c6842fc8f337d8`。
-此為待發布至 GitHub 的 spec 草案，供本次確認與設計說明使用；尚非已發布 Issue，也不是工作進度表。GitHub 發布後以該 spec 的明確版本與已確認決策為 implementation authority。
+此為已提交的 spec 規劃草案，尚非已發布的 spec Issue，也不是工作進度表。文件合併保存已確認要求與待決提案，不代表待決內容已核准；實作以已確認決策及個別 Issue 的明確 scope 為準。最新實作證據見 [現況與證據](research-system-evidence.md)。
 
 ## Problem Statement
 
