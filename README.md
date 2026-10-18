@@ -94,7 +94,8 @@ The GitHub Runner-generated `uv.lock` is committed to main. Unit, scan and backt
 ## Operations history and issue alerts
 
 For scheduled and manually dispatched scans, a small metadata-only JSON report
-is appended under history/YYYY/MM, with run ID, dates, status, strategy versions
+is appended under operations/history/YYYY/MM on the `research-state` data branch,
+with run ID, dates, status, strategy versions
 and input hashes. Full raw OHLCV is **not committed to public GitHub**.
 Each run also produces health_report.json and health_report.md as Artifacts.
 
@@ -108,6 +109,9 @@ these Issue events reach you.
 Push-triggered validation scans deliberately do not archive history or open
 operator Issues. Branch push restrictions can prevent archiving, in which case
 the Action records an error rather than pretending history was saved.
+Legacy main history is retained read-only; new writes use the shared metadata
+store without switching the analysis checkout. See [STATE_STORE.md](docs/STATE_STORE.md)
+for cutover, read/restore, integrity, receipts and validation gates.
 
 
 ## Watchdog onboarding gate
