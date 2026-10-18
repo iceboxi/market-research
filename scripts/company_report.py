@@ -12,6 +12,7 @@ from market_research.market_data import load_daily_bars
 from market_research.provider import RoutedDailyProvider
 from market_research.strategies import get_strategy
 from market_research.valuation import evaluate_valuation
+from market_research.company_analysis import compare_financials, research_status, render_financial_research
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,10 +69,14 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
             technical["status"]="partial"
     except Exception as exc:
         technical["errors"].append({"type":type(exc).__name__,"detail":str(exc)})
-    result={"schema_version":1,"report_type":"preliminary_company_research",
+    valuation = evaluate_valuation(issuer, now.date())
+    financial = compare_financials(issuer, now.date())
+    readiness = research_status(financial, valuation, technical)
+    result={"schema_version":2,"report_type":"preliminary_company_research",
         "symbol":symbol,"market":market,"generated_utc":now.astimezone(timezone.utc).isoformat(),
         "issuer":issuer,"technical":technical,
-        "valuation":evaluate_valuation(issuer, now.date()),
+        "financial_comparison":financial,"research_readiness":readiness,
+        "valuation":valuation,
         "decision":"no_buy_or_sell_recommendation",
         "complete":bool(issuer.get("company_name")) and technical["status"]=="available",
         "limitations":["TW latest monthly revenue is not audited annual profit or TTM revenue",
@@ -101,6 +106,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
             lines.append(f"| {row['strategy_id']} | {'yes' if row['matched'] else 'no'} | {'active' if row['active'] else 'research-only'} |")
     if technical["errors"]:
         lines.append("Some technical checks failed; refer to report.json.")
+    lines.extend(render_financial_research(financial, readiness))
     lines += ["","## Valuation and entry/exit plan",""]
     v = result["valuation"]
     if v["status"] == "illustrative_only":
