@@ -77,8 +77,16 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
       - name: Archive compact history
-        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-        run: python3 scripts/monitor.py archive --report output/health_report.json
+        if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        run: python3 scripts/monitor.py archive --report output/health_report.json --receipt output/state_receipt.json
+      - name: Upload history persistence receipt
+        if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-state-${{ github.run_id }}
+          path: output/state_receipt.json
+          retention-days: 14
+          if-no-files-found: error
       - name: Sync incident Issue
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
