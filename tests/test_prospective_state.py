@@ -81,3 +81,43 @@ def test_raw_unapproved_fields_and_path_mismatch_fail_closed():
         identity({**r, "close": [100, 101]})
     with pytest.raises(StateError):
         validate({"prospective/wrong/tw/2026-10-19.json": r})
+
+
+def test_runtime_revision_pins_file_versions(tmp_path, monkeypatch):
+    from scripts.prospective_state import runtime_revision, verify_runtime, PROVIDER_FILES, CALENDAR_FILES
+    from scripts.state_store import StateError
+    from scripts.prospective_journal import fingerprint
+    import pytest
+    repo = tmp_path
+    for relative in (*PROVIDER_FILES, *CALENDAR_FILES,
+                     "config/strategies.yaml", "config/markets.yaml",
+                     "docs/strategies/catalog.yaml"):
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("fixture " + relative)
+    sha = "a" * 40
+    rev = runtime_revision(repo, source_sha=sha)
+    receipt = {**record(), "schema_version": 2,
+               "freeze_hash": fingerprint(repo), "cohort_revision": rev}
+    assert rev["code_sha"] == sha
+    assert rev["config_sha256"] == receipt["freeze_hash"]
+    monkey = receipt["cohort_revision"].copy()
+    monkey["provider_sha256"] = "b" * 64
+    monkeypatch.setattr("scripts.prospective_state.runtime_revision", lambda repo: rev)
+    with pytest.raises(StateError, match="revision"):
+        verify_runtime({**receipt, "cohort_revision": monkey}, repo)
+
+
+def test_same_freeze_revision_change_requires_cohort_review():
+    from scripts.prospective_state import append
+    from scripts.state_store import StateError
+    s = InMemoryState()
+    r = {**record(), "schema_version": 2, "cohort_revision": {
+        "code_sha": "a" * 40, "provider_sha256": "b" * 64,
+        "calendar_sha256": "c" * 64, "config_sha256": "a" * 64}}
+    assert append(r, s)["status"] == "archived"
+    new = {**r, "session_date": "2026-10-20",
+           "observed_at_utc": datetime(2026, 10, 20, 12, tzinfo=timezone.utc).isoformat(),
+           "cohort_revision": {**r["cohort_revision"], "code_sha": "d" * 40}}
+    with pytest.raises(StateError, match="approval"):
+        append(new, s)
