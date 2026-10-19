@@ -89,6 +89,26 @@ def test_prospective_collect_valid_receipt_and_hash_mismatch(monkeypatch,tmp_pat
     assert all(not row["id"].startswith(("rsi_","ma_")) for row in result["strategy_versions"])
     assert not result["is_strategy_performance_evidence"]
     assert result["market"] == "tw"
+    # Explicit opt-in schema v2 does not change legacy scheduled schema v1.
+    revision = {
+        "code_sha": "a" * 40,
+        "config_sha256": "abcd" * 16,
+        "provider_sha256": "b" * 64,
+        "calendar_sha256": "c" * 64,
+    }
+    monkeypatch.setattr(obs, "runtime_revision", lambda: revision)
+    h["source_sha"] = "a" * 40
+    pinned = collect(h, "tw", tmp_path/"pinned.json", cfg,
+                     now=datetime(2026,10,19,13,tzinfo=timezone.utc),
+                     revision_pinned=True)
+    assert pinned["schema_version"] == 2
+    assert pinned["cohort_revision"] == revision
+    h["source_sha"] = "f" * 40
+    with pytest.raises(ValueError, match="checkout SHA"):
+        collect(h, "tw", tmp_path/"wrong-sha.json", cfg,
+                now=datetime(2026,10,19,13,tzinfo=timezone.utc),
+                revision_pinned=True)
+    h["source_sha"] = "a" * 40
     h["input_hashes"][0]["sha256"]="different"
     with pytest.raises(ValueError,match="hashes differ"):
         collect(h,"tw",tmp_path/"rejected.json",cfg,
