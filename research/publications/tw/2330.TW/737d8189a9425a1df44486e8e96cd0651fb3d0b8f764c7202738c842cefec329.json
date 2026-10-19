@@ -1,12 +1,12 @@
 {
   "body_sha256": "e9929d095da861f1120b73dea22e6697a58db18a51bce3c0276e54b02f563eca",
   "id": "737d8189a9425a1df44486e8e96cd0651fb3d0b8f764c7202738c842cefec329",
-  "issue_number": null,
+  "issue_number": 74,
   "kind": "fixed_report",
   "last_success_id": "5c2edd7007c90710870d34d0c56089f5a65cf04def6dbee4ba79e273c82ce20c",
   "renderer_version": 1,
   "schema_version": 1,
   "snapshot_id": "5c2edd7007c90710870d34d0c56089f5a65cf04def6dbee4ba79e273c82ce20c",
-  "status": "pending",
+  "status": "acked",
   "symbol": "2330.TW"
 }
