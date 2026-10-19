@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 from uuid import uuid4
-from zipfile import ZipFile
+from zipfile import ZipFile, BadZipFile
 
 CHILD = "synthetic-acceptance-child.yml"
 ARTIFACT = "synthetic-contract-"
@@ -69,7 +69,7 @@ def check_artifact(artifacts, correlation, zip_bytes, sha):
             if len(content) > 65536:
                 raise AcceptanceError("Child receipt exceeds limit")
             receipt = json.loads(content)
-    except (ValueError, OSError, KeyError, json.JSONDecodeError) as exc:
+    except (ValueError, OSError, KeyError, BadZipFile) as exc:
         raise AcceptanceError("Invalid child artifact ZIP/JSON") from exc
     return validate(receipt, sha, correlation)
 
