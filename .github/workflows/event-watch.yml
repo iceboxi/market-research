@@ -1,11 +1,6 @@
 name: Official disclosure watch
 on:
   workflow_dispatch:
-    inputs:
-      bootstrap_events:
-        description: "Explicit one-time migration from tracked legacy event_state"
-        type: boolean
-        default: false
   schedule:
     - cron: '15 12 * * 1-5'
     - cron: '30 2 * * 2-6'
@@ -31,11 +26,6 @@ jobs:
       - run: uv sync --extra dev --locked
       - name: Run offline validation
         run: uv run --no-sync pytest tests/test_event_watch.py tests/test_event_risk.py tests/test_event_state_store.py
-      - name: Explicit migration (main dispatch only)
-        if: github.event_name == 'workflow_dispatch' && inputs.bootstrap_events == true
-        run: |
-          test "$GITHUB_REF" = refs/heads/main
-          uv run --no-sync python -m scripts.event_watch_bootstrap --out event_watch_output
       - name: Restore canonical event baseline
         id: restore
         run: uv run --no-sync python -m scripts.event_watch_restore --out event_watch_input --receipt event_watch_output/restore_receipt.json

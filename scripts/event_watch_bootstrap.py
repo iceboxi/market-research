@@ -3,6 +3,8 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 
 from scripts.event_watch_archive import initialize_events
 from scripts.state_store import GitStateStore
@@ -11,6 +13,23 @@ from scripts.state_store import GitStateStore
 def bootstrap(out):
     if os.getenv("GITHUB_REF") != "refs/heads/main" or os.getenv("GITHUB_EVENT_NAME") != "workflow_dispatch":
         raise ValueError("Production migration requires explicit dispatch on main")
+    repo = os.getenv("GITHUB_REPOSITORY", "")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        raise ValueError("GitHub repository identity missing")
+    def gh_api(endpoint, *args):
+        result = subprocess.run(["gh", "api", *args, endpoint], check=True,
+                                text=True, capture_output=True, timeout=30)
+        return result.stdout.strip()
+
+    state = json.loads(gh_api(f"repos/{repo}/actions/workflows/event-watch.yml"))
+    if state.get("state") != "disabled_manually":
+        raise ValueError("Disable Official disclosure watch before migrating its baseline")
+    pending = gh_api(f"repos/{repo}/actions/workflows/event-watch.yml/runs?per_page=100",
+                     "--paginate", "--jq",
+                     '.workflow_runs[] | select(.status != "completed") | .id')
+    if pending:
+        raise ValueError("Old event-watch jobs are still pending/in progress; do not migrate")
+
     store = GitStateStore()
     if store.main_head() != os.getenv("GITHUB_SHA"):
         raise ValueError("Main moved; verify code revision before migration")
@@ -21,7 +40,6 @@ def bootstrap(out):
     current_main = store.main_head()
     if current_main != os.environ["GITHUB_SHA"]:
         raise ValueError("Main advanced during migration; manually verify authority")
-    repo = os.getenv("GITHUB_REPOSITORY")
     run = os.getenv("GITHUB_RUN_ID")
     return {"status": "initialized", "main_after": current_main,
             "run_url": "https://github.com/" + repo + "/actions/runs/" + run if repo and run else None,
