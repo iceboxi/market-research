@@ -3,7 +3,7 @@
 Amounts are kept in original USD, never scaled into millions. The original
 start/end dates, filing dates, taxonomy tags and accessions remain attached.
 """
-from datetime import date
+from datetime import date, datetime
 import math
 
 
@@ -161,7 +161,7 @@ def direct_quarter_version_trace(raw, tags, unit, asof, source, limit=12):
     publication timestamp. Caller owns issuer identity and its history.
     No YTD subtraction, annual/FY inference or 10-K-based synthetic Q4.
     """
-    if not isinstance(asof, date) or isinstance(asof, __import__("datetime").datetime):
+    if not isinstance(asof, date) or isinstance(asof, datetime):
         raise TypeError("asof must be a date without a time-of-day")
     if not 1 <= limit <= 32 or not tags:
         raise ValueError("Invalid trace limit or concept candidates")
