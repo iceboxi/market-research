@@ -51,7 +51,7 @@ def test_missing_corrupt_and_expired_artifact_block():
                        (artifacts(), archive(receipt(code_sha="b"*40))),
                        (artifacts(), archive(receipt(result="failed"))),
                        (artifacts(), archive(receipt(schema_version=2)))):
-        with pytest.raises((AcceptanceError, Exception)):
+        with pytest.raises(AcceptanceError):
             check_artifact(data, CORR, blob, SHA)
 
 

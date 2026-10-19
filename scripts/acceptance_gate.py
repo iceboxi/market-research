@@ -12,6 +12,7 @@ from pathlib import Path
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from uuid import uuid4
 from zipfile import ZipFile, BadZipFile
 
@@ -89,9 +90,31 @@ class Github:
                      "Content-Type": "application/json"},
         )
         try:
+            if binary:
+                # GitHub artifact ZIP endpoint responds with a short-lived signed
+                # redirect. Never forward the GitHub bearer token to the CDN.
+                class NoRedirect(urllib.request.HTTPRedirectHandler):
+                    def redirect_request(self, req, fp, code, msg, hdrs, url):
+                        return None
+                opener = urllib.request.build_opener(NoRedirect)
+                try:
+                    opener.open(request, timeout=30)
+                    raise AcceptanceError("Artifact ZIP did not return expected redirect")
+                except urllib.error.HTTPError as redir:
+                    if redir.code not in (302, 303, 307):
+                        raise
+                    signed = redir.headers.get("Location", "")
+                    parsed = urlsplit(signed)
+                    if parsed.scheme != "https" or not parsed.hostname:
+                        raise AcceptanceError("Unsafe artifact download location")
+                    with urllib.request.urlopen(
+                        urllib.request.Request(signed, headers={"Accept": "application/octet-stream"}),
+                        timeout=30,
+                    ) as response:
+                        return response.read()
             with urllib.request.urlopen(request, timeout=30) as resp:
                 raw = resp.read()
-                return raw if binary else json.loads(raw) if raw else {}
+                return json.loads(raw) if raw else {}
         except (urllib.error.HTTPError, urllib.error.URLError) as exc:
             raise AcceptanceError("GitHub API request failed: " + type(exc).__name__) from exc
 
