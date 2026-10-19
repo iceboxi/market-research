@@ -236,3 +236,49 @@ def test_corrupt_authority_blocks_event_restore(repo, tmp_path):
     with chdir(checkout), pytest.raises(StateError):
         restore(tmp_path / "out")
     assert git("branch", "--show-current", cwd=checkout) == "feature"
+
+
+def test_bootstrap_requires_paused_writer_and_no_active_jobs(repo, tmp_path, monkeypatch):
+    """One-time migration cannot overlap the old main-writing watcher."""
+    import subprocess as process
+    from scripts.event_watch_bootstrap import bootstrap
+
+    checkout, _, main_sha = repo
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "iceboxi/market-research")
+    monkeypatch.setenv("GITHUB_SHA", main_sha)
+    original = process.run
+    state = {"enabled": True, "pending": ""}
+
+    def fake_run(args, *rest, **kwargs):
+        if args and args[0] == "gh":
+            if "runs?" in args[-1]:
+                return process.CompletedProcess(args, 0, stdout=state["pending"])
+            return process.CompletedProcess(
+                args, 0, stdout=json.dumps({
+                    "state": "active" if state["enabled"] else "disabled_manually"
+                }))
+        return original(args, *rest, **kwargs)
+
+    monkeypatch.setattr("scripts.event_watch_bootstrap.subprocess.run", fake_run)
+    with chdir(checkout):
+        with pytest.raises(ValueError, match="Disable Official"):
+            bootstrap(tmp_path)
+        state.update(enabled=False, pending="391888888")
+        with pytest.raises(ValueError, match="still pending"):
+            bootstrap(tmp_path)
+        state["pending"] = ""
+        result = bootstrap(tmp_path)
+        assert result["authority"]["legacy_import"]["source_sha"] == main_sha
+        assert result["main_after"] == main_sha
+
+
+def test_restore_refuses_already_populated_directory(repo, tmp_path):
+    checkout, _, _ = repo
+    path = tmp_path / "output/tw/2330.TW.json"
+    path.parent.mkdir(parents=True)
+    path.write_text('{"state": "stale"}')
+    with chdir(checkout), pytest.raises(ValueError, match="must be empty"):
+        restore(path.parents[1])
+    assert json.loads(path.read_text()) == {"state": "stale"}
