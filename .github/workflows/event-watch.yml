@@ -16,6 +16,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   event-watch:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
@@ -29,7 +30,7 @@ jobs:
       - run: uv lock --check
       - run: uv sync --extra dev --locked
       - name: Run offline validation
-        run: uv run --no-sync pytest tests/test_event_watch.py tests/test_event_risk.py
+        run: uv run --no-sync pytest tests/test_event_watch.py tests/test_event_risk.py tests/test_event_state_store.py
       - name: Explicit migration (main dispatch only)
         if: github.event_name == 'workflow_dispatch' && inputs.bootstrap_events == true
         run: |

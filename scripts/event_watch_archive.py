@@ -19,23 +19,55 @@ class EventArchiveError(StateError):
 
 
 def validate_records(records):
+    """Only strict, compact, source-identified metadata may enter the events store."""
+    import re
+    from datetime import datetime
+    from market_research.event_monitor import MAX_IDS, build_snapshot
+    from market_research.event_risk import TW_MATERIAL_URL
+
+    expected_keys = {
+        "schema_version", "market", "symbol", "observed_at_utc",
+        "source", "coverage", "seen_ids",
+    }
+    if not isinstance(records, dict):
+        raise StateError("Invalid event state tree")
     for path, value in records.items():
         parts = path.split("/")
         if len(parts) != 3 or parts[0] != "event_state" or not parts[2].endswith(".json"):
             raise StateError("Invalid event state path")
         market, symbol = parts[1], parts[2][:-5]
-        from market_research.event_monitor import build_snapshot
-        build_snapshot(symbol, market, {"status": "unavailable"}, 
-                       __import__("datetime").datetime.now(__import__("datetime").timezone.utc))
-        if not isinstance(value, dict) or value.get("market") != market or value.get("symbol") != symbol:
-            raise StateError("Event state identity mismatch")
-        if not isinstance(value.get("seen_ids"), list):
-            raise StateError("Missing event history")
-        status, _ = compare_snapshots(value, value)
-        if status["status"] != "unchanged":
-            raise StateError("Malformed persisted event state: " + path)
+        if not isinstance(value, dict) or set(value) != expected_keys:
+            raise StateError("Event state must contain metadata fields only")
+        if (type(value["schema_version"]) is not int or value["schema_version"] != 1 or
+                value["market"] != market or value["symbol"] != symbol):
+            raise StateError("Event state identity or schema mismatch")
+        try:
+            build_snapshot(symbol, market, {"status": "unavailable"},
+                           datetime.fromisoformat(value["observed_at_utc"]))
+            observed = datetime.fromisoformat(value["observed_at_utc"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise StateError("Malformed event state observation timestamp") from exc
+        if observed.tzinfo is None:
+            raise StateError("Event snapshot timestamp must have a timezone")
+        if market == "tw":
+            if (value["source"] != TW_MATERIAL_URL or
+                    value["coverage"] != "recent_daily_snapshot_only_not_a_full_history"):
+                raise StateError("Unrecognized TWSE event source/coverage")
+        elif market == "us":
+            if (not isinstance(value["source"], str) or
+                    not re.fullmatch(r"https://data\\.sec\\.gov/submissions/CIK[0-9]{10}\\.json",
+                                     value["source"]) or
+                    value["coverage"] != "recent_SEC_submissions_metadata_only"):
+                raise StateError("Unrecognized SEC event source/coverage")
+        else:
+            raise StateError("Unsupported event market")
+        ids = value["seen_ids"]
+        if (not isinstance(ids, list) or len(ids) > MAX_IDS or
+                len(ids) != len(set(x for x in ids if isinstance(x, str))) or
+                any(not isinstance(x, str) or not re.fullmatch(r"[A-Za-z0-9-]{3,100}", x)
+                    for x in ids)):
+            raise StateError("Malformed or oversized observed event ID cache")
     return records
-
 
 def event_state(store=None):
     data = (store or GitStateStore()).read("events")
