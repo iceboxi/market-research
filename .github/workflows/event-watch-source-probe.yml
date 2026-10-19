@@ -1,0 +1,50 @@
+name: Event watch TWSE read-only probe
+on:
+  pull_request:
+    paths:
+      - 'src/market_research/event_monitor.py'
+      - 'src/market_research/event_risk.py'
+      - 'scripts/event_watch.py'
+      - 'scripts/event_watch_archive.py'
+      - 'scripts/event_watch_restore.py'
+      - 'scripts/event_watch_bootstrap.py'
+      - 'tests/test_event_state_store.py'
+      - '.github/workflows/event-watch.yml'
+      - '.github/workflows/event-watch-source-probe.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  twse-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - name: Check live TWSE official disclosure source without any state writes
+        run: uv run --no-sync python -m scripts.event_watch --config config/event_watchlist.yaml --state event_watch_empty_state --out event_probe_output
+      - name: Validate observed event-source coverage
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('event_probe_output/watch_receipt.json')
+          d = json.loads(p.read_text(encoding='utf-8'))
+          results = d['reports']
+          assert len(results) >= 1
+          assert d['status'] == 'complete', 'Official feed unavailable; report cannot claim source acceptance'
+          assert all(r['source_status'] == 'available' for r in results)
+          assert all(r['change_status'] == 'baseline_initialized' for r in results)
+          assert not any(r['requires_research_review'] for r in results)
+          print(f"TWSE official source observed for {len(results)} ticker(s); no historical baseline or production state modified.")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: event-watch-twse-readonly-${{ github.run_id }}
+          path: event_probe_output/
+          retention-days: 14
+          if-no-files-found: warn
