@@ -16,6 +16,10 @@ def evaluate_valuation(issuer, asof):
         "entry_zone": None, "stop_loss": None, "target_price": None,
         "why": "Insufficient verified annual statements for a defensible valuation",
     }
+    gate = issuer.get("instrument_eligibility")
+    if gate is not None and gate.get("status") != "eligible":
+        result["why"] = "Instrument/model eligibility blocked: " + str(gate.get("reason"))
+        return result
     if issuer.get("market") != "us":
         result["why"] = "TWSE profile/monthly revenue are not three audited annual financial statements"
         return result

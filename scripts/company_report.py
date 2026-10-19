@@ -1,6 +1,6 @@
 """Source-grounded, on-demand company snapshot. Never generates price targets."""
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
 import re
@@ -15,6 +15,7 @@ from market_research.valuation import evaluate_valuation
 from market_research.company_analysis import compare_financials, research_status, render_financial_research
 from market_research.price_context import analyze_price_context, render_price_context
 from market_research.event_risk import tw_material_events, evaluate_events, render_events
+from market_research.research_evidence import instrument_eligibility, build_source_evidence
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,7 +40,12 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         kwargs = {"user_agent":sec_user_agent, "evaluated_at":now}
         if facts_get:
             kwargs["get"] = facts_get
-        issuer = sec_fundamentals(symbol, now.date(), **kwargs)
+        # SEC companyfacts only provide filing *dates*, not intraday public timestamps.
+        # Never include a filing dated the evaluation UTC day in an as-of report.
+        prior_day = now.astimezone(timezone.utc).date() - timedelta(days=1)
+        issuer = sec_fundamentals(symbol, prior_day, **kwargs)
+    issuer["instrument_eligibility"] = instrument_eligibility(issuer)
+    source_evidence = build_source_evidence(issuer, now)
     market_cfg = yaml.safe_load((Path(config_dir)/"markets.yaml").read_text())["markets"]
     strategy_cfg = yaml.safe_load((Path(config_dir)/"strategies.yaml").read_text())["strategies"]
     technical = {"status":"unavailable","observations":[],"errors":[],"price_context":None}
@@ -85,9 +91,11 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     valuation = evaluate_valuation(issuer, now.date())
     financial = compare_financials(issuer, now.date())
     readiness = research_status(financial, valuation, technical)
-    result={"schema_version":3,"report_type":"preliminary_company_research",
+    result={"schema_version":4,"report_type":"preliminary_company_research",
         "symbol":symbol,"market":market,"generated_utc":now.astimezone(timezone.utc).isoformat(),
         "issuer":issuer,"technical":technical,
+        "issuer_eligibility":issuer["instrument_eligibility"],
+        "source_evidence":source_evidence,
         "financial_comparison":financial,"research_readiness":readiness,
         "official_events":event_feed, "event_risk":event_risk,
         "valuation":valuation,
@@ -122,6 +130,14 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         lines.append("Some technical checks failed; refer to report.json.")
     if technical.get("price_context"):
         lines.extend(render_price_context(technical["price_context"]))
+    lines += [
+        "", "## Issuer eligibility and source availability", "",
+        "Issuer assessment: **" + issuer["instrument_eligibility"]["status"] + "**",
+        issuer["instrument_eligibility"]["reason"],
+        "Source publication precision: **not verified to exact intraday time**.",
+        "Fact-level filing dates, reported units, source documents and retrieval time are in report.json.",
+        "Current TWSE snapshots cannot be used as historical as-of facts.",
+    ]
     lines.extend(render_financial_research(financial, readiness))
     lines.extend(render_events(event_feed, event_risk))
     lines += ["","## Valuation and entry/exit plan",""]

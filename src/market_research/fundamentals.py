@@ -4,7 +4,7 @@ TWSE OpenAPI = latest company profile / monthly revenue snapshot only.
 SEC = annual 10-K tagged US-GAAP facts, never infer annual from a quarter.
 Never fill unavailable values by guessing; monetary units stay explicit.
 """
-from datetime import date
+from datetime import date, datetime, timezone
 import os
 import re
 
@@ -61,6 +61,7 @@ def twse_fundamentals(symbol, get=json_get):
         raise ValueError("Use a valid TWSE listed symbol, e.g. 2330.TW")
     ticker = symbol.removesuffix(".TW")
     profile = get(TW_PROFILE)
+    profile_retrieved = datetime.now(timezone.utc).isoformat()
     if not isinstance(profile, list):
         raise ValueError("TWSE profile endpoint must return a list")
     rows = [r for r in profile if isinstance(r, dict) and
@@ -76,14 +77,17 @@ def twse_fundamentals(symbol, get=json_get):
         "profile": {
             "source": TW_PROFILE,
             "reported_at": pick(row, "出表日期"),
+            "retrieved_at_utc": profile_retrieved,
         },
         "facts": [],
+        "retrieved_at_utc": profile_retrieved,
         "warnings": [],
     }
     # Monthly revenue is NOT GAAP/IFRS recognized annual revenue.
     # It may be absent for financial institutions or special issuers.
     try:
         revenue = get(TW_REVENUE)
+        revenue_retrieved = datetime.now(timezone.utc).isoformat()
         if not isinstance(revenue, list):
             raise ValueError("TWSE monthly revenue endpoint must return a list")
         matches = [r for r in revenue if isinstance(r, dict) and
@@ -98,6 +102,7 @@ def twse_fundamentals(symbol, get=json_get):
                     "period": pick(r, "資料年月", "資料年月份", "資料年月日"),
                     "reported_at": pick(r, "出表日期"),
                     "source": TW_REVENUE,
+                    "retrieved_at_utc": revenue_retrieved,
                     "comparability": "monthly_raw_not_annual_earnings",
                 })
             else:
@@ -164,10 +169,12 @@ def sec_fundamentals(symbol, asof, get=json_get, user_agent=None, evaluated_at=N
     cik = int(identity["cik_str"])
     url = SEC_FACTS.format(cik=cik)
     raw = fetch(url)
+    facts_retrieved = datetime.now(timezone.utc).isoformat()
     if not isinstance(raw, dict) or raw.get("cik") != cik:
         raise ValueError("SEC company facts CIK mismatch")
     output = {"symbol":symbol,"market":"us","company_name":raw.get("entityName") or identity["title"],
-              "cik":f"{cik:010d}","profile":{"source":SEC_TICKERS},"facts":[],"warnings":[]}
+              "cik":f"{cik:010d}","profile":{"source":SEC_TICKERS},
+              "retrieved_at_utc":facts_retrieved,"facts":[],"warnings":[]}
     tags = {
         "annual_revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax",
                            "Revenues","SalesRevenueNet"],
@@ -184,7 +191,8 @@ def sec_fundamentals(symbol, asof, get=json_get, user_agent=None, evaluated_at=N
     try:
         submission_url = SEC_SUBMISSIONS.format(cik=cik)
         submission = fetch(submission_url)
-        from datetime import datetime, timezone
+        output["instrument"] = {"sec_entity_type": submission.get("entityType"),
+                                "source": submission_url}
         output["event_feed"] = sec_filing_events(submission, evaluated_at or datetime.combine(asof, datetime.min.time(), timezone.utc), submission_url)
         sic_raw = str(submission.get("sic") or "").strip()
         sic = int(sic_raw) if re.fullmatch(r"[0-9]{4}", sic_raw) else None
@@ -193,6 +201,8 @@ def sec_fundamentals(symbol, asof, get=json_get, user_agent=None, evaluated_at=N
             output["warnings"].append("SEC SIC classification unavailable; valuation blocked")
     except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
         output["industry"] = {"sic": None, "source": SEC_SUBMISSIONS.format(cik=cik)}
+        output["instrument"] = {"sec_entity_type": None,
+                                "source": SEC_SUBMISSIONS.format(cik=cik)}
         output["event_feed"] = unknown(SEC_SUBMISSIONS.format(cik=cik), "SEC submission metadata unavailable")
         output["warnings"].append("SEC industry classification unavailable: "+type(exc).__name__)
     output["warnings"].append(
