@@ -1,6 +1,7 @@
 """Source-grounded, on-demand company snapshot. Never generates price targets."""
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 import json
 from pathlib import Path
 import re
@@ -41,7 +42,12 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         kwargs = {"user_agent":sec_user_agent, "evaluated_at":now}
         if facts_get:
             kwargs["get"] = facts_get
-        issuer = sec_fundamentals(symbol, now.date(), **kwargs)
+        # SEC filingDate has day precision only. At evaluation cutoff, do not
+        # include records filed on the *current New York calendar day*:
+        # their actual public availability within the day is unverified.
+        sec_day = now.astimezone(ZoneInfo("America/New_York")).date()
+        annual_cutoff = sec_day - timedelta(days=1)
+        issuer = sec_fundamentals(symbol, annual_cutoff, **kwargs)
     market_cfg = yaml.safe_load((Path(config_dir)/"markets.yaml").read_text())["markets"]
     strategy_cfg = yaml.safe_load((Path(config_dir)/"strategies.yaml").read_text())["strategies"]
     technical = {"status":"unavailable","observations":[],"errors":[],"price_context":None}
@@ -87,7 +93,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     eligibility = instrument_eligibility(issuer)
     evidence = build_source_evidence(issuer, now)
     source_gate = validate_valuation_inputs(issuer, now)
-    valuation = evaluate_valuation(issuer, now.date())
+    valuation = evaluate_valuation(issuer, annual_cutoff if market == "us" else now.date())
     if valuation["status"] == "illustrative_only" and (
         eligibility["status"] != "candidate_for_nonfinancial_research" or
         source_gate["status"] != "date_only_prior_filing"
@@ -97,7 +103,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
             "entry_zone": None, "stop_loss": None, "target_price": None,
             "why": "Research eligibility or source provenance gate incomplete",
         }
-    financial = compare_financials(issuer, now.date())
+    financial = compare_financials(issuer, annual_cutoff if market == "us" else now.date())
     readiness = research_status(financial, valuation, technical)
     readiness["instrument_status"] = eligibility["status"]
     readiness["source_evidence_status"] = evidence["status"]
