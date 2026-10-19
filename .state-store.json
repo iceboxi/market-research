@@ -2,14 +2,14 @@
   "namespaces": {
     "events": {
       "branch": "research-state",
-      "content_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "content_sha256": "7122c5289f857a53f4d0858005e3ddc87bae76316500137332274e3a8150d006",
       "legacy_import": {
         "content_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
         "prefix": "event_state",
         "record_count": 0,
         "source_sha": "b491802d8cd495d8ca0945aec1427a04abf05478"
       },
-      "record_count": 0,
+      "record_count": 1,
       "schema_version": 1
     },
     "operations": {
