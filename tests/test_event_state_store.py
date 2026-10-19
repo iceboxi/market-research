@@ -282,3 +282,75 @@ def test_restore_refuses_already_populated_directory(repo, tmp_path):
     with chdir(checkout), pytest.raises(ValueError, match="must be empty"):
         restore(path.parents[1])
     assert json.loads(path.read_text()) == {"state": "stale"}
+
+
+
+def test_zero_legacy_events_bootstraps_alongside_existing_operations_namespace(tmp_path):
+    """Regression for failed real Bootstrap run #39196950385.
+
+    A real bare Git remote has operations state but main has no event_state/
+    files. The explicit empty import must persist an authority manifest and
+    allow subsequent normal first-event archiving without touching main.
+    """
+    bare, checkout = tmp_path / "remote.git", tmp_path / "checkout"
+    git("init", "--bare", "--initial-branch=main", str(bare))
+    git("clone", str(bare), str(checkout))
+    git("config", "user.name", "Test", cwd=checkout)
+    git("config", "user.email", "test@example.invalid", cwd=checkout)
+    legacy = checkout / "legacy_ops/history.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('{"kind":"operations","run":"prior"}')
+    git("add", ".", cwd=checkout)
+    git("commit", "-m", "main without event data", cwd=checkout)
+    git("push", "origin", "main", cwd=checkout)
+    main_before = git("rev-parse", "main", cwd=bare)
+    git("switch", "-c", "feature", cwd=checkout)
+
+    with chdir(checkout):
+        store = GitStateStore(checkout)
+        existing = store.commit("operations", lambda records: records,
+                                legacy_prefix="legacy_ops", initialize=True)
+        assert existing["status"] == "archived"
+        imported = initialize_events(store)
+        assert imported["status"] == "archived"
+        assert imported["authority"]["record_count"] == 0
+        assert imported["authority"]["legacy_import"]["record_count"] == 0
+        assert imported["authority"]["legacy_import"]["source_sha"] == main_before
+        assert imported["authority"]["legacy_import"]["prefix"] == "event_state"
+        assert event_state(store)["records"] == {}
+        assert initialize_events(store)["status"] == "already_current"
+
+        saved_manifest = json.loads(
+            git("show", "research-state:.state-store.json", cwd=bare))
+        assert set(saved_manifest["namespaces"]) == {"operations", "events"}
+        assert saved_manifest["namespaces"]["events"]["record_count"] == 0
+
+        restored = restore(tmp_path / "restored")
+        assert restored["count"] == 0
+        assert git("rev-parse", "main", cwd=bare) == main_before
+        assert git("branch", "--show-current", cwd=checkout) == "feature"
+
+        first = archive(proposal(tmp_path, snapshot(["tw-material-first"])), store)
+        assert first["status"] == "archived"
+        assert event_state(store)["records"]["event_state/tw/2330.TW.json"][
+            "seen_ids"] == ["tw-material-first"]
+        assert git("rev-parse", "main", cwd=bare) == main_before
+
+
+def test_empty_state_cannot_be_initialized_implicitly(tmp_path):
+    bare, checkout = tmp_path / "remote.git", tmp_path / "checkout"
+    git("init", "--bare", "--initial-branch=main", str(bare))
+    git("clone", str(bare), str(checkout))
+    git("config", "user.name", "Test", cwd=checkout)
+    git("config", "user.email", "test@example.invalid", cwd=checkout)
+    (checkout / "README.md").write_text("zero event legacy files")
+    git("add", ".", cwd=checkout)
+    git("commit", "-m", "baseline", cwd=checkout)
+    git("push", "origin", "main", cwd=checkout)
+
+    with chdir(checkout):
+        store = GitStateStore(checkout)
+        with pytest.raises(StateError, match="explicit migration required"):
+            store.commit("events", lambda records: records)
+        assert git("show-ref", "--verify", "refs/heads/research-state",
+                   cwd=bare, check=False).returncode != 0
