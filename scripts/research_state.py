@@ -79,9 +79,13 @@ def validate_records(records, branch):
                         path != publication_path(value["id"])):
                     raise StateError("Publication identity mismatch")
             elif path == SUBJECT:
-                _fields(value, "schema_version symbol latest_observation_id last_success_id "
-                        "pending_publication_id published_publication_id issue_number")
-                if type(value["schema_version"]) is not int or value["schema_version"] != 1 or value["symbol"] != "2330.TW":
+                keys = "schema_version symbol latest_observation_id last_success_id pending_publication_id published_publication_id issue_number"
+                if isinstance(value, dict) and value.get("schema_version") == 2:
+                    keys += " creation_attempted"
+                    if type(value.get("creation_attempted")) is not bool:
+                        raise StateError("Invalid creation attempt fence")
+                _fields(value, keys)
+                if type(value["schema_version"]) is not int or value["schema_version"] not in (1, 2) or value["symbol"] != "2330.TW":
                     raise StateError("Invalid subject schema")
                 for key in ("latest_observation_id", "last_success_id", "pending_publication_id", "published_publication_id"):
                     _id(value[key], nullable=key != "latest_observation_id")
@@ -125,6 +129,11 @@ def validate_records(records, branch):
 
 def _order(snapshot):
     return utc(snapshot["observed_at_utc"]), snapshot["id"]
+
+
+def _creation_attempted(subject):
+    # v1 did not record intent. Absence is uncertainty, never permission to POST.
+    return subject.get("creation_attempted", True) if subject else False
 
 
 def body_hash(body):
@@ -217,11 +226,12 @@ def archive(snapshot, store=None):
                 records[publication_path(prior["pending_publication_id"])]["status"] = "superseded"
             records[pubpath] = {**item, "status": "pending", "issue_number": None, "body_sha256": ""}
             records[pubpath]["body_sha256"] = body_hash(render_publication(records, item["id"], store.branch))
-        records[SUBJECT] = {"schema_version": 1, "symbol": "2330.TW",
+        records[SUBJECT] = {"schema_version": 2, "symbol": "2330.TW",
                             "latest_observation_id": latest["id"], "last_success_id": success,
                             "pending_publication_id": item["id"] if records[pubpath]["status"] == "pending" else None,
                             "published_publication_id": prior.get("published_publication_id"),
-                            "issue_number": prior.get("issue_number")}
+                            "issue_number": prior.get("issue_number"),
+                            "creation_attempted": _creation_attempted(prior)}
         return validate_records(records, store.branch)
     return _commit(store, merge)
 
@@ -269,6 +279,21 @@ def publish(sink, store=None):
             if issue["body"] != body:
                 issue = sink.update(issue["number"], body)
         else:
+            if _creation_attempted(subject):
+                return {**receipt, "status": "outcome_unknown", "reason": "marker_not_visible_after_attempt"}
+            # Reserve creation durably before the external side effect. A fresh
+            # process must not infer "never created" from an eventually visible
+            # Issue list, including after newer snapshots supersede this item.
+            def reserve(current):
+                validate_records(current, store.branch)
+                owner = current[SUBJECT]
+                if owner["issue_number"] is not None or _creation_attempted(owner):
+                    raise StateError("Creation was already attempted")
+                if owner["pending_publication_id"] != identifier:
+                    raise StateError("Publication changed before creation reservation")
+                owner.update(schema_version=2, creation_attempted=True)
+                return validate_records(current, store.branch)
+            receipt["creation_intent_receipt"] = _commit(store, reserve)
             prefix = "[驗證] " if store.branch.endswith("-validation") else ""
             issue = sink.create(prefix + "2330 台積電固定研究報告", body)
         number = issue["number"]
@@ -288,6 +313,7 @@ def publish(sink, store=None):
         if delivered["body_sha256"] != item["body_sha256"]:
             raise StateError("Publication changed during ACK")
         delivered.update(status="acked", issue_number=number)
+        owner.update(schema_version=2, creation_attempted=True)
         owner["issue_number"] = number
         owner["published_publication_id"] = identifier
         if owner["pending_publication_id"] == identifier:

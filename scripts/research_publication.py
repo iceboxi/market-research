@@ -11,11 +11,12 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 
 from market_research.research_snapshot import prepare_snapshot
 from scripts.company_report import run
 from scripts.research_github import GitHubResearchSink
-from scripts.research_state import SUBJECT, archive, initialize, publish, read, render_publication
+from scripts.research_state import SUBJECT, archive, initialize, marker, publish, read, render_publication
 from scripts.state_store import GitStateStore
 
 
@@ -25,7 +26,25 @@ def save(path, value):
 
 def recover(branch, out):
     store = GitStateStore(branch=branch)
-    result = publish(GitHubResearchSink(os.environ["GITHUB_REPOSITORY"]), store)
+    sink = GitHubResearchSink(os.environ["GITHUB_REPOSITORY"])
+    for attempt in range(1, 5):
+        result = publish(sink, store)
+        result["reconciliation_attempts"] = attempt
+        if result.get("reason") != "marker_not_visible_after_attempt" or attempt == 4:
+            break
+        # Read/reconcile only: the durable creation fence forbids another POST.
+        time.sleep(2 * attempt)
+    if result["status"] in ("published", "already_current"):
+        owner = read(store)["records"].get(SUBJECT)
+        expected = owner["issue_number"] if owner else None
+        for attempt in range(1, 5):
+            matches = sink.find(marker(branch))
+            if matches or attempt == 4:
+                break
+            time.sleep(2 * attempt)
+        result["marker_matches"] = sorted(issue["number"] for issue in matches)
+        if expected is None or result["marker_matches"] != [expected]:
+            result.update(status="blocked", reason="published_identity_not_unique")
     save(out / "publication_receipt.json", result)
     state = read(store)
     save(out / "research_state.json", state)

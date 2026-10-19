@@ -18,7 +18,7 @@ workflow 使用現有 GitHub standard runner、`contents: write` 與 `issues: wr
 namespace 上限為 2,000 個 records／5,000,000 canonical JSON bytes；snapshot 上限 20,000 bytes。達到上限會明確失敗，不自動刪除歷史。只有 `2330.TW`，新增標的須先擴充與驗證契約。
 
 - `snapshots/tw/2330.TW/<sha256>.json`：schema v1，immutable，checksum 覆蓋 evaluation cutoff、觀測時間、run identity、執行結果與精簡證據。
-- `subjects/tw/2330.TW.json`：latest observation、last-success、pending／published publication、固定 Issue number 的唯一 references。
+- `subjects/tw/2330.TW.json`：schema v2，latest observation、last-success、pending／published publication、固定 Issue number 與 creation_attempted 的唯一 owner。可讀既有 v1；下次 archive／ACK 升級為 v2。v1 未確認建立結果時視為曾嘗試，不能假設可以再次 POST。
 - `publications/tw/2330.TW/<sha256>.json`：固定頁面的 snapshot／last-success references、renderer version、body checksum、pending／superseded／acked 與 Issue identity。
 
 snapshot 與 pending 同 commit。latest 依觀測時間排序；last-success 沿用原報告 `complete` 的資料流程結果，不能當作財報／估值／建議已完成。晚到的舊 snapshot 不覆蓋較新的失敗結果；舊版 ACK 不清除新版 pending。
@@ -36,7 +36,7 @@ snapshot 與 pending 同 commit。latest 依觀測時間排序；last-success �
 
 固定 marker 包含 state branch／市場／標的。無已知 Issue 時掃描所有分頁的 open／closed Issues 對帳；只接受唯一 marker、受 owner 保存的 body checksum、open 且未 locked 的頁面。已知 Issue 被刪除、marker 移除、手動修改內容或出現重複 marker 時停止覆寫，保留 pending，交由人員確認 identity／內容。
 
-外部呼叫失敗或 timeout 一律不立即重送；可能已成功寫入。下次執行先找 marker／檢查 body，相同內容直接 ACK，避免再次建立。API 成功但 Git ACK 失敗時記 `ack_pending`；再次對帳可恢復。沒有承諾 exactly-once。
+建立前先在 Git 保存 creation_attempted；此外部結果不明的 fence 屬於 subject，換新版 snapshot 也會保留。外部呼叫失敗或 timeout 一律不立即重送；可能已成功寫入。下次執行先找 marker／檢查 body，相同內容直接 ACK。列表暫時沒有 marker 時保持 outcome_unknown，絕不把「尚未看到」解讀成「尚未建立」。recover process 對此狀況最多做四次對帳查詢，等待 2／4／6 秒，沒有第二次 POST；超過上限留待下次恢復。若建立實際未成功，仍需人員查證與明確修復 fence，不能自動清除。API 成功但 Git ACK 失敗時記 `ack_pending`；再次對帳可恢復。沒有承諾 exactly-once。
 
 Artifacts 包含 `snapshot.json`、`research_state.json`、保存／發布 receipt、`report.md`、`summary.md`；完整來源 report 只放 ephemeral temp directory。receipt 記錄 state commit、run URL、main／checkout 前後與 pending／Issue identity。validation、正式初始化、正式 live publication、自然 schedule 必須各自記錄證據。
 
