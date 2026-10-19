@@ -1,0 +1,90 @@
+name: Research publication acceptance
+on:
+  push:
+    paths:
+      - 'src/market_research/research_snapshot.py'
+      - 'scripts/research_*.py'
+      - 'tests/test_research_*.py'
+      - '.github/workflows/research-publication.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Validation branch recovery test, or manual production 2330 report'
+        type: choice
+        options: [validation, production]
+        default: validation
+      initialize_research:
+        description: 'Explicit first-time production research namespace initialization'
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  issues: write
+jobs:
+  validate:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'validation'
+    concurrency:
+      group: research-state-validation
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - name: Compact schema, real Git and external delivery regressions
+        run: uv run --no-sync pytest tests/test_research_snapshot.py tests/test_research_state.py tests/test_research_publication.py tests/test_research_github.py tests/test_research_runner.py
+      - name: Actual 2330 snapshot, uncertain reply and fresh-process recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --no-sync python -m scripts.research_publication --mode validation --out publication_validation
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f publication_validation/summary.md ]; then
+            cat publication_validation/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-publication-validation-${{ github.run_id }}
+          path: publication_validation/
+          retention-days: 14
+          if-no-files-found: warn
+  production:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'production'
+    concurrency:
+      group: research-publication-production
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv sync --locked
+      - name: Manual 2330 production publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INITIALIZE_RESEARCH: ${{ inputs.initialize_research }}
+        run: |
+          args=()
+          if [ "$INITIALIZE_RESEARCH" = "true" ]; then
+            args+=(--initialize)
+          fi
+          uv run --no-sync python -m scripts.research_publication --mode production "${args[@]}" --out publication_production
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f publication_production/summary.md ]; then
+            cat publication_production/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-publication-production-${{ github.run_id }}
+          path: publication_production/
+          retention-days: 14
+          if-no-files-found: warn

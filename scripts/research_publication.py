@@ -1,0 +1,137 @@
+"""2330 manual publication and isolated live recovery acceptance.
+
+Full provider inputs/report files live only in an ephemeral directory. Exported
+artifacts contain the validated compact research namespace and receipts only.
+"""
+import argparse
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+from market_research.research_snapshot import prepare_snapshot
+from scripts.company_report import run
+from scripts.research_github import GitHubResearchSink
+from scripts.research_state import SUBJECT, archive, initialize, publish, read, render_publication
+from scripts.state_store import GitStateStore
+
+
+def save(path, value):
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def recover(branch, out):
+    store = GitStateStore(branch=branch)
+    result = publish(GitHubResearchSink(os.environ["GITHUB_REPOSITORY"]), store)
+    save(out / "publication_receipt.json", result)
+    state = read(store)
+    save(out / "research_state.json", state)
+    subject = state["records"].get(SUBJECT)
+    if subject and subject["published_publication_id"]:
+        body = render_publication(state["records"], subject["published_publication_id"], branch)
+        (out / "report.md").write_text(body, encoding="utf-8")
+    if result["status"] not in ("published", "already_current"):
+        raise ValueError("Publication is still pending; inspect receipt before retry")
+    return result
+
+
+def execute(mode, bootstrap, out):
+    branch = "research-state-validation" if mode == "validation" else "research-state"
+    store = GitStateStore(branch=branch)
+    receipt = {"schema_version": 1, "acceptance": "failed", "mode": mode,
+               "scope": "2330 manual research snapshot / fixed publication; no schedule or diff acceptance",
+               "state_branch": branch, "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"}
+    try:
+        if mode == "production":
+            if (os.getenv("GITHUB_REF") != "refs/heads/main" or
+                    os.getenv("GITHUB_EVENT_NAME") != "workflow_dispatch"):
+                raise ValueError("Production publication requires explicit main dispatch")
+            if store.main_head() != os.environ["GITHUB_SHA"]:
+                raise ValueError("Production publication requires the latest main revision")
+        receipt["main_before"] = store.main_head()
+        receipt["checkout_before"] = store._git("rev-parse", "HEAD").stdout.strip()
+        if mode == "validation" or bootstrap:
+            receipt["initialization"] = initialize(store)
+        read(store)  # Never silently initialize ordinary production writes.
+        with tempfile.TemporaryDirectory(prefix="research-inputs-") as temp:
+            report = run("2330.TW", out=Path(temp))
+            snapshot = prepare_snapshot(report, {
+                "repository": os.environ["GITHUB_REPOSITORY"], "run_id": os.environ["GITHUB_RUN_ID"],
+                "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]), "code_sha": os.environ["GITHUB_SHA"],
+                "observed_at_utc": datetime.now(timezone.utc).isoformat(),
+            })
+        save(out / "snapshot.json", snapshot)
+        receipt["archive"] = archive(snapshot, store)
+        receipt["repeat"] = archive(snapshot, store)
+        if receipt["repeat"]["status"] != "already_current":
+            raise ValueError("Snapshot rerun was not idempotent")
+        before_publish = read(store)
+        receipt["snapshot_id"] = snapshot["id"]
+        receipt["pipeline_outcome"] = snapshot["execution"]["status"]
+        receipt["pending_saved_with_snapshot"] = bool(before_publish["records"][SUBJECT]["pending_publication_id"])
+        if mode == "validation":
+            class UncertainReply(GitHubResearchSink):
+                """Intentionally lose one successful external write reply."""
+                def create(self, title, body):
+                    super().create(title, body)
+                    raise TimeoutError("controlled reply loss after actual creation")
+                def update(self, number, body):
+                    super().update(number, body)
+                    raise TimeoutError("controlled reply loss after actual update")
+            receipt["uncertain_delivery"] = publish(UncertainReply(os.environ["GITHUB_REPOSITORY"]), store)
+            if (receipt["uncertain_delivery"]["status"] != "outcome_unknown" or
+                    not read(store)["records"][SUBJECT]["pending_publication_id"]):
+                raise ValueError("Expected a durable pending item after uncertain delivery")
+        # Fresh process uses the real adapter and independently fetches Git.
+        subprocess.run([sys.executable, "-m", "scripts.research_publication", "--recover-only",
+                        "--state-branch", branch, "--out", str(out.resolve())], check=True, timeout=180)
+        receipt["publication"] = json.loads((out / "publication_receipt.json").read_text())
+        final = json.loads((out / "research_state.json").read_text())
+        receipt["fresh_read_commit"] = final["head"]
+        if final["records"][SUBJECT]["pending_publication_id"]:
+            raise ValueError("Fresh process still sees pending publication")
+        receipt["main_after"] = store.main_head()
+        receipt["checkout_after"] = store._git("rev-parse", "HEAD").stdout.strip()
+        receipt["main_unchanged"] = receipt["main_before"] == receipt["main_after"]
+        receipt["checkout_unchanged"] = receipt["checkout_before"] == receipt["checkout_after"]
+        if not receipt["main_unchanged"] or not receipt["checkout_unchanged"]:
+            raise ValueError("Revision moved during acceptance; inspect before claiming passed")
+        receipt["acceptance"] = "passed"
+    except Exception as error:
+        receipt["error_type"] = type(error).__name__
+        raise
+    finally:
+        save(out / "receipt.json", receipt)
+        publication = receipt.get("publication", {})
+        (out / "summary.md").write_text(
+            f"## 2330 固定研究發布：{receipt['acceptance']}\n\n"
+            f"Mode：{mode}；pipeline：{receipt.get('pipeline_outcome', 'unknown')}\n\n"
+            f"固定報告：{publication.get('issue_url', '尚未確認；請看 publication_receipt.json')}\n\n"
+            "只驗收精簡證據保存、固定頁面與發布恢復；每日 schedule、前後差異、財報與估值另有工作範圍。\n",
+            encoding="utf-8")
+    return receipt
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("validation", "production"), default="validation")
+    parser.add_argument("--initialize", action="store_true")
+    parser.add_argument("--recover-only", action="store_true")
+    parser.add_argument("--state-branch", choices=("research-state", "research-state-validation"))
+    parser.add_argument("--out", type=Path, default=Path("research_publication"))
+    args = parser.parse_args()
+    args.out.mkdir(parents=True, exist_ok=True)
+    if args.recover_only:
+        if args.state_branch == "research-state" and (os.getenv("GITHUB_REF") != "refs/heads/main" or
+                os.getenv("GITHUB_EVENT_NAME") != "workflow_dispatch"):
+            raise ValueError("Production recovery requires explicit main dispatch")
+        recover(args.state_branch or "research-state-validation", args.out)
+    else:
+        execute(args.mode, args.initialize, args.out)
+
+
+if __name__ == "__main__":
+    main()
