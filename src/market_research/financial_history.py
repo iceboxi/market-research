@@ -3,7 +3,7 @@
 Amounts are kept in original USD, never scaled into millions. The original
 start/end dates, filing dates, taxonomy tags and accessions remain attached.
 """
-from datetime import date
+from datetime import date, datetime
 import math
 
 
@@ -139,4 +139,136 @@ def normalize_sec_history(raw, asof, source):
             "source": source,
         })
     result["annual_free_cash_flow"] = fcf
+    return result
+
+# F04-A: direct quarter observations, intentionally independent of FY/YTD facts.
+# Do not infer fiscal Q number from calendar dates or manufacture a fourth quarter.
+DIRECT_QUARTER_METRICS = {
+    "quarterly_revenue": ("USD", METRICS["annual_revenue"][1]),
+    "quarterly_gross_profit": ("USD", ("GrossProfit",)),
+    "quarterly_net_income": ("USD", METRICS["annual_net_income"][1]),
+    "quarterly_basic_eps": ("USD/shares", ("EarningsPerShareBasic",)),
+    "quarterly_diluted_eps": ("USD/shares", ("EarningsPerShareDiluted",)),
+    "quarterly_operating_cash_flow": ("USD", METRICS["annual_operating_cash_flow"][1]),
+    "quarterly_capex": ("USD", METRICS["annual_capex"][1]),
+}
+
+
+def direct_quarter_version_trace(raw, tags, unit, asof, source, limit=12):
+    """Read SEC-reported *direct* 75–106 day quarterly durations only.
+
+    "filed" is a date-only conservative eligibility bound, NOT a precise
+    publication timestamp. Caller owns issuer identity and its history.
+    No YTD subtraction, annual/FY inference or 10-K-based synthetic Q4.
+    """
+    if not isinstance(asof, date) or isinstance(asof, datetime):
+        raise TypeError("asof must be a date without a time-of-day")
+    if not 1 <= limit <= 32 or not tags:
+        raise ValueError("Invalid trace limit or concept candidates")
+    concepts = raw.get("facts", {}).get("us-gaap", {})
+    grouped = {}
+    conflicting_spans = set()
+    for priority, tag in enumerate(tags):
+        facts = concepts.get(tag, {}).get("units", {}).get(unit, [])
+        for row in facts:
+            if row.get("form") not in ("10-Q", "10-Q/A", "10-K", "10-K/A"):
+                continue
+            try:
+                start = date.fromisoformat(row["start"])
+                end = date.fromisoformat(row["end"])
+                filed = date.fromisoformat(row["filed"])
+                original_value = row["val"]
+                if isinstance(original_value, bool):
+                    continue
+                value = float(original_value)
+            except (KeyError, TypeError, ValueError, OverflowError):
+                continue
+            if (not 75 <= (end - start).days <= 106 or end > asof
+                    or filed < end or filed > asof or not math.isfinite(value)):
+                continue
+            accession = row.get("accn")
+            if not isinstance(accession, str) or not accession.strip():
+                continue
+            span = (start.isoformat(), end.isoformat())
+            key = (span, filed.isoformat(), accession, tag)
+            record = {
+                "value": value, "unit": unit, "period_start": span[0],
+                "period_end": span[1], "filed": filed.isoformat(),
+                "taxonomy_tag": tag, "accession": accession,
+                "form": row["form"], "source": source,
+            }
+            previous = grouped.get(key)
+            if previous is not None and (previous["value"] != value
+                                         or previous["form"] != record["form"]):
+                conflicting_spans.add(span)
+            else:
+                grouped[key] = record
+
+    spans = {}
+    for (span, _, _, _), record in grouped.items():
+        spans.setdefault(span, []).append(record)
+    traces = []
+    for span in sorted(set(spans) | conflicting_spans,
+                       key=lambda s: (s[1], s[0]), reverse=True)[:limit]:
+        versions = spans.get(span, [])
+        # Same-day distinct accessions cannot be ordered by date-only evidence.
+        # Competing taxonomy tags with different numbers in the same filing
+        # cannot be treated as interchangeable either.
+        by_day = {}
+        by_accession = {}
+        for item in versions:
+            by_day.setdefault(item["filed"], set()).add(item["accession"])
+            by_accession.setdefault((item["filed"], item["accession"]), set()).add(item["value"])
+        ambiguous = (span in conflicting_spans or
+                     any(len(ids) > 1 for ids in by_day.values()) or
+                     any(len(values) > 1 for values in by_accession.values()))
+        ranked = sorted(versions, key=lambda r: (
+            r["filed"], -tags.index(r["taxonomy_tag"]), r["accession"]), reverse=True)
+        traces.append({
+            "period_start": span[0], "period_end": span[1],
+            "status": "ambiguous_filing_versions" if ambiguous else "available",
+            "versions": ranked[:12], "version_count": len(versions),
+            "selected": ranked[0] if ranked and not ambiguous else None,
+            "availability_precision": "filing_date_only_not_intraday",
+            "publication_time_verified": False,
+            "first_seen_at": None,
+        })
+    return traces
+
+
+def normalize_sec_direct_quarters(raw, asof, source, limit=12):
+    """Separate, direct-only SEC quarterly evidence; no reporting/valuation wiring.
+
+    Exact fiscal start/end and accession are kept per value. Derived margin is
+    eligible only when both filing legs refer to the SAME period and accession.
+    """
+    result = {
+        "source": source, "asof": asof.isoformat(), "currency": "USD",
+        "period_type": "direct_quarter_only_no_ytd_derivation",
+        "quarterly_version_trace": {}, "gross_margin_pct": [],
+        "publication_time_verified": False,
+    }
+    for metric, (unit, tags) in DIRECT_QUARTER_METRICS.items():
+        trace = direct_quarter_version_trace(raw, tags, unit, asof, source, limit=limit)
+        result["quarterly_version_trace"][metric] = trace
+        result[metric] = [record["selected"] for record in trace
+                          if record["status"] == "available" and record["selected"] is not None]
+
+    revenues = {(r["period_start"], r["period_end"]): r
+                for r in result["quarterly_revenue"]}
+    for gross in result["quarterly_gross_profit"]:
+        key = (gross["period_start"], gross["period_end"])
+        revenue = revenues.get(key)
+        if (revenue is None or revenue["value"] <= 0 or
+                revenue["accession"] != gross["accession"] or
+                revenue["filed"] != gross["filed"] or
+                revenue["unit"] != gross["unit"]):
+            continue
+        result["gross_margin_pct"].append({
+            "value": round(100 * gross["value"] / revenue["value"], 2),
+            "unit": "percent", "period_start": key[0], "period_end": key[1],
+            "accession": gross["accession"], "filed": gross["filed"],
+            "derivation": "same_accession_gross_profit_divided_by_revenue",
+            "gross_profit": gross, "revenue": revenue, "source": source,
+        })
     return result
