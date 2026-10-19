@@ -44,6 +44,14 @@
 | 工作流程顯示成功但報告沒有完整買賣價 | 查看 `readiness`、`not_evaluated` 與來源證據；這是不同層級的 gate | Company report；相關研究 Issue |
 | 排程沒有發動 | 查看實際 `event=schedule` Run 及 [#14](https://github.com/iceboxi/market-research/issues/14) | EOD schedule watchdog（工程入口） |
 
+## 排程狀態怎麼看
+
+[EOD schedule watchdog](https://github.com/iceboxi/market-research/actions/workflows/watchdog.yml) 的 Summary 會列出觀測時間、判定中的 slot、grace、下一次預期排程（UTC 與臺灣時間），以及同時間 window 內最後成功的自然 job。`not_created` 表示回傳範圍內沒有對應 run，`queued` 是已建立但等待執行，`in_progress` 是尚未完成，`execution_failed` 是已結束但失敗。這些分類與資料來源健康分開；仍須查看 scan Artifact，確認實際市場、資料日期與 coverage。
+
+台股名目排程為臺灣平日 19:30；watchdog 名目排程為每日 12:15。兩者都可能延遲。2 小時 grace 只決定何時可判定 slot 過期，**不會安排在 grace 到期那刻執行檢查**。最近名目 slot 尚在 grace 內時，摘要會另外標示；下一次預期時間也不等於 GitHub 保證的開始時間。
+
+若長時間沒有新 Summary，請工程人員用唯讀入口 `python3 -m scripts.watchdog --repo iceboxi/market-research --probe --out schedule_output` 取得當下 JSON／Markdown feedback，核對 workflow 是否 active、default branch、cron 與真正的 `event=schedule` runs。未找到 run 時保留根因未確認，不能以手動或 push 綠燈替代自然驗收，也不要重做 baseline。此 probe 不寫 state 或 incident Issue；資料僅涵蓋 API 回傳範圍，實際市場仍需 Artifact 證實。
+
 ## GitHub 多 Agent 工作方式
 
 新功能以 [AGENTS.md](../AGENTS.md) / [GitHub Issue tracker](agents/issue-tracker.md) 為準。新 Agent 先確認最新 main、開啟的 PR 與 Issue 認領，再用獨立 branch、PR、GitHub Actions 驗收。可從 [交接 Issue #11](https://github.com/iceboxi/market-research/issues/11) 取得整體進度。避免將聊天紀錄當成唯一事實來源。
