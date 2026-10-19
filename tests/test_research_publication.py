@@ -106,3 +106,64 @@ def test_external_changes_or_uncertain_identity_fail_closed_and_keep_pending(rep
     assert response["status"] in ("blocked", "outcome_unknown")
     assert read(store)["records"][SUBJECT]["pending_publication_id"]
     assert sink.creates == 1 and sink.updates == 0
+
+
+def test_invisible_creation_is_not_repeated_even_after_a_new_snapshot(repo):
+    """Observed in real run 39343829651: Issue list lagged a successful POST."""
+    _, _, store = repo
+    setup(store)
+    class DelayedList(Sink):
+        visible = False
+        def find(self, marker):
+            return super().find(marker) if self.visible else []
+        def create(self, title, body):
+            assert read(store)["records"][SUBJECT]["creation_attempted"] is True
+            return super().create(title, body)
+    sink = DelayedList()
+    sink.timeout_after_write = True
+    assert publish(sink, store)["status"] == "outcome_unknown"
+    assert publish(sink, store)["reason"] == "marker_not_visible_after_attempt"
+    archive(prepare_snapshot(report("2026-10-20T12:00:00+00:00", False),
+                             identity("101", "2026-10-20T12:01:00+00:00")), store)
+    assert publish(sink, store)["reason"] == "marker_not_visible_after_attempt"
+    assert sink.creates == 1
+    sink.visible = True
+    sink.timeout_after_write = False
+    assert publish(sink, store)["status"] == "published"
+    assert read(store)["records"][SUBJECT]["issue_number"] == 901
+    assert sink.creates == 1 and sink.updates == 1
+
+
+def test_old_unconfirmed_subject_cannot_silently_assume_no_creation(repo):
+    _, _, store = repo
+    setup(store)
+    def downgrade(records):
+        records[SUBJECT]["schema_version"] = 1
+        records[SUBJECT].pop("creation_attempted")
+        return records
+    store.commit("research", downgrade)
+    sink = Sink()
+    assert publish(sink, store)["reason"] == "marker_not_visible_after_attempt"
+    assert sink.creates == 0
+
+
+def test_failed_ack_retains_creation_fence_and_recovers_without_another_post(repo):
+    import subprocess
+    from scripts.state_store import GitStateStore
+    checkout, _, store = repo
+    setup(store)
+    class RejectAck(GitStateStore):
+        pushes = 0
+        def _git(self, *args, **kwargs):
+            if args and args[0] == "push":
+                self.pushes += 1
+                if self.pushes > 1:  # persist intent, then reject all ACK retries
+                    return subprocess.CompletedProcess(args, 1, "", "rejected")
+            return super()._git(*args, **kwargs)
+    sink = Sink()
+    assert publish(sink, RejectAck(checkout))["status"] == "ack_pending"
+    subject = read(store)["records"][SUBJECT]
+    assert subject["creation_attempted"] and subject["pending_publication_id"]
+    assert subject["issue_number"] is None
+    assert publish(sink, store)["status"] == "published"
+    assert sink.creates == 1
