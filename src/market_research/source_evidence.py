@@ -27,7 +27,7 @@ def instrument_eligibility(issuer):
         raw_code = str(issuer.get("industry_code") or "").strip()
         code = raw_code.zfill(2) if raw_code else ""
         src = (issuer.get("profile") or {}).get("source")
-        if src != TW_PROFILE or not re.fullmatch(r"[0-9]{2}", code):
+        if src != TW_PROFILE or code == "00" or not re.fullmatch(r"[0-9]{2}", code):
             return _ineligible("unknown", "unknown", "TWSE industry or profile source unavailable", src)
         if code == TW_FINANCIAL_INDUSTRY:
             return _ineligible("financial_institution", "inapplicable",
