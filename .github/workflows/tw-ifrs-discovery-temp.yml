@@ -1,0 +1,33 @@
+name: Temporary TW IFRS official-source probe
+on:
+  push:
+    paths:
+      - 'scripts/tw_ifrs_discovery.py'
+      - 'tests/test_tw_ifrs_discovery.py'
+      - '.github/workflows/tw-ifrs-discovery-temp.yml'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - run: uv run --no-sync pytest tests/test_tw_ifrs_discovery.py
+      - name: Read-only live official-source discovery
+        run: uv run --no-sync python -m scripts.tw_ifrs_discovery --out ifrs_discovery_output
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f ifrs_discovery_output/source_probe.md ]; then cat ifrs_discovery_output/source_probe.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tw-ifrs-discovery-${{ github.run_id }}
+          path: ifrs_discovery_output/
+          retention-days: 14
+          if-no-files-found: warn
