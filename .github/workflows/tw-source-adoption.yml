@@ -1,0 +1,39 @@
+name: TW financial source adoption
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/tw_source_probe.py'
+      - 'tests/test_tw_source_probe.py'
+      - '.github/workflows/tw-source-adoption.yml'
+permissions:
+  contents: read
+jobs:
+  source-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --extra source-probe --locked
+      - name: Verify probe contracts and synthetic PDF integration
+        run: uv run --no-sync pytest tests/test_tw_source_probe.py
+      - name: Bounded anonymous live source probe
+        run: uv run --no-sync python -m scripts.tw_source_probe --out source_adoption_output
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f source_adoption_output/source_adoption.md ]; then
+            cat source_adoption_output/source_adoption.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tw-source-adoption-${{ github.run_id }}
+          path: |
+            source_adoption_output/source_adoption.json
+            source_adoption_output/source_adoption.md
+          retention-days: 14
+          if-no-files-found: warn

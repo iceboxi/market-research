@@ -19,6 +19,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
+source-probe = [
+    "pypdf>=6,<7",
+]
 
 [project.scripts]
 market-scan = "market_research.cli:main"
