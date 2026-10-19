@@ -205,3 +205,47 @@ An issuer-hosted PDF is a primary-source human-verification reference,
 **not** a substitution for a sanctioned structured acquisition route.
 Do not import PDF-extracted values into the production research engine,
 upgrade `not_evaluated`, or close F05/F06 on this evidence alone.
+
+
+## F05 offline XBRL structural checker (engineering-only)
+
+\`scripts/tw_xbrl_structure.py\` accepts an **already obtained** XBRL 2.1
+\`.xml\`, \`.xbrl\`, or ZIP holding one XML member. It performs **no network
+request or automated MOPS download**, and it is not a production adapter.
+Inputs are bounded to 4 MB; DTD/entities, path-traversal ZIP members and
+ambiguous ZIPs are rejected. Only UTF-8 XML is accepted.
+
+The operator must first inspect a real instance and the applicable taxonomy
+to provide the **source-observed issuer identifier scheme** and exact
+expanded \`{namespace}LocalName\` QName for one representative BS, IS and CF
+numeric fact. This tool deliberately does not guess these from labels or
+map a complete IFRS taxonomy. Example command with **synthetic placeholders,
+not actual Taiwan taxonomy QNames**:
+
+\`\`\`bash
+python -m scripts.tw_xbrl_structure \
+  --file /private/path/to/original-instance.xml \
+  --identifier 2330 \
+  --identifier-scheme https://REPLACE-WITH-OBSERVED-SCHEME \
+  --year 2024 \
+  --balance-sheet-concept '{https://REPLACE-WITH-ACTUAL-TAXONOMY}Assets' \
+  --income-concept '{https://REPLACE-WITH-ACTUAL-TAXONOMY}Revenue' \
+  --cash-flow-concept '{https://REPLACE-WITH-ACTUAL-TAXONOMY}CashFlows' \
+  --out /private/path/metadata-evidence.json
+\`\`\`
+
+The checker verifies matching issuer/scheme, full-year instant or duration
+contexts, declared unit refs and numeric lexical shape. Only input SHA-256,
+concept QNames, counts and structural flags are written, **never source
+document text or financial values**. Structural pass is named
+\`matched_supplied_qnames\`, while **\`source_acceptance\` always remains
+\`not_evaluated\`**, even when CLI exit status is zero.
+
+This limited probe **cannot** validate semantic taxonomy relationships,
+consolidated statement scope, financial correctness, amendment/version history,
+historical source availability, exact publication time or acquisition/reuse
+permission. It recognizes full-year FY2024 flows only; it cannot infer a
+standalone 2024-Q4 cash flow or automatically resolve a multi-document bundle.
+There is no license to check in real XBRL data to this public repository.
+Unit tests use fabricated \`test.invalid\` namespaces and cannot stand in for
+live 2330 acceptance. F05 stays \`needs-info\`; F06 remains blocked.
