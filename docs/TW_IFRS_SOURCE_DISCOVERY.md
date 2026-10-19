@@ -235,7 +235,13 @@ python -m scripts.tw_xbrl_structure \
 ```
 
 The checker verifies matching issuer/scheme, full-year instant or duration
-contexts, declared unit refs and numeric lexical shape. Only input SHA-256,
+contexts, numeric lexical shape, **non-dimensioned contexts**, unique matching
+fact candidates and a single ISO 4217 `TWD` monetary measure whose QName
+prefix is unambiguously bound to `http://www.xbrl.org/2003/iso4217`.
+A merely present `unitRef` is not sufficient. Mixed-currency, extra measure,
+duplicate matching facts and segment/scenario-specific contexts fail closed.
+Only **monetary facts** with the designated TWD unit are in scope; per-share,
+shares and pure ratios require a distinct, reviewed contract. Only input SHA-256,
 concept QNames, counts and structural flags are written, **never source
 document text or financial values**. Structural pass is named
 `matched_supplied_qnames`, while **`source_acceptance` always remains
