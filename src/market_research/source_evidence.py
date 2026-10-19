@@ -24,7 +24,8 @@ def instrument_eligibility(issuer):
     if not isinstance(identity, str) or not identity.strip():
         return _ineligible("unknown", "unknown", "Missing verified issuer identity", None)
     if market == "tw":
-        code = str(issuer.get("industry_code") or "").strip().zfill(2)
+        raw_code = str(issuer.get("industry_code") or "").strip()
+        code = raw_code.zfill(2) if raw_code else ""
         src = (issuer.get("profile") or {}).get("source")
         if src != TW_PROFILE or not re.fullmatch(r"[0-9]{2}", code):
             return _ineligible("unknown", "unknown", "TWSE industry or profile source unavailable", src)
@@ -96,7 +97,7 @@ def build_source_evidence(issuer, cutoff, retrieved_at=None):
         is_sec = market == "us"
         state, precision = (_availability(fact.get("filed"), cutoff) if is_sec else
                             ("current_snapshot_only", "unknown"))
-        if not is_sec and cutoff.astimezone(timezone.utc) < retrieved_at.astimezone(timezone.utc):
+        if not is_sec and cutoff.astimezone(timezone.utc).date() < retrieved_at.astimezone(timezone.utc).date():
             # Current TWSE snapshots cannot be replayed at a past as-of.
             state = "historical_availability_unverified"
         records.append(_record(fact, issuer, cutoff, retrieved_at, state, precision,
@@ -118,7 +119,8 @@ def build_source_evidence(issuer, cutoff, retrieved_at=None):
     unsafe = {"same_day_publication_unverified", "future_filing_not_available",
               "missing_filing_date", "invalid_filing_date",
               "historical_availability_unverified"}
-    source_status = "needs_availability_review" if states & unsafe else (
+    missing_source = any(r["source_status"] == "missing_source" for r in records)
+    source_status = "needs_availability_review" if states & unsafe or missing_source else (
         "review_only" if records else "no_fact_evidence")
     return {
         "schema_version": SCHEMA_VERSION,
