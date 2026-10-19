@@ -29,7 +29,7 @@ def original(start, end, value, accession, filed, **overrides):
 def direct(start, end, value, accession, filed, **overrides):
     return {**original(start, end, value, accession, filed, **overrides),
             "status": "direct_quarter_unverified", "source_acceptance": "not_evaluated",
-            "form": "10-Q", "publication_time_verified": False}
+            "form": overrides.get("form", "10-Q"), "publication_time_verified": False}
 
 
 Q1 = original("2024-01-01", "2024-03-31", 100, "q1", "2024-05-01")
@@ -159,8 +159,8 @@ def test_derived_cross_fiscal_calendar_fails():
 
 
 def test_direct_date_gap_and_overlap_and_duplicate_fails():
-    for start, end in [("2024-01-02", "2024-03-31"),
-                       ("2023-12-31", "2024-03-30")]:
+    for start, end in [("2024-01-01", "2024-03-30"),
+                       ("2024-01-01", "2024-04-01")]:
         chain = quarter_chain()
         chain[0] = {**chain[0], "period_start": start, "period_end": end}
         with pytest.raises(QuarterDerivationError):
