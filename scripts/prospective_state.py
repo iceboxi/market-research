@@ -4,10 +4,14 @@ Legacy records remain schema v1 and are never silently upgraded.
 The shared GitStateStore owns all Git operations and migration authority.
 """
 from datetime import date, datetime
+from hashlib import sha256
 import json
+from pathlib import Path
 import re
+import subprocess
 
 from scripts.state_store import GitStateStore, StateError, canonical
+from scripts.prospective_journal import fingerprint
 
 NAMESPACE = "prospective"
 ALLOWED = {
@@ -17,6 +21,59 @@ ALLOWED = {
     "observations", "abstained_count", "has_matured_forward_outcomes",
     "is_strategy_performance_evidence", "cohort_revision",
 }
+
+
+PROVIDER_FILES = (
+    "src/market_research/market_data.py",
+    "src/market_research/provider.py",
+    "src/market_research/twse.py",
+)
+CALENDAR_FILES = (
+    "src/market_research/market_calendar.py",
+    "uv.lock",
+)
+
+
+def _file_set_digest(repo, paths):
+    raw = b""
+    for relative in paths:
+        path = repo / relative
+        raw += relative.encode("utf-8") + b"\0" + path.read_bytes() + b"\0"
+    return sha256(raw).hexdigest()
+
+
+def runtime_revision(repo=Path("."), *, source_sha=None):
+    """Pin code/config/provider/calendar inputs from this exact checkout."""
+    repo = Path(repo)
+    if source_sha is None:
+        try:
+            source_sha = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+                capture_output=True, text=True, timeout=20,
+            ).stdout.strip()
+        except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired) as exc:
+            raise StateError("Cannot identify prospective source checkout") from exc
+    if not re.fullmatch(r"[a-f0-9]{40,64}", str(source_sha)):
+        raise StateError("Invalid prospective code SHA")
+    return {
+        "code_sha": source_sha,
+        "config_sha256": fingerprint(repo),
+        "provider_sha256": _file_set_digest(repo, PROVIDER_FILES),
+        "calendar_sha256": _file_set_digest(repo, CALENDAR_FILES),
+    }
+
+
+def verify_runtime(record, repo=Path(".")):
+    """Refuse an archive copied from another code/config checkout."""
+    if record.get("schema_version") != 2:
+        raise StateError("Only revision-pinned schema v2 receipts may be newly archived")
+    revision = runtime_revision(repo)
+    if record.get("cohort_revision") != revision:
+        raise StateError("Prospective run revision differs from active code/config/provider/calendar")
+    if record.get("freeze_hash") != revision["config_sha256"]:
+        raise StateError("Research freeze fingerprint does not match pinned config")
+    return revision
+
 
 
 def identity(record):
@@ -96,6 +153,16 @@ def append(record, store=None):
 
     def merge(records):
         validate(records)
+        # A new schema/revision cannot silently enter an existing frozen cohort.
+        # The user must explicitly approve a fresh config freeze to start one.
+        if record.get("schema_version") == 2:
+            freeze = record["freeze_hash"]
+            for prior in records.values():
+                if prior["freeze_hash"] != freeze:
+                    continue
+                if (prior.get("schema_version") != 2 or
+                        prior.get("cohort_revision") != record["cohort_revision"]):
+                    raise StateError("New prospective cohort approval required for revision change")
         old = records.get(location)
         if old is not None and canonical(old) != canonical(record):
             raise StateError("Immutable prospective session conflict: " + location)
