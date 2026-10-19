@@ -4,6 +4,7 @@ Publication time is never synthesized from a date-only SEC filing or a
 TWSE publication period. The analysis as-of and actual retrieval are distinct.
 """
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 import math
 import re
 
@@ -75,9 +76,10 @@ def _availability(filed, cutoff):
         day = date.fromisoformat(filed)
     except (ValueError, TypeError):
         return "invalid_filing_date", "unknown"
-    if day > cutoff.date():
+    sec_date = cutoff.astimezone(ZoneInfo("America/New_York")).date()
+    if day > sec_date:
         return "future_filing_not_available", "date_only"
-    if day == cutoff.date():
+    if day == sec_date:
         return "same_day_publication_unverified", "date_only"
     return "filed_before_cutoff_date_only", "date_only"
 
