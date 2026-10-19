@@ -15,11 +15,12 @@ import yaml
 from market_research.runner import run_scan
 from market_research.market_calendar import expected_complete_session
 from scripts.prospective_journal import FREEZE_DATE, fingerprint
+from scripts.prospective_state import runtime_revision
 from scripts.strategy_research import select_variant
 
 
 def collect(health, market, output, config_dir=Path("config"), now=None,
-            provider=None):
+            provider=None, revision_pinned=False):
     now = now or datetime.now(timezone.utc)
     if health.get("event") != "schedule" or health.get("health") != "healthy":
         raise ValueError("Only verified healthy scheduled scans can enter prospective study")
@@ -69,8 +70,12 @@ def collect(health, market, output, config_dir=Path("config"), now=None,
                          for r in quality["symbols"]}
         if expected_hashes != actual_hashes:
             raise ValueError("Production and research source hashes differ")
+        revision = runtime_revision() if revision_pinned else None
+        if revision_pinned and health.get("source_sha") != revision["code_sha"]:
+            raise ValueError("Production scan revision differs from prospective checkout SHA")
         receipt = {
-            "schema_version": 1, "kind": "prospective_observation_only",
+            "schema_version": 2 if revision_pinned else 1,
+            "kind": "prospective_observation_only",
             "freeze_date": FREEZE_DATE.isoformat(),
             "freeze_hash": fingerprint(),
             "observed_at_utc": now.isoformat(),
@@ -93,6 +98,10 @@ def collect(health, market, output, config_dir=Path("config"), now=None,
             "has_matured_forward_outcomes": False,
             "is_strategy_performance_evidence": False,
         }
+        if revision_pinned:
+            if receipt["freeze_hash"] != revision["config_sha256"]:
+                raise ValueError("Prospective config freeze differs from pinned revision")
+            receipt["cohort_revision"] = revision
         output = Path(output)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(receipt, indent=2, ensure_ascii=False,
@@ -105,9 +114,11 @@ def main():
     p.add_argument("--market", required=True, choices=["tw", "us"])
     p.add_argument("--health", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--revision-pinned", action="store_true")
     args = p.parse_args()
     health = json.loads(args.health.read_text(encoding="utf-8"))
-    result = collect(health, args.market, args.out)
+    result = collect(health, args.market, args.out,
+                     revision_pinned=args.revision_pinned)
     print("Prospective observations:", len(result["observations"]),
           "abstentions:", result["abstained_count"], "no future labels")
 
