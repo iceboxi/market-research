@@ -164,3 +164,44 @@ documented lawful acquisition and reuse, durable version history (or an
 explicit prospective-only first-seen contract), validated no-lookahead and
 remote acceptance evidence. This procedure alone meets **none** of those
 release gates; keep Issue #34 open / `needs-info`.
+
+## 2330 FY2024 audited consolidated statements — independently observed issuer source
+
+**Evidence level:** A real first-party, auditor-reviewed financial-report PDF
+containing all three consolidated statements was reviewed on 2026-10-19.
+This is **not** proof of an XBRL instance, official machine API, re-use
+permission or point-in-time publication timestamp.
+
+Primary source: [TSMC Investor Relations — 2024 Q4 Consolidated Financial Statements
+(Chinese PDF, 124 pages)](https://investor.tsmc.com/sites/ir/financial-report/2024/TSMC%202024Q4%20Consolidated%20Financial%20Statements_C.pdf).
+
+| Observed dimension | First-party report evidence | Limitation |
+| --- | --- | --- |
+| Reporting entity | Cover identifies Taiwan Semiconductor Manufacturing Company Limited (2330) and subsidiaries | Not XBRL entity identifier verification |
+| Report periods | 2024 and 2023 annual comparative consolidated financial statements | FY2024 annual cash-flow/income periods must not be mislabeled as **standalone 2024-Q4** |
+| Scope | Consolidated, company and subsidiaries | Do not join separate-company TWSE/OpenAPI values without scope checks |
+| Balance sheet | Report page 8 (2024/12/31 and 2023/12/31) | Point-in-time stock values, not quarter flow |
+| Comprehensive income | Report pages 9–11 | Annual intervals and related comprehensive-income information |
+| Cash flow | Report pages 13–15 | **Annual cumulative** flow, not independent Q4 quarter-only flow |
+| Units | Report statements use **NT$ thousands**, except per-share items | Preserve per-field/per-statement unit; no silent millions/billions |
+| Board approval | Report notes state board approval on 2025-02-12 | Board approval is not an observed exact public release timestamp |
+| Auditing | Independent auditors' report accompanies consolidated statements | Does not supply XBRL file/version or history of prior corrections |
+
+The original PDF and page contents were inspected, rather than inferring
+statement availability from a query form or HTTP 200 landing page.
+This establishes a useful **three-statement audited-document benchmark** for
+future F06 fixtures and source comparison. The requested `2024-Q4` selector
+corresponds to the **fiscal year-end reporting season** for these audited
+annual flows; never re-label annual operating cash flow / annual revenue as
+quarter-only values. A standalone Q4 flow would require compatible YTD Q3
+and full-year values at a specified publication cutoff, with matching scope,
+identity, adjustments and evidence.
+
+**Still blocked:** official 2330/ROC 113 Q4 XBRL instance file/identifier,
+tag-to-statement and taxonomy confirmation, original vs amended filing
+lineage, historically evidenced availability/first-seen timestamps,
+authorization for automated acquisition, retention and redistribution.
+An issuer-hosted PDF is a primary-source human-verification reference,
+**not** a substitution for a sanctioned structured acquisition route.
+Do not import PDF-extracted values into the production research engine,
+upgrade `not_evaluated`, or close F05/F06 on this evidence alone.
