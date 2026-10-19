@@ -41,3 +41,12 @@ inspected in the run Artifact.
 
 No event observation is automatically a trading instruction, news sentiment
 prediction or full-fidelity historical market event replay.
+
+## Concurrent work and restore safety
+
+Unrelated PR merges may advance main while a watch is archiving. The archive
+records before/after main and an unchanged analysis checkout; it does not claim
+that other Agents are forbidden from merging. Production bootstrap is stricter:
+the legacy import proof and final main revision must match the dispatched SHA.
+Restore requires a fresh, empty output directory to prevent stale local baseline
+files being mistaken for canonical state.

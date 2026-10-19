@@ -93,6 +93,8 @@ def archive(proposed_root, store=None, run_url=None):
                "persistence_status": "not_attempted", "main_before": None,
                "main_after": None, "eligible": 0}
     try:
+        checkout_before = store._git("rev-parse", "HEAD").stdout.strip()
+        receipt["code_sha"] = checkout_before
         receipt["main_before"] = store.main_head()
         source = Path(proposed_root)
         proposed = {}
@@ -133,8 +135,14 @@ def archive(proposed_root, store=None, run_url=None):
         receipt.update(saved)
         receipt.update(stage="verify_main_after", main_after=store.main_head(),
                        persistence_status=saved["status"])
-        if receipt["main_before"] != receipt["main_after"]:
-            raise StateError("Main changed during persistence; manual review required")
+        # A different agent may merge to main during this run. That does not
+        # mean this writer changed main; protect our *analysis checkout* and
+        # expose the concurrent main movement in the receipt instead.
+        checkout_after = store._git("rev-parse", "HEAD").stdout.strip()
+        receipt["checkout_unchanged"] = checkout_before == checkout_after
+        receipt["main_advanced_externally"] = receipt["main_before"] != receipt["main_after"]
+        if not receipt["checkout_unchanged"]:
+            raise StateError("Analysis checkout changed during event persistence")
         receipt["skipped"] = dict(skipped)
         receipt["status"] = "partial" if skipped else saved["status"]
         receipt["stage"] = "complete"

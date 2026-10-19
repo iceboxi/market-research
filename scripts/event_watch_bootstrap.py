@@ -15,7 +15,13 @@ def bootstrap(out):
     if store.main_head() != os.getenv("GITHUB_SHA"):
         raise ValueError("Main moved; verify code revision before migration")
     result = initialize_events(store)
-    return {"status": "initialized", **result}
+    imported = result["authority"]["legacy_import"]["source_sha"]
+    if imported != os.environ["GITHUB_SHA"]:
+        raise ValueError("Migration source moved during bootstrap; inspect state authority")
+    current_main = store.main_head()
+    if current_main != os.environ["GITHUB_SHA"]:
+        raise ValueError("Main advanced during migration; manually verify authority")
+    return {"status": "initialized", "main_after": current_main, **result}
 
 
 def main():

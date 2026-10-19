@@ -9,6 +9,8 @@ from scripts.event_watch_archive import event_state
 def restore(out):
     state = event_state()
     root = Path(out)
+    if root.exists() and any(root.iterdir()):
+        raise ValueError("Restore output must be empty to prevent stale baseline reuse")
     for key, snapshot in state["records"].items():
         target = root / key.removeprefix("event_state/")
         target.parent.mkdir(parents=True, exist_ok=True)
