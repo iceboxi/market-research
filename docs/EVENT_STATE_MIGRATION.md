@@ -11,9 +11,11 @@ No full financials, price histories or disclosure bodies are committed.
 
 Explicit one-time migration from the tracked legacy main `event_state` prefix:
 disable the existing **Official disclosure watch** workflow and wait for any
-in-flight jobs to finish **before merging** the new implementation. Once the
-PR is merged, run the separate **Official event state bootstrap** workflow on
-main with `confirm_migration=true`. The bootstrap script checks (via GitHub
+in-flight jobs to finish **before starting the production migration**.
+PR #15 has already been merged, but this does not mean its event namespace was
+bootstrapped. After deploying this bootstrap-isolation fix to main, run the
+separate **Official event state bootstrap** workflow on main with
+`confirm_migration=true`. The bootstrap script checks (via GitHub
 API) that the old event-watch workflow remains manually disabled, has no
 unfinished runs, and that the main revision matches `GITHUB_SHA`. After a
 successful Artifact inspection, re-enable Official disclosure watch and run
