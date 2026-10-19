@@ -104,7 +104,7 @@ def twse_fundamentals(symbol, get=json_get):
                 output["warnings"].append("TWSE monthly revenue is unavailable for this issuer")
         else:
             output["warnings"].append("TWSE monthly revenue not uniquely identified")
-    except (httpx.HTTPError, ValueError, KeyError) as exc:
+    except (httpx.HTTPError, ValueError, KeyError, OSError) as exc:
         output["warnings"].append("TWSE monthly revenue unavailable: "+type(exc).__name__)
     output["warnings"].append(
         "TWSE profile + monthly revenue do not constitute audited financial statements"
