@@ -1,0 +1,45 @@
+name: Prospective state bootstrap
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_migration:
+        description: 'I have disabled EOD market scan and confirmed no unfinished writer runs'
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: prospective-state-bootstrap
+  cancel-in-progress: false
+jobs:
+  bootstrap:
+    if: github.ref == 'refs/heads/main' && inputs.confirm_migration == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - name: Validate prospective metadata and isolated Git migrations
+        run: uv run --no-sync pytest tests/test_prospective_state.py tests/test_prospective_state_git.py tests/test_prospective_bootstrap.py
+      - name: Explicit migration, fresh read, and main SHA verification
+        run: uv run --no-sync python -m scripts.prospective_bootstrap --out prospective_bootstrap_output
+      - name: Publish bootstrap receipt
+        if: always()
+        run: |
+          if [ -f prospective_bootstrap_output/receipt.json ]; then
+            cat prospective_bootstrap_output/receipt.json >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prospective-bootstrap-${{ github.run_id }}
+          path: prospective_bootstrap_output/
+          retention-days: 14
+          if-no-files-found: error
