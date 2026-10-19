@@ -10,11 +10,17 @@ No full financials, price histories or disclosure bodies are committed.
 ## Production bootstrap
 
 Explicit one-time migration from the tracked legacy main `event_state` prefix:
-pause the previous event-watch workflow and wait for any in-flight jobs to
-finish before deploying/cutting over. Deploy the PR-reviewed implementation
-and use **Official disclosure watch → Run workflow → main →
-bootstrap_events=true**. The bootstrap script checks both main event context
-and matching `GITHUB_SHA` before importing. The real remote namespace must
+disable the existing **Official disclosure watch** workflow and wait for any
+in-flight jobs to finish **before starting the production migration**.
+PR #15 has already been merged, but this does not mean its event namespace was
+bootstrapped. After deploying this bootstrap-isolation fix to main, run the
+separate **Official event state bootstrap** workflow on main with
+`confirm_migration=true`. The bootstrap script checks (via GitHub
+API) that the old event-watch workflow remains manually disabled, has no
+unfinished runs, and that the main revision matches `GITHUB_SHA`. After a
+successful Artifact inspection, re-enable Official disclosure watch and run
+it twice manually. The bootstrap uses a separate workflow specifically to
+avoid requiring a disabled event watcher to launch its own migration. The real remote namespace must
 not already have a conflicting owner or corrupt data.
 
 Subsequent normal dispatches and scheduled runs **never** bootstrap. The
