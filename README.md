@@ -43,6 +43,19 @@ price bases. Do not directly compare raw Taiwanese prices to adjusted US
 prices or treat unadjusted Taiwan prices as corporate-action-neutral.
 
 
+
+## GitHub Actions：日常操作入口（Remote-first）
+
+**日常只需要認識 3 個入口**；其他驗收／回測／初始化工作流程是工程工具，不代表必須每天手動操作。完整的操作步驟、報告下載方式與失敗排查見 [Actions 操作指南](docs/ACTIONS_OPERATIONS_GUIDE.md)。
+
+| 你要做的事 | GitHub Actions 入口 | 執行方式 |
+| --- | --- | --- |
+| 每日盤後掃描、產生候選名單 | [EOD market scan](https://github.com/iceboxi/market-research/actions/workflows/scan.yml) | 排程；必要時可 Run workflow |
+| 指定股票研究，如 `2330.TW`、`AAPL` | [On-demand company research](https://github.com/iceboxi/market-research/actions/workflows/company-research.yml) | 手動 Run workflow |
+| 追蹤官方重大公告是否變更 | [Official disclosure watch](https://github.com/iceboxi/market-research/actions/workflows/event-watch.yml) | 排程；**首次正式啟用前必須完成 Issue #9 遷移驗收** |
+
+**目前部署注意：** [Issue #9](https://github.com/iceboxi/market-research/issues/9) 的事件 state Bootstrap 程式已修復，但正式遷移／連續兩次真實觀察尚未驗收，勿直接啟用或當成已經正常監控。[Issue #14](https://github.com/iceboxi/market-research/issues/14) 另行驗證真正的自然排程。 [Issue #28](https://github.com/iceboxi/market-research/issues/28) 負責 Actions／Branch 的收斂；[逐項盤點](docs/WORKFLOW_BRANCH_AUDIT.md) 保留技術驗收與必要的 state 分支，不以刪到特定數字為目標。
+
 ## Run with GitHub Actions
 
 - **Unit tests** workflow runs on push and pull request.
