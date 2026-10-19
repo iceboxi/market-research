@@ -20,7 +20,7 @@ def xml(*, identifier="2330", balance_date="2024-12-31", start="2024-01-01",
         hide_cash=False, cash_unit="TWD"):
     return f'''<?xml version="1.0" encoding="UTF-8"?>
     <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"
-      xmlns:t="{NS}">
+      xmlns:t="{NS}" xmlns:iso4217="http://www.xbrl.org/2003/iso4217">
       <xbrli:context id="BS"><xbrli:entity><xbrli:identifier scheme="{scheme}">{identifier}</xbrli:identifier></xbrli:entity>
         <xbrli:period><xbrli:instant>{balance_date}</xbrli:instant></xbrli:period></xbrli:context>
       <xbrli:context id="FY"><xbrli:entity><xbrli:identifier scheme="{scheme}">{identifier}</xbrli:identifier></xbrli:entity>
@@ -133,3 +133,55 @@ def test_nonnumeric_nil_and_empty_facts_do_not_count():
 def test_utf16_encoded_xml_rejected():
     with pytest.raises(UnsafeInstance):
         check(xml().decode("utf-8").encode("utf-16"))
+
+
+def test_empty_or_wrong_currency_unit_fails_closed():
+    valid = xml().decode("utf-8")
+    # Existing unitRef is not enough; measure must be ISO4217:TWD.
+    unit = '<xbrli:measure>iso4217:TWD</xbrli:measure>'
+    for invalid in ('<xbrli:measure>iso4217:USD</xbrli:measure>',
+                    '<xbrli:measure>iso4217:TWD</xbrli:measure><xbrli:measure>iso4217:TWD</xbrli:measure>',
+                    ''):
+        assert check(valid.replace(unit, invalid).encode("utf-8"))[
+            "structural_verdict"] == "not_verified"
+
+
+def test_fake_iso4217_prefix_rejected():
+    valid = xml().decode("utf-8")
+    forged = valid.replace('http://www.xbrl.org/2003/iso4217',
+                           'https://test.invalid/fake-iso4217')
+    assert check(forged.encode("utf-8"))["structural_verdict"] == "not_verified"
+
+
+@pytest.mark.parametrize("place", ["scenario", "segment"])
+def test_dimensioned_context_is_not_a_issuer_wide_fact(place):
+    valid = xml().decode("utf-8")
+    if place == "scenario":
+        marker = '<xbrli:period><xbrli:startDate>'
+        changed = valid.replace(
+            '</xbrli:period></xbrli:context>',
+            '</xbrli:period><xbrli:scenario><custom:member xmlns:custom="https://test.invalid/dim">A</custom:member></xbrli:scenario></xbrli:context>',
+            1,
+        )
+        # First context is a balance-sheet instant; its extra scenario rejects it.
+    else:
+        changed = valid.replace(
+            '</xbrli:entity>',
+            '<xbrli:segment><custom:member xmlns:custom="https://test.invalid/dim">A</custom:member></xbrli:segment></xbrli:entity>',
+            1,
+        )
+    assert check(changed.encode("utf-8"))["structural_verdict"] == "not_verified"
+
+
+def test_repeated_valid_fact_fails_closed_even_when_values_match():
+    valid = xml().decode("utf-8")
+    repeated = '<t:AssetSample contextRef="BS" unitRef="TWD">12345</t:AssetSample>'
+    assert repeated in valid
+    assert check(valid.replace(repeated, repeated + repeated).encode("utf-8"))[
+        "structural_verdict"] == "not_verified"
+
+
+def test_valid_single_twd_unit_accepted():
+    report = check(xml())
+    assert report["valid_twd_unit_count"] == 1
+    assert report["structural_verdict"] == "matched_supplied_qnames"
