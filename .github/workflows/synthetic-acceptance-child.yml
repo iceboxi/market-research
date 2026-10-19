@@ -1,0 +1,46 @@
+name: Synthetic acceptance child
+run-name: synthetic-acceptance-${{ inputs.correlation }}
+on:
+  workflow_dispatch:
+    inputs:
+      correlation:
+        required: true
+        type: string
+      expected_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  emit:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Produce immutable synthetic receipt
+        env:
+          CORRELATION: ${{ inputs.correlation }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          assert os.environ['GITHUB_SHA'] == os.environ['EXPECTED_SHA'], 'Child SHA changed'
+          root = Path('synthetic_child')
+          root.mkdir()
+          (root / 'receipt.json').write_text(json.dumps({
+            'schema_version': 1,
+            'kind': 'synthetic_remote_acceptance',
+            'correlation': os.environ['CORRELATION'],
+            'code_sha': os.environ['GITHUB_SHA'],
+            'coverage': 'synthetic_only',
+            'result': 'passed',
+          }) + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-contract-${{ inputs.correlation }}
+          path: synthetic_child/receipt.json
+          retention-days: 14
+          if-no-files-found: error
