@@ -1,0 +1,45 @@
+name: Official event state bootstrap
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_migration:
+        description: 'I have manually disabled Official disclosure watch and checked active runs'
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: official-event-watch-bootstrap
+  cancel-in-progress: false
+jobs:
+  bootstrap:
+    if: github.ref == 'refs/heads/main' && inputs.confirm_migration == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - name: Verify paused writer then migrate event state
+        run: uv run --no-sync python -m scripts.event_watch_bootstrap --out event_bootstrap_output
+      - name: Summarize migration
+        if: always()
+        run: |
+          if [ -f event_bootstrap_output/bootstrap_receipt.json ]; then
+            cat event_bootstrap_output/bootstrap_receipt.json >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: official-event-bootstrap-${{ github.run_id }}
+          path: event_bootstrap_output/
+          retention-days: 14
+          if-no-files-found: error
