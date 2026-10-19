@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
+      PROSPECTIVE_STATE_MODE: ${{ vars.PROSPECTIVE_STATE_MODE || 'legacy' }}
       SCAN_MARKET: ${{ github.event_name == 'schedule' && (github.event.schedule == '30 11 * * 1-5' && 'tw' || 'us') || inputs.market || 'both' }}
     steps:
       - uses: actions/checkout@v4
@@ -94,15 +95,28 @@ jobs:
         run: python3 scripts/monitor.py alert --report output/health_report.json --repo "$GITHUB_REPOSITORY"
       - name: Collect prospective research observations
         if: github.event_name == 'schedule' && steps.scan.outcome == 'success'
-        run: uv run --no-sync python -m scripts.prospective_observe --market "$SCAN_MARKET" --health output/health_report.json --out prospective_receipt.json
-      - name: Archive immutable prospective observation receipt
-        if: github.event_name == 'schedule' && steps.scan.outcome == 'success'
+        run: |
+          if [ "$PROSPECTIVE_STATE_MODE" = canonical ]; then
+            uv run --no-sync python -m scripts.prospective_observe --market "$SCAN_MARKET" --health output/health_report.json --out prospective_receipt.json --revision-pinned
+          elif [ "$PROSPECTIVE_STATE_MODE" = legacy ]; then
+            uv run --no-sync python -m scripts.prospective_observe --market "$SCAN_MARKET" --health output/health_report.json --out prospective_receipt.json
+          else
+            echo 'Unsupported prospective state mode. Refusing archive.' >&2
+            exit 1
+          fi
+      - name: Archive immutable prospective observation receipt (legacy)
+        if: github.event_name == 'schedule' && steps.scan.outcome == 'success' && env.PROSPECTIVE_STATE_MODE == 'legacy'
         run: python3 scripts/prospective_archive.py --receipt prospective_receipt.json
+      - name: Archive immutable prospective observation receipt (canonical)
+        if: github.event_name == 'schedule' && steps.scan.outcome == 'success' && env.PROSPECTIVE_STATE_MODE == 'canonical'
+        run: uv run --no-sync python -m scripts.prospective_state_archive --receipt prospective_receipt.json --out prospective_state_receipt.json
       - name: Upload prospective metadata receipt
         if: always() && github.event_name == 'schedule'
         uses: actions/upload-artifact@v4
         with:
           name: prospective-${{ env.SCAN_MARKET }}-${{ github.run_id }}
-          path: prospective_receipt.json
+          path: |
+            prospective_receipt.json
+            prospective_state_receipt.json
           if-no-files-found: ignore
           retention-days: 14
