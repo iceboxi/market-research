@@ -92,3 +92,118 @@ def test_rejected_push_fails_explicitly(repo, tmp_path):
     with chdir(checkout), pytest.raises(EventArchiveError) as caught:
         archive(proposal(tmp_path, snapshot(["tw-material-b"])), GitStateStore(checkout))
     assert caught.value.receipt["status"] == "failed"
+
+
+def test_reject_unapproved_fields_bad_source_and_oversized_ids(repo, tmp_path):
+    from scripts.event_watch_archive import validate_records
+    checkout, bare, _ = repo
+    original = snapshot(["tw-material-a"])
+    key = "event_state/tw/2330.TW.json"
+    for altered in (
+        {**original, "headline": "Do not store disclosure text"},
+        {**original, "source": "https://untrusted.example/news"},
+        {**original, "seen_ids": ["tw-material-" + str(i) for i in range(2001)]},
+        {**original, "observed_at_utc": "2026-10-19T12:00:00"},
+        {**original, "seen_ids": ["tw-material-duplicate"] * 2},
+    ):
+        with pytest.raises(StateError):
+            validate_records({key: altered})
+    assert git("rev-parse", "main", cwd=bare) == repo[2]
+
+
+def test_valid_us_source_contract_and_bad_sec_url():
+    from scripts.event_watch_archive import validate_records
+    good = build_snapshot("AAPL", "us", {
+        "status": "available", "coverage": "recent_SEC_submissions_metadata_only",
+        "source": "https://data.sec.gov/submissions/CIK0000320193.json",
+        "events": [{"event_id": "sec-0000320193-26-000111"}],
+    }, datetime(2026, 10, 19, 12, tzinfo=timezone.utc))
+    validate_records({"event_state/us/AAPL.json": good})
+    with pytest.raises(StateError):
+        validate_records({"event_state/us/AAPL.json":
+                          {**good, "source": "https://dataXsec.gov/submissions/CIK0000320193.json"}})
+
+
+def test_conflicting_single_symbol_does_not_block_healthy_peer(repo, tmp_path):
+    checkout, bare, _ = repo
+    proposals = tmp_path / "split"
+    (proposals / "tw").mkdir(parents=True)
+    (proposals / "tw/2330.TW.json").write_text(json.dumps(snapshot(["tw-material-old"], day=18)))
+    another = build_snapshot("2317.TW", "tw", {
+        "status": "available", "coverage": "recent_daily_snapshot_only_not_a_full_history",
+        "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+        "events": [{"event_id": "tw-material-new"}],
+    }, datetime(2026, 10, 19, 12, tzinfo=timezone.utc))
+    (proposals / "tw/2317.TW.json").write_text(json.dumps(another))
+    with chdir(checkout):
+        result = archive(proposals, GitStateStore(checkout))
+        assert result["status"] == "partial"
+        assert result["skipped"].keys() == {"event_state/tw/2330.TW.json"}
+        actual = event_state(GitStateStore(checkout))["records"]
+        assert actual["event_state/tw/2330.TW.json"]["seen_ids"] == ["tw-material-a"]
+        assert actual["event_state/tw/2317.TW.json"]["seen_ids"] == ["tw-material-new"]
+
+
+def test_real_git_race_remerges_healthy_other_symbol(repo, tmp_path):
+    checkout, bare, main_sha = repo
+    first = proposal(tmp_path, snapshot(["tw-material-b"]))
+    competing = tmp_path / "competing"
+    (competing / "tw").mkdir(parents=True)
+    independent = build_snapshot("2317.TW", "tw", {
+        "status": "available", "coverage": "recent_daily_snapshot_only_not_a_full_history",
+        "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+        "events": [{"event_id": "tw-material-competitor"}],
+    }, datetime(2026, 10, 19, 12, tzinfo=timezone.utc))
+    (competing / "tw/2317.TW.json").write_text(json.dumps(independent))
+    class RaceStore(GitStateStore):
+        raced = False
+        def _git(self, *args, **kwargs):
+            if args and args[0] == "push" and not self.raced:
+                self.raced = True
+                success = archive(competing, GitStateStore(checkout))
+                assert success["status"] == "archived"
+            return super()._git(*args, **kwargs)
+    with chdir(checkout):
+        response = archive(first, RaceStore(checkout))
+        assert response["attempts"] == 2
+        state = event_state(GitStateStore(checkout))
+        assert set(state["records"]) == {
+            "event_state/tw/2330.TW.json",
+            "event_state/tw/2317.TW.json",
+        }
+        assert state["records"]["event_state/tw/2330.TW.json"]["seen_ids"] == [
+            "tw-material-a", "tw-material-b"]
+        assert git("rev-parse", "main", cwd=bare) == main_sha
+
+
+def test_partial_watch_source_still_proposes_healthy_symbol(tmp_path, monkeypatch):
+    from scripts.event_watch import watch
+    import yaml
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(yaml.safe_dump({"symbols": [
+        {"market": "tw", "symbol": "2330.TW"},
+        {"market": "tw", "symbol": "2317.TW"},
+    ]}))
+    def fake(symbol, now, get):
+        if symbol == "2330.TW":
+            return {"source": "TWSE", "status": "unavailable",
+                    "coverage": "not_verified", "events": []}
+        return {"source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+                "status": "available",
+                "coverage": "recent_daily_snapshot_only_not_a_full_history",
+                "events": [{"event_id": "tw-material-good"}]}
+    monkeypatch.setattr("scripts.event_watch.tw_material_events", fake)
+    output = tmp_path / "output"
+    result = watch(cfg, tmp_path / "state", output,
+                   now=datetime(2026, 10, 19, 12, tzinfo=timezone.utc))
+    assert result["status"] == "partial"
+    assert not (output / "proposed_state/tw/2330.TW.json").exists()
+    assert (output / "proposed_state/tw/2317.TW.json").exists()
+
+
+def test_bootstrap_blocked_outside_main_dispatch(tmp_path, monkeypatch):
+    from scripts.event_watch_bootstrap import bootstrap
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/feature")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    with pytest.raises(ValueError):
+        bootstrap(tmp_path)
