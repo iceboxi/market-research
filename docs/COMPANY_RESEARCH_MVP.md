@@ -1,6 +1,6 @@
 # On-demand company research — MVP
 
-Use [On-demand company research](https://github.com/iceboxi/market-research/actions/workflows/company-research.yml) → **Run workflow** → enter a single stock code (e.g. `2330.TW`, `AAPL`). The workflow runs tests, loads public issuer fundamentals and completed daily bars, evaluates all ten Sakata research variants, and uploads `report.md` + `report.json` as a 14-day Artifact. Triggering it does not alter the EOD watchlist or activate any strategy.
+Use [On-demand company research](https://github.com/iceboxi/market-research/actions/workflows/company-research.yml) → **Run workflow** → enter a single stock code (e.g. `2330.TW`, `AAPL`). The workflow runs tests, loads public issuer fundamentals and completed daily bars, evaluates all ten Sakata research variants, and uploads `report.md`, `report.json` and `run_receipt.json` as a 14-day Artifact. Triggering it does not alter the EOD watchlist or activate any strategy.
 
 The [first live TW verification](https://github.com/iceboxi/market-research/actions/runs/39059979742) succeeded using the TWSE public-company profile and monthly revenue services. On 2026-10-18 local time, its price section used the completed 2026-10-16 daily session. The research report is **preliminary**: issuer identification, the available revenue snapshot and reproducible technical observations. It is not the complete financial/valuation investment memo previously envisioned.
 
@@ -22,3 +22,13 @@ The [first live TW verification](https://github.com/iceboxi/market-research/acti
 The on-demand command is `uv run --no-sync python -m scripts.company_report --symbol 2330.TW --out company_output`.
 
 The workflow currently supports only one ticker per run and does not change the curated scheduled 22-symbol universe. A green Run means the **data/report pipeline** worked, not that an investment thesis or valuation has been verified.
+
+## 執行摘要與 run receipt
+
+`report.md` 頂端的執行摘要分開列出公司身分、基本面數值、行情與官方事件的狀態、來源日期／範圍及處理方向，另列年度財報、估值與交易計畫的 readiness。行情過期會明確顯示；缺值不補零，缺少年度財報或模型時不產生買賣價格。
+
+`run_receipt.json`（schema version 1）同時內嵌於 `report.json` 的 `run_receipt`，包含 execution、source coverage、research readiness 與輸出檔名。`report.json` 維持 schema version 4；legacy `complete` 仍只表示公司名稱存在且技術資料可用，因此即使 execution 為 `completed`，其他研究項目仍可能是 `unavailable` 或 `not_evaluated`。行情新鮮度需另看 `source_coverage.technical.freshness`。
+
+台股 profile timeout、無唯一 issuer、月營收缺失、行情失敗或事件 coverage 不明，會在報告中保留其他仍可用的部分。公司身分未確認時只顯示輸入 ticker；CLI 在 legacy `complete=false` 時仍以非零狀態結束，既有 workflow 的 Summary 與 Artifact 步驟會保留已產生的報告。若 runner 或依賴無法啟動，則沒有報告可供承諾，須從 Actions log 診斷。
+
+本入口的長期研究保存與通知投遞均標示 `not_attempted`；14 天 Artifact 不代表已建立可比較的 research snapshot。台股入口不需要 `SEC_USER_AGENT`。

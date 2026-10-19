@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 import re
 
+import httpx
 import yaml
 
-from market_research.fundamentals import sec_fundamentals, twse_fundamentals
+from market_research.fundamentals import TW_PROFILE, sec_fundamentals, twse_fundamentals
 from market_research.market_data import load_daily_bars
 from market_research.provider import RoutedDailyProvider
 from market_research.strategies import get_strategy
@@ -28,6 +29,83 @@ def classify(symbol):
         return symbol, "us"
     raise ValueError("Provide TWSE-listed 2330.TW or US ticker such as AAPL")
 
+def build_run_receipt(result):
+    issuer, technical = result["issuer"], result["technical"]
+    feed = result["official_events"]
+    identified = bool(issuer.get("company_name"))
+    facts = issuer.get("facts", [])
+    stale = any(w.get("reason") == "stale_history_allowed_for_research"
+                for w in technical.get("warnings", []))
+    return {
+        "schema_version": 1, "symbol": result["symbol"], "market": result["market"],
+        "evaluation_cutoff_utc": result["generated_utc"],
+        "execution": {"status": "completed" if result["complete"] else "partial",
+                      "legacy_complete": result["complete"]},
+        "source_coverage": {
+            "issuer_profile": {
+                "status": "available" if identified else "unavailable",
+                "source": issuer["profile"]["source"],
+                "date": issuer["profile"].get("reported_at"),
+                "error_type": (issuer.get("source_error") or {}).get("type"),
+                "reason": None if identified else "公司身分未確認；請檢查 TWSE 公司資料來源後重跑。",
+            },
+            "reported_fundamentals": {
+                "status": "available" if facts else "unavailable" if identified else "not_attempted",
+                "periods": sorted({str(f.get("period_end") or f.get("period"))
+                                   for f in facts if f.get("period_end") or f.get("period")}),
+                "warnings": issuer.get("warnings", []),
+                "reason": None if facts else "本次沒有可用的基本資料數值；請核對來源與資料期別。",
+            },
+            "technical": {
+                "status": technical["status"], "source": technical.get("source"),
+                "session": technical.get("last_session"),
+                "freshness": "stale" if stale else "unknown" if technical["status"] == "unavailable" else "current",
+                "warnings": technical.get("warnings", []), "errors": technical["errors"],
+                "reason": "行情資料過期；請核對最新完成交易日與來源更新狀態。" if stale else
+                          "部分行情或技術檢查失敗；請核對來源與資料日期後重跑。"
+                          if technical["status"] != "available" else None,
+            },
+            "official_events": {
+                "status": feed["status"], "source": feed.get("source"),
+                "snapshot_date": feed.get("snapshot_date"), "coverage": feed["coverage"],
+                "reason": feed.get("reason"),
+            },
+        },
+        "research_readiness": result["research_readiness"]["components"],
+        "persistence": {"status": "not_attempted"},
+        "delivery": {"status": "not_attempted"},
+        "artifacts": {"report_json": "report.json", "report_markdown": "report.md",
+                      "run_receipt": "run_receipt.json"},
+    }
+
+
+def render_run_summary(receipt):
+    def cell(value):
+        return str(value if value is not None else "—").replace("|", "/").replace("\n", " ")
+    sources = receipt["source_coverage"]
+    rows = (
+        ("公司身分", "issuer_profile", sources["issuer_profile"]["date"]),
+        ("基本資料數值", "reported_fundamentals", ", ".join(sources["reported_fundamentals"]["periods"]) or None),
+        ("行情與技術", "technical", sources["technical"]["session"]),
+        ("官方事件", "official_events", sources["official_events"]["snapshot_date"] or sources["official_events"]["coverage"]),
+    )
+    lines = ["", "## 執行摘要", "",
+             "本次資料流程：**" + receipt["execution"]["status"] + "**",
+             "評估時間 (UTC)：" + receipt["evaluation_cutoff_utc"], "",
+             "| 資料項目 | 狀態 | 日期／範圍 | 原因與下一步 |",
+             "| --- | --- | --- | --- |"]
+    for label, key, period in rows:
+        source = sources[key]
+        lines.append(f"| {label} | {source['status']} | {cell(period)} | {cell(source['reason'])} |")
+    lines += ["", "| 研究項目 | 準備度 | 原因 |", "| --- | --- | --- |"]
+    for label, key in (("年度財報", "financial"), ("估值", "valuation"), ("交易計畫", "trade_plan")):
+        state = receipt["research_readiness"][key]
+        lines.append(f"| {label} | {state['status']} | {cell(state['reason'])} |")
+    lines += ["", "長期研究保存：not_attempted；通知投遞：not_attempted。",
+              "本次結果保存在報告檔與執行紀錄；後續比較與通知需另行完成。"]
+    return lines
+
+
 def run(symbol, out=Path("company_output"), now=None, provider=None,
         facts_get=None, sec_user_agent=None, config_dir=ROOT/"config"):
     symbol, market = classify(symbol)
@@ -36,7 +114,16 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         raise ValueError("now requires timezone")
     if market == "tw":
         kwargs = {"get":facts_get} if facts_get else {}
-        issuer = twse_fundamentals(symbol, **kwargs)
+        try:
+            issuer = twse_fundamentals(symbol, **kwargs)
+        except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
+            # The requested ticker is known; issuer identity was not verified.
+            issuer = {
+                "symbol": symbol, "market": market, "company_name": None,
+                "profile": {"source": TW_PROFILE}, "facts": [],
+                "source_error": {"type": type(exc).__name__},
+                "warnings": ["TWSE company profile unavailable: " + type(exc).__name__],
+            }
     else:
         kwargs = {"user_agent":sec_user_agent, "evaluated_at":now}
         if facts_get:
@@ -113,11 +200,11 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
            "US SEC annual XBRL tag conventions vary by issuer",
            "Analytical closes and pattern matches are not executable trading prices",
            "No company competitive-analysis, validated intrinsic valuation or independent forward strategy evidence"]}
+    result["run_receipt"] = build_run_receipt(result)
     out=Path(out)
     out.mkdir(parents=True,exist_ok=True)
-    (out/"report.json").write_text(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False)+"\n")
     lines=[f"# {issuer.get('company_name') or symbol} — {symbol}","",
-       "Preliminary source-grounded research, **not an investment recommendation**.","",
+       "Preliminary source-grounded research, **not an investment recommendation**."] + render_run_summary(result["run_receipt"]) + ["",
        f"Generated (UTC): {result['generated_utc']}",
        f"Company source: {issuer['profile']['source']}","","## Reported fundamentals","",
        "| Metric | Value and original unit | Period | Source |",
@@ -157,6 +244,8 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     lines += ["","## Limitations",""]
     lines.extend("- "+w for w in issuer["warnings"]+result["limitations"])
     (out/"report.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+    (out/"report.json").write_text(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False)+"\n",encoding="utf-8")
+    (out/"run_receipt.json").write_text(json.dumps(result["run_receipt"],indent=2,ensure_ascii=False,allow_nan=False)+"\n",encoding="utf-8")
     return result
 
 def main():
