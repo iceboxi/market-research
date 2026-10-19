@@ -15,7 +15,7 @@ def response(url):
     if "t187ap07" in url:
         data = [{"公司代號": "2330", "資產總額": "DO_NOT_PERSIST"}]
         return 200, json.dumps(data).encode(), "application/json"
-    return 200, b"<html><form><input name='code'></form>現金流量表</html>", "text/html"
+    return 200, "<html><form><input name='code'></form>現金流量表</html>".encode("utf-8"), "text/html"
 
 
 def test_current_openapi_rows_are_not_claimed_as_full_three_statement_history():
