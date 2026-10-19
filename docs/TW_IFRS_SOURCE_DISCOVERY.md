@@ -85,10 +85,16 @@ It refines the outstanding F05 gates without changing F06 readiness.
 - [MOPS official XBRL taxonomy page](https://mopsov.twse.com.tw/mops/web/t203sb03):
   review applicable taxonomy/version before comparing element concepts across
   periods. Entry page availability is not a confirmed original report version.
-- [TWSE MOPS user operation manual, ROC 113 / October 2024](https://mops.twse.com.tw):
-  use the official site's XBRL document-download instructions and menu paths
-  for interactive reproduction. The guide establishes user-interface workflows,
-  not machine API terms.
+- [TWSE MOPS user operation manual, ROC 113 / October 2024](https://dsp.twse.com.tw/public/static/downloads/announcement/official/R-1130603962-1.pdf),
+  section V, printed page 28: describes entering the XBRL platform, selecting
+  single-company/bulk/taxonomy download, and viewing or downloading a chosen
+  quarter. This establishes a user-interface workflow, **not** machine API terms.
+- The live [MOPS taxonomy download index](https://mopsov.twse.com.tw/mops/web/t203sb03)
+  currently labels `tifrs-20200630.zip` for 2020 Q2 through 2025 Q4;
+  the displayed publication date is **2025-08-15**. This is an index label,
+  not evidence that the same taxonomy archive/version was available on an
+  earlier 2024 as-of date. Preserve the original file identity and historical
+  first-seen evidence separately before any retrospective use.
 
 These links are **navigation leads**; link availability, returned data,
 required interaction and permission must be rechecked at validation time.
