@@ -1,0 +1,36 @@
+name: Correlated remote acceptance
+on:
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+concurrency:
+  group: synthetic-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv lock --check
+      - run: uv sync --extra dev --locked
+      - run: uv run --no-sync pytest tests/test_acceptance_gate.py
+      - name: Dispatch child, correlate exact SHA and verify downloaded receipt
+        run: uv run --no-sync python -m scripts.acceptance_gate --out remote_acceptance
+      - name: Publish receipt summary
+        if: always()
+        run: |
+          if [ -f remote_acceptance/summary.md ]; then cat remote_acceptance/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: correlated-remote-acceptance-${{ github.run_id }}
+          path: remote_acceptance/
+          retention-days: 14
+          if-no-files-found: warn
