@@ -201,7 +201,13 @@ class GitStateStore:
                         dest.write_text(json.dumps(value, indent=2, sort_keys=True,
                                                    ensure_ascii=False, allow_nan=False) + "\n",
                                         encoding="utf-8")
-                    self._git("add", "--", namespace, MANIFEST, cwd=worktree)
+                    # A deliberate migration may import zero legacy records.
+                    # Git cannot stage an empty directory; the manifest alone
+                    # is authoritative for a zero-record namespace.
+                    stage_paths = [MANIFEST]
+                    if updated:
+                        stage_paths.append(namespace)
+                    self._git("add", "--", *stage_paths, cwd=worktree)
                     self._git(*BOT, "commit", "-m", "state: update " + namespace, cwd=worktree)
                     saved = self._git("rev-parse", "HEAD", cwd=worktree).stdout.strip()
                     context["candidate_commit"] = saved
