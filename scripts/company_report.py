@@ -15,6 +15,8 @@ from market_research.valuation import evaluate_valuation
 from market_research.company_analysis import compare_financials, research_status, render_financial_research
 from market_research.price_context import analyze_price_context, render_price_context
 from market_research.event_risk import tw_material_events, evaluate_events, render_events
+from market_research.source_evidence import (instrument_eligibility, build_source_evidence,
+                                             validate_valuation_inputs, render_evidence)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -82,12 +84,31 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
             SEC_SUBMISSIONS.format(cik=int(issuer["cik"])), "SEC filing feed not retrieved"
         )
     event_risk = evaluate_events(event_feed, now)
+    eligibility = instrument_eligibility(issuer)
+    evidence = build_source_evidence(issuer, now)
+    source_gate = validate_valuation_inputs(issuer, now)
     valuation = evaluate_valuation(issuer, now.date())
+    if valuation["status"] == "illustrative_only" and (
+        eligibility["status"] != "candidate_for_nonfinancial_research" or
+        source_gate["status"] != "date_only_prior_filing"
+    ):
+        valuation = {
+            "status": "not_evaluated", "method": None, "fair_value_scenarios": None,
+            "entry_zone": None, "stop_loss": None, "target_price": None,
+            "why": "Research eligibility or source provenance gate incomplete",
+        }
     financial = compare_financials(issuer, now.date())
     readiness = research_status(financial, valuation, technical)
-    result={"schema_version":3,"report_type":"preliminary_company_research",
+    readiness["instrument_status"] = eligibility["status"]
+    readiness["source_evidence_status"] = evidence["status"]
+    readiness["valuation_source_gate"] = source_gate["status"]
+    readiness["trade_plan_status"] = "not_evaluated"
+    readiness["source_ready_for_recommendation"] = False
+    result={"schema_version":4,"report_type":"preliminary_company_research",
         "symbol":symbol,"market":market,"generated_utc":now.astimezone(timezone.utc).isoformat(),
         "issuer":issuer,"technical":technical,
+        "instrument_eligibility":eligibility,
+        "source_evidence":evidence,
         "financial_comparison":financial,"research_readiness":readiness,
         "official_events":event_feed, "event_risk":event_risk,
         "valuation":valuation,
@@ -124,6 +145,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         lines.extend(render_price_context(technical["price_context"]))
     lines.extend(render_financial_research(financial, readiness))
     lines.extend(render_events(event_feed, event_risk))
+    lines.extend(render_evidence(eligibility, evidence, source_gate))
     lines += ["","## Valuation and entry/exit plan",""]
     v = result["valuation"]
     if v["status"] == "illustrative_only":

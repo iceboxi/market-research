@@ -189,10 +189,16 @@ def sec_fundamentals(symbol, asof, get=json_get, user_agent=None, evaluated_at=N
         sic_raw = str(submission.get("sic") or "").strip()
         sic = int(sic_raw) if re.fullmatch(r"[0-9]{4}", sic_raw) else None
         output["industry"] = {"sic": sic, "source": submission_url}
+        forms = (submission.get("filings") or {}).get("recent", {}).get("form", [])
+        output["instrument_evidence"] = {
+            "source": submission_url,
+            "recent_form_types": sorted(set(x for x in forms if isinstance(x, str))) if isinstance(forms, list) else [],
+        }
         if sic is None:
             output["warnings"].append("SEC SIC classification unavailable; valuation blocked")
     except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as exc:
         output["industry"] = {"sic": None, "source": SEC_SUBMISSIONS.format(cik=cik)}
+        output["instrument_evidence"] = {"source": None, "recent_form_types": []}
         output["event_feed"] = unknown(SEC_SUBMISSIONS.format(cik=cik), "SEC submission metadata unavailable")
         output["warnings"].append("SEC industry classification unavailable: "+type(exc).__name__)
     output["warnings"].append(
