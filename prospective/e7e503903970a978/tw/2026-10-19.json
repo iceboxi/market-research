@@ -1,0 +1,193 @@
+{
+  "abstained_count": 20,
+  "freeze_date": "2026-10-18",
+  "freeze_hash": "e7e503903970a978c5e4ada419b51c5342b434cfdd6ff12611c3800eeb860db2",
+  "has_matured_forward_outcomes": false,
+  "is_strategy_performance_evidence": false,
+  "kind": "prospective_observation_only",
+  "market": "tw",
+  "observations": [
+    {
+      "confirmed_date": "2026-10-19",
+      "strategy_id": "sakata_three_mountains_triple_top",
+      "strategy_version": "0.1.0",
+      "symbol": "2382.TW"
+    },
+    {
+      "confirmed_date": "2026-10-19",
+      "strategy_id": "sakata_three_mountains_head_shoulders",
+      "strategy_version": "0.1.0",
+      "symbol": "2382.TW"
+    }
+  ],
+  "observed_at_utc": "2026-10-19T17:41:01.834669+00:00",
+  "run_id": "39295999337",
+  "scanned_symbols": 10,
+  "schema_version": 1,
+  "session_date": "2026-10-19",
+  "source_provenance": [
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "5b6a36672addc47153a04a33f4e805692359440ccbd7a07cf24d6fea25ae1de8",
+      "symbol": "2330.TW"
+    },
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "d974cf36628aa6c486943725d6914bb403987465176eec990168e66099ede556",
+      "symbol": "2303.TW"
+    },
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "dd8b30b7c762fd79967897a943162038e56ee3c0c43b0f5ab2fa84a01e2a8204",
+      "symbol": "2454.TW"
+    },
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "196810ed4056895dd847213135c2343ff15f81871e515f8eca2baa55bc105081",
+      "symbol": "2317.TW"
+    },
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "a29547ec18968c0028adfaae5ee2481daea7997047f2d6b48d06aa6f03335e5c",
+      "symbol": "2382.TW"
+    },
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "b7f8a58660c84a0ae42fc97ace29ff6e60cb0bff107337a17aa41ccac61ae59b",
+      "symbol": "2308.TW"
+    },
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "1ef7f5d04293bdb72e48a6ca89aca2c198d7a979d2f49d29e99fe7a3041092c0",
+      "symbol": "3711.TW"
+    },
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "6fef4c814e44b3a98f493763952a58f67f7b341bf5861db90a1987f71c4e53a5",
+      "symbol": "2881.TW"
+    },
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "2513a8bde082b1ee60b2acb14dce4907dff5e16e8de42f0ef33c8947edba481d",
+      "symbol": "2882.TW"
+    },
+    {
+      "date": "2026-10-19",
+      "market": "tw",
+      "sha256": "144fa6f9c424e3492d8b480050908f7c9fb95183ff4a8d34487fcca6841789ee",
+      "symbol": "2891.TW"
+    }
+  ],
+  "source_scan_run": "https://github.com/iceboxi/market-research/actions/runs/39295999337",
+  "strategy_versions": [
+    {
+      "id": "sakata_morning_star",
+      "params": {
+        "first_body_to_range_min": 0.6,
+        "prior_decline_min_pct": 2.0,
+        "prior_trend_bars": 5,
+        "star_to_first_body_max": 0.3,
+        "third_body_to_range_min": 0.5,
+        "third_recovery_of_first_body_min": 0.5
+      },
+      "version": "0.1.0"
+    },
+    {
+      "id": "sakata_evening_star",
+      "params": {
+        "first_body_to_range_min": 0.6,
+        "prior_rise_min_pct": 2.0,
+        "prior_trend_bars": 5,
+        "star_to_first_body_max": 0.3,
+        "third_body_to_range_min": 0.5,
+        "third_reversal_of_first_body_min": 0.5
+      },
+      "version": "0.1.0"
+    },
+    {
+      "id": "sakata_black_three_crows",
+      "params": {
+        "max_lower_shadow_to_range": 0.25,
+        "min_body_to_range": 0.5,
+        "prior_rise_min_pct": 2.0,
+        "prior_trend_bars": 5
+      },
+      "version": "0.1.0"
+    },
+    {
+      "id": "sakata_rising_three_methods",
+      "params": {
+        "final_body_to_range_min": 0.5,
+        "impulse_body_to_range_min": 0.6,
+        "middle_body_to_first_body_max": 0.5,
+        "prior_trend_bars": 5,
+        "prior_trend_min_pct": 2.0
+      },
+      "version": "0.1.0"
+    },
+    {
+      "id": "sakata_falling_three_methods",
+      "params": {
+        "final_body_to_range_min": 0.5,
+        "impulse_body_to_range_min": 0.6,
+        "middle_body_to_first_body_max": 0.5,
+        "prior_trend_bars": 5,
+        "prior_trend_min_pct": 2.0
+      },
+      "version": "0.1.0"
+    },
+    {
+      "id": "sakata_three_gaps_up",
+      "params": {
+        "minimum_full_gap_pct": 0.2,
+        "prior_trend_bars": 5,
+        "prior_trend_min_pct": 2.0
+      },
+      "version": "0.1.0"
+    },
+    {
+      "id": "sakata_three_gaps_down",
+      "params": {
+        "minimum_full_gap_pct": 0.2,
+        "prior_trend_bars": 5,
+        "prior_trend_min_pct": 2.0
+      },
+      "version": "0.1.0"
+    },
+    {
+      "id": "sakata_three_mountains_triple_top",
+      "params": {
+        "max_pattern_bars": 90,
+        "min_peak_separation_bars": 3,
+        "neckline_break_min_pct": 0.2,
+        "peak_tolerance_pct": 5.0,
+        "pivot_side_bars": 2,
+        "prior_rise_min_pct": 2.0,
+        "prior_trend_bars": 5
+      },
+      "version": "0.1.0"
+    },
+    {
+      "id": "sakata_three_mountains_head_shoulders",
+      "params": {
+        "max_pattern_bars": 90,
+        "min_peak_separation_bars": 3,
+        "neckline_break_min_pct": 0.2,
+        "peak_tolerance_pct": 5.0,
+        "pivot_side_bars": 2,
+        "prior_rise_min_pct": 2.0,
+        "prior_trend_bars": 5
+      },
+      "version": "0.1.0"
+    }
+  ]
+}
