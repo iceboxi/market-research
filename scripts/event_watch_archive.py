@@ -110,14 +110,21 @@ def archive(proposed_root, store=None, run_url=None):
                            persistence_status="unchanged", main_after=store.main_head())
             return receipt
 
+        skipped = {}
+
         def merge(records):
+            # This callback runs again after a concurrent fast-forward race.
+            # Decide eligibility against the latest state, never the stale
+            # state originally restored by the watcher.
             validate_records(records)
             result = dict(records)
+            skipped.clear()
             for key, candidate in proposed.items():
                 prior = records.get(key)
                 change, merged = compare_snapshots(prior, candidate)
                 if merged is None:
-                    raise StateError("Incompatible event baseline: " + key + ": " + change["reason"])
+                    skipped[key] = change["reason"]
+                    continue
                 result[key] = merged
             return validate_records(result)
 
@@ -128,6 +135,8 @@ def archive(proposed_root, store=None, run_url=None):
                        persistence_status=saved["status"])
         if receipt["main_before"] != receipt["main_after"]:
             raise StateError("Main changed during persistence; manual review required")
+        receipt["skipped"] = dict(skipped)
+        receipt["status"] = "partial" if skipped else saved["status"]
         receipt["stage"] = "complete"
         return receipt
     except (StateError, OSError, ValueError, TypeError, KeyError) as error:
@@ -146,6 +155,9 @@ def main():
         url = ("https://github.com/" + os.getenv("GITHUB_REPOSITORY", "") +
                "/actions/runs/" + os.getenv("GITHUB_RUN_ID", ""))
         receipt = archive(args.proposed, run_url=url)
+        if receipt["status"] == "partial":
+            raise EventArchiveError({**receipt,
+                                     "error": "Some event keys could not be safely persisted"})
     except EventArchiveError as error:
         receipt = error.receipt
         raise
