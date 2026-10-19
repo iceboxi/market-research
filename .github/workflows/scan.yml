@@ -93,6 +93,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/monitor.py alert --report output/health_report.json --repo "$GITHUB_REPOSITORY"
+      - name: Verify exclusive prospective writer after migration
+        if: github.event_name == 'schedule' && steps.scan.outcome == 'success'
+        run: uv run --no-sync python -m scripts.prospective_cutover_guard --mode "$PROSPECTIVE_STATE_MODE"
       - name: Collect prospective research observations
         if: github.event_name == 'schedule' && steps.scan.outcome == 'success'
         run: |
