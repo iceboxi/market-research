@@ -56,3 +56,24 @@ that other Agents are forbidden from merging. Production bootstrap is stricter:
 the legacy import proof and final main revision must match the dispatched SHA.
 Restore requires a fresh, empty output directory to prevent stale local baseline
 files being mistaken for canonical state.
+
+## Empty legacy event history (Run #39196950385)
+
+The former main branch may contain **zero** `event_state/` files, as in
+[failed Bootstrap #39196950385](https://github.com/iceboxi/market-research/actions/runs/39196950385).
+Git does not store empty directories; the old `GitStateStore.commit` ran
+`git add events` even though no such files existed. The corrected writer
+stages the `.state-store.json` manifest alone for a verified zero-record
+initialization. This is safe *only* through the explicitly gated bootstrap.
+
+A successful bootstrap with zero legacy events creates an `events`
+authority with `record_count=0`, an import source SHA and SHA-256 checksum
+in the `research-state/.state-store.json` manifest. The `events/` directory
+will not appear in the Git tree until the first validated event is saved;
+**do not interpret its absence as an uninitialized namespace**. Inspect the
+manifest and successful bootstrap receipt before re-enabling the watcher.
+
+Keep Official disclosure watch disabled until the fix has passed PR tests,
+merged into main, and the controlled bootstrap has succeeded. If a failed
+attempt left a partial or corrupt authority, stop and inspect the authority
+rather than reinitializing or erasing state.
