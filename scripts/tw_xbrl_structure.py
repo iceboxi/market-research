@@ -7,6 +7,7 @@ The caller must supply *exact* expanded XML QNames from a reviewed taxonomy.
 
 import argparse
 import hashlib
+import io
 import json
 from pathlib import Path
 import re
@@ -16,6 +17,7 @@ from zipfile import BadZipFile, ZipFile
 
 XBRLI = "http://www.xbrl.org/2003/instance"
 XSI = "http://www.w3.org/2001/XMLSchema-instance"
+ISO4217 = "http://www.xbrl.org/2003/iso4217"
 
 
 def _tag(local):
@@ -81,6 +83,22 @@ def _context_identity(context):
     return ((identifier.text or "").strip(), identifier.get("scheme"))
 
 
+def _nondimensional_context(context):
+    """Avoid treating segment- or scenario-specific numbers as issuer-wide facts."""
+    return (context.find(f"./{_tag('entity')}/{_tag('segment')}") is None
+            and context.find(_tag("scenario")) is None)
+
+
+def _valid_twd_unit(unit, namespace_bindings):
+    """Only accept a single ISO-4217 TWD measure with an unambiguous prefix."""
+    if len(unit) != 1 or unit[0].tag != _tag("measure"):
+        return False
+    measure = (unit[0].text or "").strip()
+    prefix, separator, currency = measure.partition(":")
+    return (bool(prefix) and separator == ":" and currency == "TWD"
+            and namespace_bindings.get(prefix) == {ISO4217})
+
+
 def _period_matches(context, statement, year):
     period = context.find(_tag("period"))
     if period is None:
@@ -124,6 +142,11 @@ def inspect_instance(raw, *, identifier, identifier_scheme, year, concepts):
         raise UnsafeInstance("Root must be XBRL 2.1 xbrli:xbrl, not HTML/iXBRL")
     if sum(1 for _ in root.iter()) > MAX_XML_ELEMENTS:
         raise UnsafeInstance("XML exceeds bounded element count")
+    # ElementTree resolves element QNames but preserves measure QName text as-is.
+    # Reject prefix redeclarations with conflicting namespace URIs.
+    namespace_bindings = {}
+    for _, (prefix, uri) in ET.iterparse(io.BytesIO(raw), events=("start-ns",)):
+        namespace_bindings.setdefault(prefix, set()).add(uri)
 
     context_elements = [child for child in root if child.tag == _tag("context")]
     unit_elements = [child for child in root if child.tag == _tag("unit")]
@@ -135,14 +158,16 @@ def inspect_instance(raw, *, identifier, identifier_scheme, year, concepts):
             duplicate_contexts.add(key)
         else:
             contexts[key] = context
-    units = set()
+    units = {}
     duplicate_units = set()
     for unit in unit_elements:
         key = unit.get("id")
         if not key or key in units:
             duplicate_units.add(key)
         else:
-            units.add(key)
+            units[key] = unit
+    valid_twd_units = {key for key, unit in units.items()
+                       if key not in duplicate_units and _valid_twd_unit(unit, namespace_bindings)}
 
     checks = {}
     for statement, qname in qnames.items():
@@ -156,9 +181,11 @@ def inspect_instance(raw, *, identifier, identifier_scheme, year, concepts):
                 continue
             if _context_identity(context) != (identifier, identifier_scheme):
                 continue
+            if not _nondimensional_context(context):
+                continue
             if not _period_matches(context, statement, year):
                 continue
-            if not unit_id or unit_id not in units or unit_id in duplicate_units:
+            if not unit_id or unit_id not in valid_twd_units:
                 continue
             # Check lexical shape without returning or persisting the value.
             # XML schema/taxonomy validation is intentionally NOT performed.
@@ -168,7 +195,9 @@ def inspect_instance(raw, *, identifier, identifier_scheme, year, concepts):
             if not re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value):
                 continue
             matched.append(context_id)
-        checks[statement] = {"matching_fact_count": len(matched), "matched": bool(matched)}
+        # Two same-QName facts in the same eligible context are ambiguous,
+        # even when their lexical values happen to agree.
+        checks[statement] = {"matching_fact_count": len(matched), "matched": len(matched) == 1}
 
     structural = all(checks[k]["matched"] for k in STATEMENTS) and not duplicate_contexts and not duplicate_units
     return {
@@ -183,6 +212,7 @@ def inspect_instance(raw, *, identifier, identifier_scheme, year, concepts):
         "unit_count": len(unit_elements),
         "duplicate_context_ids": bool(duplicate_contexts),
         "duplicate_unit_ids": bool(duplicate_units),
+        "valid_twd_unit_count": len(valid_twd_units),
         "structural_verdict": "matched_supplied_qnames" if structural else "not_verified",
         "source_acceptance": "not_evaluated",
         "consolidation_scope_verified": False,
@@ -193,6 +223,8 @@ def inspect_instance(raw, *, identifier, identifier_scheme, year, concepts):
         "limitations": [
             "Synthetic QName evidence cannot establish complete statements or taxonomy semantics",
             "Financial fact values are never returned; only structural fact counts",
+            "Monetary fact candidates require a uniquely bound ISO4217:TWD unit",
+            "Dimensioned contexts and repeated matching fact candidates fail closed",
             "A valid period/context does not prove consolidated rather than separate-company scope",
             "No source, amendment history, publication time or reuse rights have been established",
         ],
