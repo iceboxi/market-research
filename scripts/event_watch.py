@@ -111,8 +111,8 @@ def main():
     result = watch(args.config, args.state, args.out,
                    user_agent=os.getenv("SEC_USER_AGENT"))
     print((args.out / "watch_summary.md").read_text(encoding="utf-8"))
-    if result["status"] != "complete":
-        raise SystemExit("Some official event sources were unavailable; see receipt")
+    # Partial source failures must not prevent persistence of healthy symbols.
+    # The workflow separately fails after archiving and publishing receipts.
 
 
 if __name__ == "__main__":
