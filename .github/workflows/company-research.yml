@@ -5,6 +5,8 @@ on:
       - 'src/market_research/fundamentals.py'
       - 'src/market_research/financial_history.py'
       - 'src/market_research/company_analysis.py'
+      - 'src/market_research/source_evidence.py'
+      - 'tests/test_source_evidence.py'
       - 'src/market_research/price_context.py'
       - 'src/market_research/event_risk.py'
       - 'tests/test_event_risk.py'
