@@ -56,7 +56,8 @@ def test_legacy_identity_and_replay_are_immutable():
 def test_legacy_cohorts_not_retroactively_upgraded():
     r = record()
     rev = {"code_sha": "a" * 40, "provider_sha256": "b" * 64,
-           "calendar_sha256": "c" * 64, "config_sha256": "d" * 64}
+           "calendar_sha256": "c" * 64, "config_sha256": "d" * 64,
+           "method_sha256": "e" * 64}
     with pytest.raises(StateError, match="retroactively"):
         identity({**r, "cohort_revision": rev})
     assert identity({**r, "schema_version": 2, "cohort_revision": rev})
@@ -84,12 +85,12 @@ def test_raw_unapproved_fields_and_path_mismatch_fail_closed():
 
 
 def test_runtime_revision_pins_file_versions(tmp_path, monkeypatch):
-    from scripts.prospective_state import runtime_revision, verify_runtime, PROVIDER_FILES, CALENDAR_FILES
+    from scripts.prospective_state import runtime_revision, verify_runtime, PROVIDER_FILES, CALENDAR_FILES, METHOD_FILES
     from scripts.state_store import StateError
     from scripts.prospective_journal import fingerprint
     import pytest
     repo = tmp_path
-    for relative in (*PROVIDER_FILES, *CALENDAR_FILES,
+    for relative in (*PROVIDER_FILES, *CALENDAR_FILES, *METHOD_FILES,
                      "config/strategies.yaml", "config/markets.yaml",
                      "docs/strategies/catalog.yaml"):
         path = repo / relative
@@ -114,10 +115,15 @@ def test_same_freeze_revision_change_requires_cohort_review():
     s = InMemoryState()
     r = {**record(), "schema_version": 2, "cohort_revision": {
         "code_sha": "a" * 40, "provider_sha256": "b" * 64,
-        "calendar_sha256": "c" * 64, "config_sha256": "a" * 64}}
+        "calendar_sha256": "c" * 64, "config_sha256": "a" * 64,
+        "method_sha256": "e" * 64}}
     assert append(r, s)["status"] == "archived"
     new = {**r, "session_date": "2026-10-20",
            "observed_at_utc": datetime(2026, 10, 20, 12, tzinfo=timezone.utc).isoformat(),
            "cohort_revision": {**r["cohort_revision"], "code_sha": "d" * 40}}
+    assert append(new, s)["status"] == "archived"  # code SHA alone is not a method change
+    changed = {**new, "session_date": "2026-10-21",
+               "observed_at_utc": datetime(2026, 10, 21, 12, tzinfo=timezone.utc).isoformat(),
+               "cohort_revision": {**new["cohort_revision"], "method_sha256": "f" * 64}}
     with pytest.raises(StateError, match="approval"):
-        append(new, s)
+        append(changed, s)

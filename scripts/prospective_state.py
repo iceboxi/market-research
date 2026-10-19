@@ -32,6 +32,16 @@ CALENDAR_FILES = (
     "src/market_research/market_calendar.py",
     "uv.lock",
 )
+METHOD_FILES = (
+    "src/market_research/runner.py",
+    "src/market_research/strategies.py",
+    "src/market_research/strategy_contract.py",
+    "scripts/strategy_research.py",
+    "scripts/prospective_observe.py",
+)
+METHOD_REVISION_KEYS = (
+    "config_sha256", "provider_sha256", "calendar_sha256", "method_sha256",
+)
 
 
 def _file_set_digest(repo, paths):
@@ -60,6 +70,7 @@ def runtime_revision(repo=Path("."), *, source_sha=None):
         "config_sha256": fingerprint(repo),
         "provider_sha256": _file_set_digest(repo, PROVIDER_FILES),
         "calendar_sha256": _file_set_digest(repo, CALENDAR_FILES),
+        "method_sha256": _file_set_digest(repo, METHOD_FILES),
     }
 
 
@@ -112,7 +123,8 @@ def identity(record):
             raise StateError("Cannot retroactively relabel frozen legacy cohort")
     elif record.get("schema_version") == 2:
         rev = record.get("cohort_revision")
-        expected = {"code_sha", "provider_sha256", "calendar_sha256", "config_sha256"}
+        expected = {"code_sha", "provider_sha256", "calendar_sha256",
+                    "config_sha256", "method_sha256"}
         if (not isinstance(rev, dict) or set(rev) != expected or
                 any(not re.fullmatch("[a-f0-9]{40,64}" if k == "code_sha" else "[a-f0-9]{64}",
                                      str(v)) for k, v in rev.items())):
@@ -161,7 +173,9 @@ def append(record, store=None):
                 if prior["freeze_hash"] != freeze:
                     continue
                 if (prior.get("schema_version") != 2 or
-                        prior.get("cohort_revision") != record["cohort_revision"]):
+                        any(prior["cohort_revision"].get(field) !=
+                            record["cohort_revision"].get(field)
+                            for field in METHOD_REVISION_KEYS)):
                     raise StateError("New prospective cohort approval required for revision change")
         old = records.get(location)
         if old is not None and canonical(old) != canonical(record):

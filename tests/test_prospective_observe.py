@@ -95,6 +95,7 @@ def test_prospective_collect_valid_receipt_and_hash_mismatch(monkeypatch,tmp_pat
         "config_sha256": "abcd" * 16,
         "provider_sha256": "b" * 64,
         "calendar_sha256": "c" * 64,
+        "method_sha256": "d" * 64,
     }
     monkeypatch.setattr(obs, "runtime_revision", lambda: revision)
     h["source_sha"] = "a" * 40
