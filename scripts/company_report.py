@@ -12,12 +12,11 @@ from market_research.fundamentals import sec_fundamentals, twse_fundamentals
 from market_research.market_data import load_daily_bars
 from market_research.provider import RoutedDailyProvider
 from market_research.strategies import get_strategy
-from market_research.valuation import evaluate_valuation
-from market_research.company_analysis import compare_financials, research_status, render_financial_research
+from market_research.company_analysis import render_financial_research
+from market_research.research_engine import compute_research
 from market_research.price_context import analyze_price_context, render_price_context
-from market_research.event_risk import tw_material_events, evaluate_events, render_events
-from market_research.source_evidence import (instrument_eligibility, build_source_evidence,
-                                             validate_valuation_inputs, render_evidence)
+from market_research.event_risk import tw_material_events, render_events
+from market_research.source_evidence import render_evidence
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -89,27 +88,17 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         event_feed = issuer.get("event_feed") or unknown(
             SEC_SUBMISSIONS.format(cik=int(issuer["cik"])), "SEC filing feed not retrieved"
         )
-    event_risk = evaluate_events(event_feed, now)
-    eligibility = instrument_eligibility(issuer)
-    evidence = build_source_evidence(issuer, now)
-    source_gate = validate_valuation_inputs(issuer, now)
-    valuation = evaluate_valuation(issuer, annual_cutoff if market == "us" else now.date())
-    if valuation["status"] == "illustrative_only" and (
-        eligibility["status"] != "candidate_for_nonfinancial_research" or
-        source_gate["status"] != "date_only_prior_filing"
-    ):
-        valuation = {
-            "status": "not_evaluated", "method": None, "fair_value_scenarios": None,
-            "entry_zone": None, "stop_loss": None, "target_price": None,
-            "why": "Research eligibility or source provenance gate incomplete",
-        }
-    financial = compare_financials(issuer, annual_cutoff if market == "us" else now.date())
-    readiness = research_status(financial, valuation, technical)
-    readiness["instrument_status"] = eligibility["status"]
-    readiness["source_evidence_status"] = evidence["status"]
-    readiness["valuation_source_gate"] = source_gate["status"]
-    readiness["trade_plan_status"] = "not_evaluated"
-    readiness["source_ready_for_recommendation"] = False
+    research = compute_research(
+        issuer=issuer, technical=technical, event_feed=event_feed,
+        symbol=symbol, market=market, now=now,
+    )
+    event_risk = research["event_risk"]
+    eligibility = research["instrument_eligibility"]
+    evidence = research["source_evidence"]
+    source_gate = research["valuation_source_gate"]
+    valuation = research["valuation"]
+    financial = research["financial_comparison"]
+    readiness = research["research_readiness"]
     result={"schema_version":4,"report_type":"preliminary_company_research",
         "symbol":symbol,"market":market,"generated_utc":now.astimezone(timezone.utc).isoformat(),
         "issuer":issuer,"technical":technical,
