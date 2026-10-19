@@ -64,3 +64,97 @@ install this as a recurring scraper.
 Do not label the financial integration `complete`, compute intrinsic stock
 fair value from monthly revenue, or close F06 solely because public webpages
 exist.
+
+
+## Official XBRL human-verification route (2026-10-19 follow-up)
+
+This is a **manual source-validation procedure**, not an approved bulk-fetch
+implementation, completed 2330 statement evidence, or license determination.
+It refines the outstanding F05 gates without changing F06 readiness.
+
+### Entry pages and observations
+
+- [MOPS official XBRL single-company instance-document page](https://mopsov.twse.com.tw/mops/web/t203sb01):
+  query one issuer and a specific filing/report period. A reachable query
+  page does not prove that an instance file for a chosen issuer/quarter was
+  retrieved.
+- [MOPS official XBRL quarterly bulk document page](https://mopsov.twse.com.tw/mops/web/t203sb02):
+  offers a second human validation route for the same reported period;
+  bulk-download availability is **not** evidence of unrestricted scheduled
+  retrieval or republication.
+- [MOPS official XBRL taxonomy page](https://mopsov.twse.com.tw/mops/web/t203sb03):
+  review applicable taxonomy/version before comparing element concepts across
+  periods. Entry page availability is not a confirmed original report version.
+- [TWSE MOPS user operation manual, ROC 113 / October 2024](https://mops.twse.com.tw):
+  use the official site's XBRL document-download instructions and menu paths
+  for interactive reproduction. The guide establishes user-interface workflows,
+  not machine API terms.
+
+These links are **navigation leads**; link availability, returned data,
+required interaction and permission must be rechecked at validation time.
+Do not treat ordinary HTTP 200/HTML landing or a downloadable page as a
+positive statement match. Do not reverse-engineer undocumented form POSTs,
+bypass access restrictions or start recurring retrieval.
+
+### 2330 / ROC 113 Q4 (2024-Q4) manual validation worksheet
+
+1. On the official *single-company instance* page choose stock identifier
+   `2330`, ROC year `113`, quarter `4`, and the appropriate market/report
+   category. Record the **actual returned document link or identifier**, its
+   retrieval timestamp, response shape and any source-supplied amended/original
+   marker. If there is no actual matching document, stop with
+   `source_unavailable` or `period_unverified`.
+2. Confirm the instance/header identifies issuer 2330, fiscal period end,
+   document scope (**consolidated vs individual**), currency, numeric unit,
+   relevant reporting basis and taxonomy version. Record unknown instead of
+   inferring from the selected form inputs or filename.
+3. Inspect the **same instance/report version** for balance sheet (point-in-time),
+   comprehensive income (period interval and annual/cumulative semantics) and
+   cash flow (interval and cumulative semantics). Do not combine a current
+   aggregate income/balance response with a historical cash-flow document to
+   manufacture a three-statement match.
+4. Compare any available filing, board/report dates, corrected version links
+   and documented publication evidence. `出表日期`, fiscal period end and
+   download time are **not** exact `published_at`. If precise publication
+   time cannot be established, record `published_at_precision=unknown`;
+   independently record `first_seen_at` only when this system itself captured
+   that evidence.
+5. Independently review the relevant official usage/licensing terms for
+   interactive download, automated machine access, retention and republishing.
+   Consent for one use does not imply the others. Until that evidence exists,
+   retain only limited metadata/structural observations in public artifacts.
+
+### Suggested compact evidence envelope (illustrative only)
+
+```json
+{
+  "issuer": "2330",
+  "requested_period": "2024-Q4",
+  "source_interface": "MOPS XBRL single-company download",
+  "document_id": null,
+  "observed_fiscal_period": null,
+  "statement_scope": null,
+  "statement_presence": {"balance_sheet": null, "income": null, "cash_flow": null},
+  "units": null,
+  "taxonomy_version": null,
+  "original_or_amended": "unknown",
+  "published_at": null,
+  "published_at_precision": "unknown",
+  "first_seen_at": null,
+  "retrieved_at": null,
+  "machine_access_authorized": "unknown",
+  "redistribution_authorized": "unknown",
+  "acceptance": "not_evaluated"
+}
+```
+
+`null` means **not observed**, not false, zero, or absent. The form-selected
+period is a request parameter, not proof of the returned file's period.
+
+**F05 stop/go:** A source discovery report may mark three-statement *document
+identity* verified only after an observed original issuer/period/scope/version
+matches all three statements. Automated F06 ingestion additionally requires
+documented lawful acquisition and reuse, durable version history (or an
+explicit prospective-only first-seen contract), validated no-lookahead and
+remote acceptance evidence. This procedure alone meets **none** of those
+release gates; keep Issue #34 open / `needs-info`.
