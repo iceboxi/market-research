@@ -21,7 +21,11 @@ def bootstrap(out):
     current_main = store.main_head()
     if current_main != os.environ["GITHUB_SHA"]:
         raise ValueError("Main advanced during migration; manually verify authority")
-    return {"status": "initialized", "main_after": current_main, **result}
+    repo = os.getenv("GITHUB_REPOSITORY")
+    run = os.getenv("GITHUB_RUN_ID")
+    return {"status": "initialized", "main_after": current_main,
+            "run_url": "https://github.com/" + repo + "/actions/runs/" + run if repo and run else None,
+            **result}
 
 
 def main():

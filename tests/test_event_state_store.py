@@ -209,3 +209,30 @@ def test_bootstrap_blocked_outside_main_dispatch(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     with pytest.raises(ValueError):
         bootstrap(tmp_path)
+
+
+def test_restore_refuses_nonempty_destination(repo, tmp_path):
+    checkout, _, _ = repo
+    out = tmp_path / "restore"
+    out.mkdir()
+    (out / "tw").mkdir()
+    (out / "tw/2330.TW.json").write_text('{"stale": true}')
+    with chdir(checkout), pytest.raises(ValueError, match="must be empty"):
+        restore(out)
+    assert (out / "tw/2330.TW.json").read_text() == '{"stale": true}'
+
+
+def test_corrupt_authority_blocks_event_restore(repo, tmp_path):
+    checkout, bare, _ = repo
+    peer = tmp_path / "peer"
+    git("clone", "--branch", "research-state", str(bare), str(peer))
+    git("config", "user.name", "Breaker", cwd=peer)
+    git("config", "user.email", "breaker@example.invalid", cwd=peer)
+    record = peer / "events/event_state/tw/2330.TW.json"
+    record.write_text('{"schema_version": 999}')
+    git("add", ".", cwd=peer)
+    git("commit", "-m", "corrupt canonical event snapshot", cwd=peer)
+    git("push", "origin", "research-state", cwd=peer)
+    with chdir(checkout), pytest.raises(StateError):
+        restore(tmp_path / "out")
+    assert git("branch", "--show-current", cwd=checkout) == "feature"

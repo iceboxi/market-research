@@ -1,13 +1,19 @@
 """Restore only verified canonical event state, no legacy fallback."""
 import argparse
 import json
+import os
 from pathlib import Path
 
 from scripts.event_watch_archive import event_state
 
 
 def restore(out):
-    state = event_state()
+    from scripts.state_store import GitStateStore
+    store = GitStateStore()
+    state = event_state(store)
+    code_sha = store._git("rev-parse", "HEAD").stdout.strip()
+    repo = os.getenv("GITHUB_REPOSITORY")
+    run = os.getenv("GITHUB_RUN_ID")
     root = Path(out)
     if root.exists() and any(root.iterdir()):
         raise ValueError("Restore output must be empty to prevent stale baseline reuse")
@@ -16,7 +22,8 @@ def restore(out):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
     return {"schema_version": 1, "status": "restored",
-            "state_commit": state["head"],
+            "state_commit": state["head"], "code_sha": code_sha,
+            "run_url": "https://github.com/" + repo + "/actions/runs/" + run if repo and run else None,
             "authority": state["authority"],
             "count": len(state["records"])}
 
