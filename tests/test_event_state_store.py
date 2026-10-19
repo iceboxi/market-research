@@ -72,8 +72,10 @@ def test_out_of_order_and_invalid_identity_do_not_overwrite(repo, tmp_path):
     checkout, bare, _ = repo
     with chdir(checkout):
         head = git("rev-parse", "research-state", cwd=bare)
-        with pytest.raises(EventArchiveError):
-            archive(proposal(tmp_path, snapshot(["tw-material-new"], day=18)), GitStateStore(checkout))
+        result = archive(proposal(tmp_path, snapshot(["tw-material-new"], day=18)),
+                         GitStateStore(checkout))
+        assert result["status"] == "partial"
+        assert "event_state/tw/2330.TW.json" in result["skipped"]
         assert git("rev-parse", "research-state", cwd=bare) == head
 
 
