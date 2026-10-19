@@ -7,6 +7,11 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
+from datetime import datetime
+
+from market_research.event_risk import TW_MATERIAL_URL
+from market_research.event_monitor import MAX_IDS, build_snapshot
 
 from market_research.event_monitor import compare_snapshots
 from scripts.state_store import GitStateStore, StateError
@@ -20,11 +25,6 @@ class EventArchiveError(StateError):
 
 def validate_records(records):
     """Only strict, compact, source-identified metadata may enter the events store."""
-    import re
-    from datetime import datetime
-    from market_research.event_monitor import MAX_IDS, build_snapshot
-    from market_research.event_risk import TW_MATERIAL_URL
-
     expected_keys = {
         "schema_version", "market", "symbol", "observed_at_utc",
         "source", "coverage", "seen_ids",
@@ -55,7 +55,7 @@ def validate_records(records):
                 raise StateError("Unrecognized TWSE event source/coverage")
         elif market == "us":
             if (not isinstance(value["source"], str) or
-                    not re.fullmatch(r"https://data\\.sec\\.gov/submissions/CIK[0-9]{10}\\.json",
+                    not re.fullmatch(r"https://data\.sec\.gov/submissions/CIK[0-9]{10}\.json",
                                      value["source"]) or
                     value["coverage"] != "recent_SEC_submissions_metadata_only"):
                 raise StateError("Unrecognized SEC event source/coverage")
@@ -68,6 +68,7 @@ def validate_records(records):
                     for x in ids)):
             raise StateError("Malformed or oversized observed event ID cache")
     return records
+
 
 def event_state(store=None):
     data = (store or GitStateStore()).read("events")
