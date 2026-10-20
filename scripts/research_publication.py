@@ -1,4 +1,4 @@
-"""2330 manual publication and isolated live recovery acceptance.
+"""2330 manual/daily publication and isolated live recovery acceptance.
 
 Full provider inputs/report files live only in an ephemeral directory. Exported
 artifacts contain the validated compact research namespace and receipts only.
@@ -70,17 +70,35 @@ def recover(branch, out):
     return result
 
 
-def execute(mode, bootstrap, out):
+def require_production_context(daily=False):
+    main = os.getenv("GITHUB_REF") == "refs/heads/main"
+    event = os.getenv("GITHUB_EVENT_NAME")
+    if daily:
+        expected = f"{os.environ['GITHUB_REPOSITORY']}/.github/workflows/scan.yml@refs/heads/main"
+        if (not main or event not in ("schedule", "workflow_dispatch") or
+                os.getenv("GITHUB_WORKFLOW_REF") != expected or
+                os.getenv("SCAN_MARKET") not in ("tw", "both")):
+            raise ValueError("Daily production requires explicit main TW scan runtime")
+    elif not main or event != "workflow_dispatch":
+        raise ValueError("Production publication requires explicit main dispatch")
+
+
+def execute(mode, bootstrap, out, *, report=None, daily=False):
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
     branch = "research-state-validation" if mode == "validation" else "research-state"
     store = GitStateStore(branch=branch)
     receipt = {"schema_version": 1, "acceptance": "failed", "mode": mode,
-               "scope": "2330 manual snapshot / fixed publication / comparison consistency; no schedule or historical replay acceptance",
+               "scope": "2330 snapshot / fixed publication / comparison consistency; natural schedule and historical replay separately accepted",
+               "entry": "daily_scan" if daily else "manual",
                "state_branch": branch, "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"}
     try:
+        if daily and bootstrap:
+            raise ValueError("Daily publication cannot initialize production authority")
+        if daily and report is None:
+            raise ValueError("Daily publication requires the computed report")
         if mode == "production":
-            if (os.getenv("GITHUB_REF") != "refs/heads/main" or
-                    os.getenv("GITHUB_EVENT_NAME") != "workflow_dispatch"):
-                raise ValueError("Production publication requires explicit main dispatch")
+            require_production_context(daily)
             if store.main_head() != os.environ["GITHUB_SHA"]:
                 raise ValueError("Production publication requires the latest main revision")
         receipt["main_before"] = store.main_head()
@@ -89,7 +107,8 @@ def execute(mode, bootstrap, out):
             receipt["initialization"] = initialize(store)
         read(store)  # Never silently initialize ordinary production writes.
         with tempfile.TemporaryDirectory(prefix="research-inputs-") as temp:
-            report = run("2330.TW", out=Path(temp))
+            if report is None:
+                report = run("2330.TW", out=Path(temp))
             snapshot = prepare_snapshot(report, {
                 "repository": os.environ["GITHUB_REPOSITORY"], "run_id": os.environ["GITHUB_RUN_ID"],
                 "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]), "code_sha": os.environ["GITHUB_SHA"],
@@ -118,8 +137,11 @@ def execute(mode, bootstrap, out):
                     not read(store)["records"][SUBJECT]["pending_publication_id"]):
                 raise ValueError("Expected a durable pending item after uncertain delivery")
         # Fresh process uses the real adapter and independently fetches Git.
-        subprocess.run([sys.executable, "-m", "scripts.research_publication", "--recover-only",
-                        "--state-branch", branch, "--out", str(out.resolve())], check=True, timeout=180)
+        command = [sys.executable, "-m", "scripts.research_publication", "--recover-only",
+                   "--state-branch", branch, "--out", str(out.resolve())]
+        if daily:
+            command.append("--daily")
+        subprocess.run(command, check=True, timeout=180)
         receipt["publication"] = json.loads((out / "publication_receipt.json").read_text())
         final = json.loads((out / "research_state.json").read_text())
         receipt["fresh_read_commit"] = final["head"]
@@ -151,18 +173,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("validation", "production"), default="validation")
     parser.add_argument("--initialize", action="store_true")
+    parser.add_argument("--daily", action="store_true", help="Recovery of an explicit TW scan publication")
     parser.add_argument("--recover-only", action="store_true")
     parser.add_argument("--state-branch", choices=("research-state", "research-state-validation"))
     parser.add_argument("--out", type=Path, default=Path("research_publication"))
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     if args.recover_only:
-        if args.state_branch == "research-state" and (os.getenv("GITHUB_REF") != "refs/heads/main" or
-                os.getenv("GITHUB_EVENT_NAME") != "workflow_dispatch"):
-            raise ValueError("Production recovery requires explicit main dispatch")
+        if args.state_branch == "research-state":
+            require_production_context(args.daily)
         recover(args.state_branch or "research-state-validation", args.out)
     else:
-        execute(args.mode, args.initialize, args.out)
+        execute(args.mode, args.initialize, args.out, daily=args.daily)
 
 
 if __name__ == "__main__":
