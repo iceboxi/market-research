@@ -3,8 +3,8 @@
   "issue_number": 74,
   "last_success_id": "9d2e4d0fea2b6855d56cbf2fa41788a94d0c3a3315cea6841799c2199da90977",
   "latest_observation_id": "9d2e4d0fea2b6855d56cbf2fa41788a94d0c3a3315cea6841799c2199da90977",
-  "pending_publication_id": "1401ad4f3b395600461a0e840e59e4d3dbe3659455167ea45fccc3a75730a1e6",
-  "published_publication_id": "d16021a1d0284c8eaf6c83ed954dd5b90a8aa42352216fcc7fe1e1fa8fbf2594",
+  "pending_publication_id": null,
+  "published_publication_id": "1401ad4f3b395600461a0e840e59e4d3dbe3659455167ea45fccc3a75730a1e6",
   "schema_version": 2,
   "symbol": "2330.TW"
 }
