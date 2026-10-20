@@ -27,6 +27,7 @@ jobs:
     concurrency:
       group: research-state-validation
       cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -36,7 +37,7 @@ jobs:
       - run: uv lock --check
       - run: uv sync --extra dev --locked
       - name: Compact schema, real Git and external delivery regressions
-        run: uv run --no-sync pytest tests/test_research_snapshot.py tests/test_research_state.py tests/test_research_publication.py tests/test_research_github.py tests/test_research_runner.py tests/test_research_comparison.py tests/test_research_diff_runner.py
+        run: uv run --no-sync pytest tests/test_research_snapshot.py tests/test_research_state.py tests/test_research_publication.py tests/test_research_github.py tests/test_research_runner.py tests/test_research_comparison.py tests/test_research_diff_runner.py tests/test_daily_research.py
       - name: Two fixed-input runner processes on an isolated local bare remote
         run: uv run --no-sync python -m scripts.research_diff_replay --self-test --out publication_validation/controlled_replay
       - name: Actual 2330 snapshot, uncertain reply and fresh-process recovery
@@ -61,6 +62,7 @@ jobs:
     concurrency:
       group: research-publication-production
       cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

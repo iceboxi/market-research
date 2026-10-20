@@ -7,6 +7,9 @@ on:
       - 'config/**'
       - 'pyproject.toml'
       - 'uv.lock'
+      - 'scripts/daily_research.py'
+      - 'scripts/scan_company_research.py'
+      - 'scripts/research_publication.py'
       - '.github/workflows/scan.yml'
   workflow_dispatch:
     inputs:
@@ -24,6 +27,10 @@ permissions:
   issues: write
 jobs:
   scan:
+    concurrency:
+      group: ${{ ((github.event_name == 'workflow_dispatch' && inputs.market != 'us') || (github.event_name == 'schedule' && github.event.schedule == '30 11 * * 1-5')) && (github.ref == 'refs/heads/main' && 'research-publication-production' || 'research-state-validation') || format('scan-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -57,15 +64,25 @@ jobs:
           path: output/
           if-no-files-found: warn
           retention-days: 14
-      - name: Candidate company research from verified scan
+      - name: Fixed TW research and verified scan candidates
         id: candidate_research
-        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && steps.scan.outcome == 'success'
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (steps.scan.outcome == 'success' || (env.SCAN_MARKET != 'us' && steps.scan.outcome == 'failure'))
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
-        run: uv run --no-sync python -m scripts.scan_company_research --scan-dir output --out output/candidate_research --max-candidates 3
+          GH_TOKEN: ${{ github.token }}
+          RESEARCH_PUBLICATION_MODE: ${{ github.ref == 'refs/heads/main' && 'production' || 'validation' }}
+        run: |
+          if [ "$SCAN_MARKET" = us ]; then
+            uv run --no-sync python -m scripts.scan_company_research --scan-dir output --out output/candidate_research --max-candidates 3
+          else
+            uv run --no-sync python -m scripts.daily_research --scan-dir output --out output/candidate_research --market "$SCAN_MARKET" --mode "$RESEARCH_PUBLICATION_MODE" --max-candidates 3
+          fi
       - name: Candidate research summary
         if: always()
         run: |
+          if [ -f output/candidate_research/daily_summary.md ]; then
+            cat output/candidate_research/daily_summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -f output/candidate_research/candidate_summary.md ]; then
             cat output/candidate_research/candidate_summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
