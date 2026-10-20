@@ -33,6 +33,15 @@ def instrument_eligibility(issuer):
         if code == TW_FINANCIAL_INDUSTRY:
             return _ineligible("financial_institution", "inapplicable",
                                "TWSE sector 17 requires a financial-sector model", src)
+        history = issuer.get("financial_history") or {}
+        if (history.get("period_type") == "tw_ifrs_reconciled" and
+                history.get("reconciled_twse_openapi") and
+                len(history.get("annual_free_cash_flow") or []) >= 3):
+            return {"instrument_type": "listed_company_profile",
+                    "status": "candidate_for_nonfinancial_research",
+                    "source": src, "basis": "TWSE listed issuer, non-financial industry, and reconciled 3-year IFRS statements",
+                    "model_status": "illustrative_only",
+                    "reason": "Reconciled 3-year IFRS statements and TTM available; valuation scenarios remain illustrative only"}
         # Profiles of listed companies are not proof of a security's tradability,
         # future financial availability or model-specific applicability.
         return {"instrument_type": "listed_company_profile",
@@ -104,7 +113,7 @@ def build_source_evidence(issuer, cutoff, retrieved_at=None):
             state = "historical_availability_unverified"
         records.append(_record(fact, issuer, cutoff, retrieved_at, state, precision,
                                derived=False))
-    if market == "us":
+    if market in ("us", "tw"):
         history = issuer.get("financial_history") or {}
         for metric in (
             "annual_revenue", "annual_net_income", "annual_operating_cash_flow",
@@ -113,7 +122,12 @@ def build_source_evidence(issuer, cutoff, retrieved_at=None):
             for item in (history.get(metric) or [])[:6]:
                 if not isinstance(item, dict):
                     continue
-                state, precision = _availability(item.get("filed"), cutoff)
+                if market == "us":
+                    state, precision = _availability(item.get("filed"), cutoff)
+                else:
+                    state, precision = ("current_snapshot_only", "unknown")
+                    if cutoff.astimezone(timezone.utc).date() < retrieved_at.astimezone(timezone.utc).date():
+                        state = "historical_availability_unverified"
                 records.append(_record({"metric": metric, **item}, issuer,
                                        cutoff, retrieved_at, state, precision,
                                        derived=metric == "annual_free_cash_flow"))
@@ -141,8 +155,8 @@ def build_source_evidence(issuer, cutoff, retrieved_at=None):
 
 def _record(fact, issuer, cutoff, retrieved_at, state, precision, derived):
     unit = fact.get("unit")
-    currency = "USD" if unit == "USD" else "TWD" if unit == "TWD_thousands" else None
-    scale = 1000 if unit == "TWD_thousands" else 1 if unit in ("USD", "shares") else None
+    currency = "USD" if unit == "USD" else "TWD" if unit in ("TWD_thousands", "TWD", "TWD/shares") else None
+    scale = 1000 if unit == "TWD_thousands" else 1 if unit in ("USD", "TWD", "TWD/shares", "shares") else None
     value = fact.get("value")
     if (not isinstance(value, (int, float)) or isinstance(value, bool) or
             not math.isfinite(value)):
@@ -178,6 +192,20 @@ def validate_valuation_inputs(issuer, cutoff):
                        key=lambda r: r.get("period_end", ""), reverse=True)[:3]
     if len(cashflows) < 3:
         return {"status": "not_verified", "why": "Fewer than three derived annual FCF observations"}
+    if issuer.get("market") == "tw" and history.get("period_type") == "tw_ifrs_reconciled":
+        if not history.get("reconciled_twse_openapi"):
+            return {"status": "not_verified", "why": "TW financial history is not cross-reconciled with TWSE OpenAPI"}
+        tw_date = cutoff.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat()
+        for row in cashflows:
+            legs = [row.get("operating_cash_flow"), row.get("capex")]
+            if not all(isinstance(leg, dict) for leg in legs):
+                return {"status": "not_verified", "why": "FCF underlying source legs unavailable"}
+            for leg in legs:
+                if (not leg.get("period_end") or leg["period_end"] >= tw_date or
+                        not leg.get("source") or not leg.get("accession")):
+                    return {"status": "not_verified", "why": "TW FCF provenance or period cutoff unverified"}
+        return {"status": "reconciled_tw_dual_track", "why": (
+            "Three fiscal years of IFRS cash flows and statements reconciled against TWSE OpenAPI prior to cutoff; first-seen only")}
     for row in cashflows:
         legs = [row.get("operating_cash_flow"), row.get("capex")]
         if not all(isinstance(leg, dict) for leg in legs):

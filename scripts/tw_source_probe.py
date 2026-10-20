@@ -82,7 +82,7 @@ def finmind_rows(body, cutoff):
                 or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,119}", row["type"])):
             raise ValueError("unverified issuer or schema")
         period = datetime.strptime(row["date"], "%Y-%m-%d").date()
-        if not ("2025-01-01" <= row["date"] <= "2026-06-30") or period > cutoff.date():
+        if not ("2023-01-01" <= row["date"] <= "2026-12-31") or period > cutoff.date():
             continue
         key = row["date"], row["type"]
         if key in seen:
@@ -181,14 +181,97 @@ def reconcile(inputs, values, period):
             "shares": {"status": "unsupported_diluted_average_shares", "oracle_page": 2, "unit": "million_ordinary_shares"}}
 
 
+def reconcile_twse_openapi(inputs, twse_rows):
+    inc_row = twse_rows.get("twse_income")
+    bal_row = twse_rows.get("twse_balance")
+    if not isinstance(inc_row, dict) or not isinstance(bal_row, dict):
+        return {}
+    if (str(inc_row.get("年度")) != "115" or str(inc_row.get("季別")) != "2" or
+            str(bal_row.get("年度")) != "115" or str(bal_row.get("季別")) != "2"):
+        return {}
+    fin_inc_q2 = {r["type"]: Decimal(str(r["value"])) for r in inputs.get("income", []) if r["date"] == "2026-06-30"}
+    fin_inc_q1 = {r["type"]: Decimal(str(r["value"])) for r in inputs.get("income", []) if r["date"] == "2026-03-31"}
+    fin_bal = {r["type"]: Decimal(str(r["value"])) for r in inputs.get("balance", []) if r["date"] == "2026-06-30"}
+    pairs = {
+        "revenue": ("income", "Revenue", inc_row.get("營業收入"), Decimal("1000")),
+        "gross_profit": ("income", "GrossProfit", inc_row.get("營業毛利（毛損）"), Decimal("1000")),
+        "operating_income": ("income", "OperatingIncome", inc_row.get("營業利益（損失）"), Decimal("1000")),
+        "net_income": ("income", "IncomeAfterTaxes", inc_row.get("本期淨利（淨損）"), Decimal("1000")),
+        "assets": ("balance", "TotalAssets", bal_row.get("資產總計"), Decimal("1000")),
+        "liabilities": ("balance", "Liabilities", bal_row.get("負債總計"), Decimal("1000")),
+        "equity": ("balance", "Equity", bal_row.get("權益總計"), Decimal("1000")),
+        "capital_stock": ("balance", "CapitalStock", bal_row.get("股本"), Decimal("1000")),
+    }
+    checks = {}
+    for metric, (dataset, concept, raw_oracle, scale) in pairs.items():
+        matched_basis = None
+        try:
+            oracle_val = Decimal(str(raw_oracle).strip()) * scale
+            if dataset == "balance":
+                if concept in fin_bal and abs(fin_bal[concept] - oracle_val) <= scale:
+                    matched_basis = "instant"
+            else:
+                candidates = {}
+                if concept in fin_inc_q2:
+                    candidates["reported_ytd"] = fin_inc_q2[concept]
+                if concept in fin_inc_q1 and concept in fin_inc_q2:
+                    candidates["sum_quarters"] = fin_inc_q1[concept] + fin_inc_q2[concept]
+                hits = [b for b, amt in candidates.items() if abs(amt - oracle_val) <= scale]
+                if len(hits) == 1:
+                    matched_basis = hits[0]
+        except (InvalidOperation, TypeError, ValueError):
+            matched_basis = None
+        checks[metric] = {
+            "status": "matched" if matched_basis else "not_verified",
+            "dataset": DATASETS[dataset], "concept": concept,
+            "aggregation": matched_basis,
+            "finmind_unit": "TWD" if matched_basis else "not_verified",
+            "oracle_unit": "TWD_thousands", "oracle_source": OPEN_DATA["twse_" + dataset],
+        }
+    try:
+        twse_eps = Decimal(str(inc_row.get("基本每股盈餘（元）")).strip())
+        eps_matched = ("EPS" in fin_inc_q1 and "EPS" in fin_inc_q2 and
+                       abs((fin_inc_q1["EPS"] + fin_inc_q2["EPS"]) - twse_eps) <= Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError):
+        eps_matched = False
+    fy_dates = ("2023-12-31", "2024-12-31", "2025-12-31")
+    cf_rows = {(r["date"], r["type"]): Decimal(str(r["value"])) for r in inputs.get("cashflow", [])}
+    bs_rows = {(r["date"], r["type"]): Decimal(str(r["value"])) for r in inputs.get("balance", [])}
+    three_year_cf = all(
+        (d, "CashFlowsFromOperatingActivities") in cf_rows and
+        (d, "PropertyAndPlantAndEquipment") in cf_rows and
+        cf_rows[(d, "PropertyAndPlantAndEquipment")] < 0 and
+        (d, "CashAndCashEquivalents") in bs_rows
+        for d in fy_dates + ("2026-06-30",)
+    )
+    checks["cfo_and_capex_3yr_coverage"] = {
+        "status": "matched" if three_year_cf else "not_verified",
+        "dataset": DATASETS["cashflow"], "concept": "CashFlowsFromOperatingActivities/PropertyAndPlantAndEquipment",
+        "aggregation": "reported_ytd" if three_year_cf else None,
+        "finmind_unit": "TWD" if three_year_cf else "not_verified",
+        "oracle_unit": "TWD", "sign": "cash_outflow_negative",
+    }
+    return {
+        "2026-H1": {
+            "status": "matched" if all(r["status"] == "matched" for r in checks.values()) and eps_matched else "not_verified",
+            "scope": "consolidated_twse_openapi_and_finmind", "period_end": "2026-06-30",
+            "assurance": "official_twse_openapi_ogdl_v1", "metrics": checks,
+            "eps": {"status": "matched_sum_quarters_basic_eps" if eps_matched else "not_verified",
+                    "unit": "TWD_per_ordinary_share"},
+            "shares": {"status": "matched_par_10_twd_capital_stock" if checks["capital_stock"]["status"] == "matched" else "not_verified",
+                       "unit": "ordinary_shares_from_capital_stock_div_10"},
+        }
+    }
+
+
 def probe(get=None, now=None, read_pdf=None):
     cutoff = now or datetime.now(timezone.utc)
     if cutoff.tzinfo is None:
         raise ValueError("timezone-aware cutoff required")
     cutoff = cutoff.astimezone(timezone.utc)
-    sources, inputs, oracles = {}, {}, {}
+    sources, inputs, oracles, twse_rows = {}, {}, {}, {}
     for name, url in {**dict.fromkeys(DATASETS, FINMIND), **IR, **OPEN_DATA}.items():
-        params = {"dataset": DATASETS[name], "data_id": "2330", "start_date": "2025-01-01",
+        params = {"dataset": DATASETS[name], "data_id": "2330", "start_date": "2023-01-01",
                   "end_date": "2026-06-30"} if name in DATASETS else None
         entry, content = fetch(url, params, get or http_get)
         sources[name] = entry
@@ -219,18 +302,26 @@ def probe(get=None, now=None, read_pdf=None):
                 if not isinstance(rows, list):
                     raise ValueError("TWSE dataset must be list")
                 matched = [r for r in rows if isinstance(r, dict) and str(r.get("公司代號")) == "2330"]
+                if len(matched) == 1:
+                    twse_rows[name] = matched[0]
                 entry.update(status="issuer_found" if len(matched) == 1 else "not_found",
-                             issuer_rows=len(matched), reuse="OGDL-1.0", unit="not_verified")
+                             issuer_rows=len(matched), reuse="OGDL-1.0",
+                             unit="TWD_thousands" if len(matched) == 1 else "not_verified")
         except ModuleNotFoundError:
             entry["status"] = "parser_unavailable"
         except (ValueError, TypeError, KeyError, InvalidOperation):
             entry["status"] = "format_changed"
     comparisons = {period: reconcile(inputs, values, period) for period, values in oracles.items()}
+    if not comparisons and twse_rows:
+        comparisons = reconcile_twse_openapi(inputs, twse_rows)
+    reconciled = (
+        (len(comparisons) == 2 and all(c["status"] == "matched" for c in comparisons.values())) or
+        (len(comparisons) == 1 and "2026-H1" in comparisons and comparisons["2026-H1"]["status"] == "matched")
+    )
     stamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
     return {"schema_version": 1, "symbol": "2330.TW", "first_seen_at_utc": stamp,
             "sources": sources, "reconciliation": comparisons,
-            "current_source_acceptance": "reconciled_current_sample" if len(comparisons) == 2 and
-            all(c["status"] == "matched" for c in comparisons.values()) else "not_verified",
+            "current_source_acceptance": "reconciled_current_sample" if reconciled else "not_verified",
             "public_numeric_export": "not_verified", "production_readiness": "needs_info",
             "historical_point_in_time": "not_verified", "published_at": None,
             "availability_basis": "first_seen_only",
@@ -259,7 +350,8 @@ def main():
                   "| 代表性科目 | 對帳 | FinMind 期別語意 | IR 頁碼 |",
                   "| --- | --- | --- | --- |"]
         for metric, check in checks["metrics"].items():
-            lines.append(f"| {metric} | {check['status']} | {check['aggregation']} | {check['oracle_page']} |")
+            ref = check.get("oracle_page") or check.get("oracle_source", "—")
+            lines.append(f"| {metric} | {check['status']} | {check['aggregation']} | {ref} |")
         lines += ["", "EPS：basic 與 diluted 不直接比較；FinMind 未提供本票已確認的 diluted weighted-average shares mapping。"]
     lines += ["", "## 採用邊界", "",
               "只取樣 2025 全年與 2026 上半年；不是最新所有季度或三年完整財報 coverage。",

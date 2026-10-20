@@ -100,6 +100,8 @@ def validate_snapshot(value):
         fields += " started_at_utc"
         if "model_identity" in value:
             fields += " model_identity"
+        if "financial_research" in value:
+            fields += " financial_research"
     _keys(value, fields)
     if type(value["schema_version"]) is not int or value["schema_version"] not in (1, 2):
         raise SnapshotError("Unsupported research snapshot schema")
@@ -113,6 +115,14 @@ def validate_snapshot(value):
     if "model_identity" in value and (not isinstance(value["model_identity"], str) or
                                       not re.fullmatch(r"[a-f0-9]{64}", value["model_identity"])):
         raise SnapshotError("Invalid model/config identity")
+    if "financial_research" in value:
+        fr = value["financial_research"]
+        if (not isinstance(fr, dict) or fr.get("schema_version") != 1 or
+                fr.get("status") != "available" or fr.get("currency") != "TWD" or
+                type(fr.get("reconciled_twse_openapi")) is not bool or
+                not isinstance(fr.get("annual_summary"), list) or len(fr["annual_summary"]) > 6 or
+                not isinstance(fr.get("quarterly_summary"), list) or len(fr["quarterly_summary"]) > 8):
+            raise SnapshotError("Invalid financial_research snapshot section")
     run = value["run"]
     _keys(run, "repository run_id run_attempt code_sha run_url")
     if (not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", str(run["repository"])) or
@@ -260,5 +270,8 @@ def prepare_snapshot(report, run):
         snapshot.update(schema_version=2, started_at_utc=report["started_utc"])
         if "model_identity" in report:
             snapshot["model_identity"] = report["model_identity"]
+        if (permitted and isinstance(report.get("financial_research"), dict) and
+                report["financial_research"].get("status") == "available"):
+            snapshot["financial_research"] = json.loads(encoded(report["financial_research"]))
     snapshot["id"] = fingerprint(snapshot)
     return validate_snapshot(snapshot)

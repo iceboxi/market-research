@@ -13,7 +13,9 @@ from market_research.fundamentals import TW_PROFILE, sec_fundamentals, twse_fund
 from market_research.market_data import load_daily_bars
 from market_research.provider import RoutedDailyProvider
 from market_research.strategies import get_strategy
-from market_research.company_analysis import render_financial_research
+from market_research.company_analysis import (
+    build_financial_research_summary, render_financial_research, render_tw_full_research_sections,
+)
 from market_research.research_engine import RESEARCH_CONTRACT_VERSION, compute_research
 from market_research.research_snapshot import fingerprint
 from market_research.price_context import analyze_price_context, render_price_context
@@ -23,10 +25,11 @@ from market_research.source_evidence import render_evidence
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _current_tw(symbol, out, provider, facts_get, config_dir, started, clock):
+def _current_tw(symbol, out, provider, facts_get, config_dir, started, clock, financial_get=None):
     """Acquire one in-memory input batch, then evaluate it at a fixed cutoff."""
     from market_research.fundamentals import json_get
     actual_get = facts_get or json_get
+    actual_fin_get = financial_get or (json_get if facts_get is None else None)
     captured = {}
     def get(url):
         if url not in captured:
@@ -39,6 +42,18 @@ def _current_tw(symbol, out, provider, facts_get, config_dir, started, clock):
             raise error
         return value
 
+    def fin_get(url):
+        if url not in captured:
+            try:
+                captured[url] = (actual_fin_get(url), None)
+            except Exception as error:
+                captured[url] = (None, error)
+        value, error = captured[url]
+        if error is not None:
+            raise error
+        return value
+
+    use_fin_get = fin_get if actual_fin_get is not None else None
     actual = provider or RoutedDailyProvider()
     selected = actual.provider_for(symbol) if hasattr(actual, "provider_for") else actual
     class Prices:
@@ -60,7 +75,10 @@ def _current_tw(symbol, out, provider, facts_get, config_dir, started, clock):
             return self.value
     prices = Prices()
     try:
-        twse_fundamentals(symbol, get=get)
+        twse_fundamentals(
+            symbol, get=get, financial_get=use_fin_get,
+            asof=started.astimezone(ZoneInfo("Asia/Taipei")).date(),
+        )
     except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError):
         pass  # Replayed below through the existing partial-report boundary.
     try:
@@ -72,7 +90,7 @@ def _current_tw(symbol, out, provider, facts_get, config_dir, started, clock):
     if cutoff.tzinfo is None or cutoff < started:
         raise ValueError("Current evaluation clock must advance with timezone")
     return run(symbol, out, now=cutoff, provider=prices, facts_get=get,
-               config_dir=config_dir, clock=lambda: started)
+               config_dir=config_dir, clock=lambda: started, financial_get=use_fin_get)
 
 def classify(symbol):
     symbol = symbol.strip().upper()
@@ -161,19 +179,24 @@ def render_run_summary(receipt):
 
 
 def run(symbol, out=Path("company_output"), now=None, provider=None,
-        facts_get=None, sec_user_agent=None, config_dir=ROOT/"config", clock=None):
+        facts_get=None, sec_user_agent=None, config_dir=ROOT/"config", clock=None,
+        financial_get=None):
     symbol, market = classify(symbol)
     clock = clock or (lambda: datetime.now(timezone.utc))
     started = clock()
     if started.tzinfo is None:
         raise ValueError("Execution start requires timezone")
     if now is None and market == "tw":
-        return _current_tw(symbol, out, provider, facts_get, config_dir, started, clock)
+        return _current_tw(symbol, out, provider, facts_get, config_dir, started, clock,
+                           financial_get=financial_get)
     now = now or started
     if now.tzinfo is None:
         raise ValueError("now requires timezone")
     if market == "tw":
         kwargs = {"get":facts_get} if facts_get else {}
+        if financial_get is not None:
+            kwargs["financial_get"] = financial_get
+        kwargs["asof"] = now.astimezone(ZoneInfo("Asia/Taipei")).date()
         try:
             issuer = twse_fundamentals(symbol, **kwargs)
             profile_date = tw_report_date(issuer["profile"].get("reported_at"))
@@ -272,6 +295,9 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
            "US SEC annual XBRL tag conventions vary by issuer",
            "Analytical closes and pattern matches are not executable trading prices",
            "No company competitive-analysis, validated intrinsic valuation or independent forward strategy evidence"]}
+    fin_research = build_financial_research_summary(result)
+    if fin_research is not None:
+        result["financial_research"] = fin_research
     result["run_receipt"] = build_run_receipt(result)
     out=Path(out)
     out.mkdir(parents=True,exist_ok=True)
@@ -307,12 +333,25 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         lines.append("Some technical checks failed; refer to report.json.")
     if technical.get("price_context"):
         lines.extend(render_price_context(technical["price_context"]))
+    if result.get("financial_research"):
+        lines.extend(render_tw_full_research_sections(result["financial_research"]))
     lines.extend(render_financial_research(financial, readiness))
     lines.extend(render_events(event_feed, event_risk))
     lines.extend(render_evidence(eligibility, evidence, source_gate))
     lines += ["","## Valuation and entry/exit plan",""]
     v = result["valuation"]
-    if v["status"] == "illustrative_only":
+    if v["status"] == "illustrative_only" and v.get("currency") == "TWD":
+        lines += ["**Illustrative EV-bridged P/FCF and TTM P/E sensitivity only — NOT a buy/target price.**",
+                  "Historical 3-year median FCF: {:,.0f} TWD".format(v["normalized_annual_fcf_twd"]),
+                  "Latest verified balance-sheet net cash: {:,.0f} TWD".format(v["net_cash_twd"]),
+                  "Latest ordinary shares (from par 10 capital stock): {:,.0f}".format(v["denominator"]["value"]),
+                  "", "| Scenario | Assumed FCF multiple | Illustrative 3yr-Median FCF TWD/share | Illustrative TTM FCF TWD/share |",
+                  "| --- | ---: | ---: | ---: |"]
+        for name, row in v["fair_value_scenarios"].items():
+            ttm_val = f"{row['indicative_ttm_fcf_twd_per_share']:,.2f}" if row.get("indicative_ttm_fcf_twd_per_share") is not None else "—"
+            lines.append(f"| {name} | {row['fcf_multiple']}x | {row['indicative_twd_per_share']:,.2f} | {ttm_val} |")
+        lines += ["", "No executable entry, stop-loss or target price. No buy or sell recommendation."]
+    elif v["status"] == "illustrative_only":
         lines += ["**Illustrative historical P/FCF sensitivity only — NOT a buy/target price.**",
                   "Historical 3-year median FCF: {:,.0f} USD".format(v["normalized_annual_fcf_usd"]),
                   "Latest diluted annual average shares: {:,.0f}".format(v["denominator"]["value"]),

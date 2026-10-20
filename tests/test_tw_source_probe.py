@@ -248,3 +248,59 @@ def test_wrong_units_are_not_silently_rescaled_into_a_match():
     result = probe(get=get, now=NOW, read_pdf=fixture_pages)
     assert result["current_source_acceptance"] == "not_verified"
     assert all(c["metrics"]["assets"]["finmind_unit"] == "not_verified" for c in result["reconciliation"].values())
+
+
+def test_twse_openapi_reconciles_when_ir_pdfs_return_403():
+    fy_periods = ["2023-12-31", "2024-12-31", "2025-12-31", "2026-03-31", "2026-06-30"]
+    def get(url, params):
+        if params:
+            ds = params["dataset"]
+            if ds == "TaiwanStockFinancialStatements":
+                rows = [
+                    {"date": "2026-03-31", "stock_id": "2330", "type": "EPS", "value": 22.08, "origin_name": "PRIV"},
+                    {"date": "2026-06-30", "stock_id": "2330", "type": "EPS", "value": 27.25, "origin_name": "PRIV"},
+                    {"date": "2026-06-30", "stock_id": "2330", "type": "Revenue", "value": 2404483690000, "origin_name": "PRIV"},
+                    {"date": "2026-06-30", "stock_id": "2330", "type": "GrossProfit", "value": 1611606116000, "origin_name": "PRIV"},
+                    {"date": "2026-06-30", "stock_id": "2330", "type": "OperatingIncome", "value": 1425568793000, "origin_name": "PRIV"},
+                    {"date": "2026-06-30", "stock_id": "2330", "type": "IncomeAfterTaxes", "value": 1279582227000, "origin_name": "PRIV"},
+                ]
+            elif ds == "TaiwanStockBalanceSheet":
+                rows = [
+                    {"date": "2026-06-30", "stock_id": "2330", "type": "TotalAssets", "value": 9375654727000, "origin_name": "PRIV"},
+                    {"date": "2026-06-30", "stock_id": "2330", "type": "Liabilities", "value": 2901183746000, "origin_name": "PRIV"},
+                    {"date": "2026-06-30", "stock_id": "2330", "type": "Equity", "value": 6474470981000, "origin_name": "PRIV"},
+                    {"date": "2026-06-30", "stock_id": "2330", "type": "CapitalStock", "value": 259323701000, "origin_name": "PRIV"},
+                ] + [
+                    {"date": d, "stock_id": "2330", "type": "CashAndCashEquivalents", "value": 1500000000000, "origin_name": "PRIV"}
+                    for d in fy_periods
+                ]
+            else:
+                rows = [
+                    {"date": d, "stock_id": "2330", "type": "CashFlowsFromOperatingActivities", "value": 1000000000000, "origin_name": "PRIV"}
+                    for d in fy_periods
+                ] + [
+                    {"date": d, "stock_id": "2330", "type": "PropertyAndPlantAndEquipment", "value": -500000000000, "origin_name": "PRIV"}
+                    for d in fy_periods
+                ]
+            return 200, json.dumps({"status": 200, "data": rows}).encode()
+        if "t187ap06_L_ci" in url:
+            return 200, json.dumps([{
+                "公司代號": "2330", "年度": "115", "季別": "2",
+                "營業收入": "2404483690.00", "營業毛利（毛損）": "1611606116.00",
+                "營業利益（損失）": "1425568793.00", "本期淨利（淨損）": "1279582227.00",
+                "基本每股盈餘（元）": "49.33",
+            }]).encode()
+        if "t187ap07_L_ci" in url:
+            return 200, json.dumps([{
+                "公司代號": "2330", "年度": "115", "季別": "2",
+                "資產總計": "9375654727.00", "負債總計": "2901183746.00",
+                "權益總計": "6474470981.00", "股本": "259323701.00",
+            }]).encode()
+        return 403, b"IR_BLOCKED"
+
+    result = probe(get=get, now=NOW)
+    assert result["current_source_acceptance"] == "reconciled_current_sample"
+    assert result["reconciliation"]["2026-H1"]["status"] == "matched"
+    assert result["reconciliation"]["2026-H1"]["eps"]["status"] == "matched_sum_quarters_basic_eps"
+    assert '"value"' not in json.dumps(result)
+
