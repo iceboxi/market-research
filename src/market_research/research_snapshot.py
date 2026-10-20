@@ -274,4 +274,4 @@ def prepare_snapshot(report, run):
                 report["financial_research"].get("status") == "available"):
             snapshot["financial_research"] = json.loads(encoded(report["financial_research"]))
     snapshot["id"] = fingerprint(snapshot)
-    return validate_snapshot(snapshot)
+    return validate_snapshot(json.loads(encoded(snapshot)))

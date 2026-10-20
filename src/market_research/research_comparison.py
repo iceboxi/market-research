@@ -1,7 +1,7 @@
 """Pure comparisons of retained evidence; omitted inputs are never inferred."""
 from html import escape
 
-from .research_snapshot import SnapshotError, utc, validate_snapshot
+from .research_snapshot import READINESS, SnapshotError, utc, validate_snapshot
 
 COMPONENTS = ("issuer", "monthly_revenue", "technical", "events")
 
@@ -66,7 +66,8 @@ def compare_snapshots(previous, current, last_known_good=None):
             change("revision", "issuer", "reported_identity_changed")
         if previous["technical"]["freshness"] != current["technical"]["freshness"]:
             change("coverage_change", "technical", "freshness_changed")
-        for key, status in current["readiness"].items():
+        for key in READINESS:
+            status = current["readiness"][key]
             if previous["readiness"][key] != status:
                 change("coverage_change", "readiness_" + key, "readiness_changed")
         baseline = previous if previous["monthly_revenue"] else last_known_good.get("monthly_revenue", previous)

@@ -455,10 +455,12 @@ def normalize_tw_financial_history(code, asof, finmind=None, twse=None, source=N
     cumulative_interims = {}
     FLOW_KEYS = ("Revenue", "GrossProfit", "OperatingIncome", "PreTaxIncome",
                  "IncomeAfterTaxes", "EquityAttributableToOwnersOfParent")
+    REQUIRED_FLOW_KEYS = ("Revenue", "GrossProfit", "OperatingIncome", "IncomeAfterTaxes")
 
     for yr in years:
         q_dates = [f"{yr}-{mmdd}" for mmdd in ("03-31", "06-30", "09-30", "12-31")]
         prior_inc_sums = {k: 0.0 for k in FLOW_KEYS}
+        prior_key_complete = {k: True for k in FLOW_KEYS}
         prior_eps_sum = 0.0
         prior_inc_complete = True
         prev_cf_ytd = None
@@ -470,6 +472,8 @@ def normalize_tw_financial_history(code, asof, finmind=None, twse=None, source=N
             bs = balance_by_date.get(q_date, {})
             if not inc:
                 prior_inc_complete = False
+                for k in FLOW_KEYS:
+                    prior_key_complete[k] = False
                 prev_cf_ytd = None
                 continue
             eps = inc.get("EPS")
@@ -497,6 +501,8 @@ def normalize_tw_financial_history(code, asof, finmind=None, twse=None, source=N
             if basis is None:
                 warnings.append(f"Ambiguous standalone vs YTD income basis for {q_date}")
                 prior_inc_complete = False
+                for k in FLOW_KEYS:
+                    prior_key_complete[k] = False
                 continue
 
             if basis.startswith("ytd_"):
@@ -504,7 +510,7 @@ def normalize_tw_financial_history(code, asof, finmind=None, twse=None, source=N
                     warnings.append(f"Cannot derive standalone quarter for {q_date} without prior quarters")
                     continue
                 q_flows = {
-                    k: (inc[k] - prior_inc_sums[k]) if inc.get(k) is not None else None
+                    k: (inc[k] - prior_inc_sums[k]) if (inc.get(k) is not None and prior_key_complete[k]) else None
                     for k in FLOW_KEYS
                 }
                 cumulative_interims[q_date] = {
@@ -538,9 +544,9 @@ def normalize_tw_financial_history(code, asof, finmind=None, twse=None, source=N
                         "revenue": prior_inc_sums["Revenue"] + q_flows["Revenue"],
                         "gross_profit": prior_inc_sums["GrossProfit"] + q_flows["GrossProfit"],
                         "operating_income": prior_inc_sums["OperatingIncome"] + q_flows["OperatingIncome"],
-                        "pre_tax_income": (prior_inc_sums["PreTaxIncome"] + q_flows["PreTaxIncome"]) if q_flows.get("PreTaxIncome") is not None else None,
+                        "pre_tax_income": (prior_inc_sums["PreTaxIncome"] + q_flows["PreTaxIncome"]) if (q_flows.get("PreTaxIncome") is not None and prior_key_complete["PreTaxIncome"]) else None,
                         "net_income": prior_inc_sums["IncomeAfterTaxes"] + q_flows["IncomeAfterTaxes"],
-                        "parent_net_income": (prior_inc_sums["EquityAttributableToOwnersOfParent"] + q_flows["EquityAttributableToOwnersOfParent"]) if q_flows.get("EquityAttributableToOwnersOfParent") is not None else None,
+                        "parent_net_income": (prior_inc_sums["EquityAttributableToOwnersOfParent"] + q_flows["EquityAttributableToOwnersOfParent"]) if (q_flows.get("EquityAttributableToOwnersOfParent") is not None and prior_key_complete["EquityAttributableToOwnersOfParent"]) else None,
                         "basic_eps": round(prior_eps_sum + eps, 2) if eps is not None else None,
                         "operating_cash_flow": cf.get("CashFlowsFromOperatingActivities") if cf else None,
                         "capex": abs(cf["PropertyAndPlantAndEquipment"]) if cf and cf.get("PropertyAndPlantAndEquipment") is not None and cf["PropertyAndPlantAndEquipment"] < 0 else None,
@@ -557,7 +563,9 @@ def normalize_tw_financial_history(code, asof, finmind=None, twse=None, source=N
                 if q_flows.get(k) is not None:
                     prior_inc_sums[k] += q_flows[k]
                 else:
-                    prior_inc_complete = False
+                    prior_key_complete[k] = False
+                    if k in REQUIRED_FLOW_KEYS:
+                        prior_inc_complete = False
             if eps is not None:
                 prior_eps_sum += eps
             else:
