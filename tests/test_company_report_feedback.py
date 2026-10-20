@@ -52,6 +52,52 @@ def facts_get(url):
     raise AssertionError(f"Unexpected external source: {url}")
 
 
+def test_twse_issued_shares_enters_report_without_unlocking_valuation(tmp_path):
+    from market_research.fundamentals import twse_fundamentals
+    def get(url):
+        rows = facts_get(url)
+        if url == TW_PROFILE:
+            rows[0]["已發行普通股數或TDR原股發行股數"] = "25,932,071,458"
+        return rows
+    issuer = twse_fundamentals("2330.TW", get)
+    assert issuer["issued_shares"]["value"] == 25932071458
+    assert issuer["issued_shares"]["unit"] == "shares"
+    assert issuer["issued_shares"]["published_at"] is None
+    assert issuer["issued_shares"]["first_seen_at"] is None
+    result = run("2330.TW", out=tmp_path, now=NOW, provider=Prices(), facts_get=get)
+    assert result["issuer"]["issued_shares"]["value"] == 25932071458
+    assert result["financial_comparison"]["status"] == "unavailable"
+    assert result["valuation"]["status"] == "not_evaluated"
+    report = (tmp_path / "report.md").read_text()
+    assert "25,932,071,458" in report
+    assert "不是流通股數" in report
+
+
+@pytest.mark.parametrize("raw", ["-1", "0", "25.9", "bad", "", None])
+def test_invalid_or_absent_issued_shares_never_becomes_a_number(raw, tmp_path):
+    def get(url):
+        rows = facts_get(url)
+        if url == TW_PROFILE:
+            rows[0]["已發行普通股數或TDR原股發行股數"] = raw
+        return rows
+    result = run("2330.TW", out=tmp_path, now=NOW, provider=Prices(), facts_get=get)
+    assert "issued_shares" not in result["issuer"]
+    assert result["valuation"]["status"] == "not_evaluated"
+    assert "未取得可用的官方已發行股數" in (tmp_path / "report.md").read_text()
+
+
+def test_profile_future_date_does_not_launder_share_count(tmp_path):
+    def get(url):
+        rows = facts_get(url)
+        if url == TW_PROFILE:
+            rows[0]["已發行普通股數或TDR原股發行股數"] = "25932071458"
+            rows[0]["出表日期"] = "1151020"
+        return rows
+    result = run("2330.TW", out=tmp_path, now=NOW, provider=Prices(), facts_get=get)
+    assert result["issuer"].get("issued_shares") is None
+    assert "25,932,071,458" not in (tmp_path / "report.md").read_text()
+
+
 def test_existing_tw_report_contract_with_missing_annuals(tmp_path):
     result = run("2330.TW", out=tmp_path, now=NOW,
                  provider=Prices(), facts_get=facts_get)

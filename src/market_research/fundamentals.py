@@ -90,6 +90,30 @@ def twse_fundamentals(symbol, get=json_get):
         "facts": [],
         "warnings": [],
     }
+    # OGDL listed-company profile: an observed issued ordinary-share snapshot.
+    # Not the EPS weighted-average (basic/diluted) denominator or historical float.
+    shares_label = "已發行普通股數或TDR原股發行股數"
+    raw_shares = row.get(shares_label)
+    reported = pick(row, "出表日期")
+    if raw_shares is None or not str(raw_shares).strip():
+        output["warnings"].append("TWSE issued ordinary shares unavailable")
+    elif not re.fullmatch(r"[0-9][0-9,]*", str(raw_shares).strip()):
+        output["warnings"].append("TWSE issued ordinary shares invalid or ambiguous")
+    else:
+        shares = int(str(raw_shares).replace(",", ""))
+        if shares <= 0:
+            output["warnings"].append("TWSE issued ordinary shares must be positive")
+        else:
+            output["issued_shares"] = {
+                "value": shares, "unit": "shares",
+                "share_class": "issued_ordinary_shares",
+                "basis": "current_profile_snapshot_not_weighted_average_or_diluted",
+                "source": TW_PROFILE, "reported_at": reported,
+                "published_at": None, "first_seen_at": None,
+                "source_field": shares_label,
+                "retention_policy": "twse_listed_profile_ogdl_v1",
+            }
+
     # Monthly revenue is NOT GAAP/IFRS recognized annual revenue.
     # It may be absent for financial institutions or special issuers.
     try:
