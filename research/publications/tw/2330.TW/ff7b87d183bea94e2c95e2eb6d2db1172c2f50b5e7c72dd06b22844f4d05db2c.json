@@ -1,0 +1,12 @@
+{
+  "body_sha256": "1ae2dac86c5dd9736fc4847e563837bca16833f28d5063bb3cbe575623643877",
+  "id": "ff7b87d183bea94e2c95e2eb6d2db1172c2f50b5e7c72dd06b22844f4d05db2c",
+  "issue_number": null,
+  "kind": "fixed_report",
+  "last_success_id": "494307ea08b91d9489a42b38fc3e07049c895cc7a77e110c8a2d5457026e17a6",
+  "renderer_version": 1,
+  "schema_version": 1,
+  "snapshot_id": "494307ea08b91d9489a42b38fc3e07049c895cc7a77e110c8a2d5457026e17a6",
+  "status": "pending",
+  "symbol": "2330.TW"
+}
