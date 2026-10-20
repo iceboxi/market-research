@@ -16,7 +16,11 @@ import time
 from market_research.research_snapshot import prepare_snapshot
 from scripts.company_report import run
 from scripts.research_github import GitHubResearchSink
-from scripts.research_state import SUBJECT, archive, initialize, marker, publish, read, render_publication
+from scripts.research_state import (
+    SUBJECT, archive, initialize, marker, publication_comparison, publication_path,
+    publish, read, render_publication,
+)
+from market_research.research_comparison import render_comparison
 from scripts.state_store import GitStateStore
 
 
@@ -50,8 +54,17 @@ def recover(branch, out):
     save(out / "research_state.json", state)
     subject = state["records"].get(SUBJECT)
     if subject and subject["published_publication_id"]:
-        body = render_publication(state["records"], subject["published_publication_id"], branch)
+        identifier = subject["published_publication_id"]
+        body = render_publication(state["records"], identifier, branch)
         (out / "report.md").write_text(body, encoding="utf-8")
+        if state["records"][publication_path(identifier)]["renderer_version"] == 2:
+            comparison = publication_comparison(state["records"], identifier)
+            save(out / "comparison.json", comparison)
+            snapshots = {value["id"]: value for path, value in state["records"].items() if path.startswith("snapshots/")}
+            rendered = render_comparison(comparison, snapshots)
+            (out / "comparison.md").write_text(rendered, encoding="utf-8")
+            if rendered not in body:
+                raise ValueError("Artifact and fixed report comparison differ")
     if result["status"] not in ("published", "already_current"):
         raise ValueError("Publication is still pending; inspect receipt before retry")
     return result
@@ -61,7 +74,7 @@ def execute(mode, bootstrap, out):
     branch = "research-state-validation" if mode == "validation" else "research-state"
     store = GitStateStore(branch=branch)
     receipt = {"schema_version": 1, "acceptance": "failed", "mode": mode,
-               "scope": "2330 manual research snapshot / fixed publication; no schedule or diff acceptance",
+               "scope": "2330 manual snapshot / fixed publication / comparison consistency; no schedule or historical replay acceptance",
                "state_branch": branch, "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"}
     try:
         if mode == "production":
@@ -129,7 +142,7 @@ def execute(mode, bootstrap, out):
             f"## 2330 固定研究發布：{receipt['acceptance']}\n\n"
             f"Mode：{mode}；pipeline：{receipt.get('pipeline_outcome', 'unknown')}\n\n"
             f"固定報告：{publication.get('issue_url', '尚未確認；請看 publication_receipt.json')}\n\n"
-            "只驗收精簡證據保存、固定頁面與發布恢復；每日 schedule、前後差異、財報與估值另有工作範圍。\n",
+            "此執行驗收精簡證據保存、固定頁面、發布恢復與比較輸出一致；分類判定另由受控 fixture 驗證。每日 schedule、財報與估值另有工作範圍。\n",
             encoding="utf-8")
     return receipt
 

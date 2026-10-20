@@ -9,6 +9,7 @@ from market_research.research_snapshot import (
     READINESS, SnapshotError, encoded, fingerprint, utc, validate_snapshot,
 )
 from scripts.state_store import GitStateStore, StateError
+from market_research.research_comparison import COMPONENTS, available, compare_snapshots, render_comparison
 
 MAX_RECORDS = 2000
 MAX_NAMESPACE_BYTES = 5_000_000
@@ -48,8 +49,10 @@ def _issue(value):
 
 
 def _publication_identity(value):
-    return {k: value[k] for k in ("schema_version", "kind", "renderer_version", "symbol",
-                                  "snapshot_id", "last_success_id")}
+    keys = ["schema_version", "kind", "renderer_version", "symbol", "snapshot_id", "last_success_id"]
+    if value["schema_version"] == 2:
+        keys.append("comparison")
+    return {k: value[k] for k in keys}
 
 
 def validate_records(records, branch):
@@ -64,10 +67,17 @@ def validate_records(records, branch):
                 if path != snapshot_path(value["id"]) or value["symbol"] != "2330.TW":
                     raise StateError("Snapshot identity/path mismatch")
             elif re.fullmatch(r"publications/tw/2330\.TW/" + HASH + r"\.json", path):
-                _fields(value, "schema_version id kind renderer_version symbol snapshot_id last_success_id "
-                        "status issue_number body_sha256")
-                if (type(value["schema_version"]) is not int or value["schema_version"] != 1 or
-                        type(value["renderer_version"]) is not int or value["renderer_version"] != 1 or
+                keys = "schema_version id kind renderer_version symbol snapshot_id last_success_id status issue_number body_sha256"
+                if isinstance(value, dict) and value.get("schema_version") == 2:
+                    keys += " comparison"
+                    _fields(value["comparison"], "previous_snapshot_id last_good_snapshot_ids")
+                    _id(value["comparison"]["previous_snapshot_id"], nullable=True)
+                    _fields(value["comparison"]["last_good_snapshot_ids"], " ".join(COMPONENTS))
+                    for reference in value["comparison"]["last_good_snapshot_ids"].values():
+                        _id(reference, nullable=True)
+                _fields(value, keys)
+                if (type(value["schema_version"]) is not int or value["schema_version"] not in (1, 2) or
+                        type(value["renderer_version"]) is not int or value["renderer_version"] != value["schema_version"] or
                         value["kind"] != "fixed_report" or value["symbol"] != "2330.TW" or
                         value["status"] not in ("pending", "acked", "superseded")):
                     raise StateError("Invalid publication schema")
@@ -142,7 +152,7 @@ def body_hash(body):
     return hashlib.sha256(body.encode()).hexdigest()
 
 
-def render_publication(records, identifier, branch):
+def _render_v1(records, identifier, branch):
     item = records[publication_path(identifier)]
     latest = records[snapshot_path(item["snapshot_id"])]
     success = records[snapshot_path(item["last_success_id"])] if item["last_success_id"] else None
@@ -176,6 +186,35 @@ def render_publication(records, identifier, branch):
     lines += [f"以上開放資料依[政府資料開放授權條款第 {attribution['license_version']} 版]({attribution['license']}) 提供；使用須遵守該條款。"]
     lines += ["", f"snapshot `{latest['id']}`", f"publication `{identifier}`", ""]
     return "\n".join(lines)
+
+
+def publication_comparison(records, identifier):
+    item = records[publication_path(identifier)]
+    refs = item["comparison"]
+    previous = records[snapshot_path(refs["previous_snapshot_id"])] if refs["previous_snapshot_id"] else None
+    current = records[snapshot_path(item["snapshot_id"])]
+    good = {key: records[snapshot_path(value)] for key, value in refs["last_good_snapshot_ids"].items() if value}
+    return compare_snapshots(previous, current, good)
+
+
+def render_publication(records, identifier, branch):
+    body = _render_v1(records, identifier, branch)
+    if records[publication_path(identifier)]["renderer_version"] == 1:
+        return body
+    delta = publication_comparison(records, identifier)
+    snapshots = {value["id"]: value for path, value in records.items() if path.startswith("snapshots/")}
+    return body.replace("；尚未完成前後變化分析。", "。") + "\n" + render_comparison(delta, snapshots)
+
+
+def _comparison_refs(records, latest):
+    older = [value for path, value in records.items()
+             if path.startswith("snapshots/") and _order(value) < _order(latest)]
+    previous = max(older, key=_order) if older else None
+    good = {}
+    for component in COMPONENTS:
+        candidates = [value for value in older if available(value, component)]
+        good[component] = max(candidates, key=_order)["id"] if candidates else None
+    return {"previous_snapshot_id": previous["id"] if previous else None, "last_good_snapshot_ids": good}
 
 
 def read(store=None):
@@ -217,8 +256,9 @@ def archive(snapshot, store=None):
         latest = max(snapshots, key=_order)
         good = [v for v in snapshots if v["execution"]["legacy_complete"]]
         success = max(good, key=_order)["id"] if good else None
-        item = {"schema_version": 1, "kind": "fixed_report", "renderer_version": 1,
-                "symbol": "2330.TW", "snapshot_id": latest["id"], "last_success_id": success}
+        item = {"schema_version": 2, "kind": "fixed_report", "renderer_version": 2,
+                "symbol": "2330.TW", "snapshot_id": latest["id"], "last_success_id": success,
+                "comparison": _comparison_refs(records, latest)}
         item["id"] = fingerprint(item)
         pubpath = publication_path(item["id"])
         if pubpath not in records:

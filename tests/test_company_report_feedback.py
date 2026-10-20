@@ -300,3 +300,23 @@ def test_session_freshness_uses_post_fetch_cutoff_at_completion_boundary(tmp_pat
     result = run("2330.TW", out=tmp_path, provider=Prices(), facts_get=facts_get, clock=lambda: next(ticks))
     assert result["technical"]["last_session"] == "2026-10-19"
     assert result["run_receipt"]["source_coverage"]["technical"]["freshness"] == "stale"
+
+
+def test_model_config_identity_is_stable_across_source_failures(tmp_path):
+    import shutil
+    import yaml
+    from scripts.company_report import ROOT
+    first = run("2330.TW", out=tmp_path / "good", now=NOW, provider=Prices(), facts_get=facts_get)
+    def failed(url):
+        raise httpx.ReadTimeout("fixture")
+    second = run("2330.TW", out=tmp_path / "failed", now=NOW, provider=Prices(), facts_get=failed)
+    assert len(first["model_identity"]) == 64
+    assert first["model_identity"] == second["model_identity"]
+    config = tmp_path / "config"
+    shutil.copytree(ROOT / "config", config)
+    path = config / "strategies.yaml"
+    changed = yaml.safe_load(path.read_text())
+    changed["strategies"][0]["params"]["prior_decline_min_pct"] = 3.0
+    path.write_text(yaml.safe_dump(changed))
+    third = run("2330.TW", out=tmp_path / "new-config", now=NOW, provider=Prices(), facts_get=facts_get, config_dir=config)
+    assert third["model_identity"] != first["model_identity"]
