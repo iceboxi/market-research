@@ -9,7 +9,7 @@ import re
 import httpx
 import yaml
 
-from market_research.fundamentals import TW_PROFILE, sec_fundamentals, twse_fundamentals
+from market_research.fundamentals import TW_PROFILE, sec_fundamentals, twse_fundamentals, tw_report_date
 from market_research.market_data import load_daily_bars
 from market_research.provider import RoutedDailyProvider
 from market_research.strategies import get_strategy
@@ -20,6 +20,58 @@ from market_research.event_risk import tw_material_events, render_events
 from market_research.source_evidence import render_evidence
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _current_tw(symbol, out, provider, facts_get, config_dir, started, clock):
+    """Acquire one in-memory input batch, then evaluate it at a fixed cutoff."""
+    from market_research.fundamentals import json_get
+    actual_get = facts_get or json_get
+    captured = {}
+    def get(url):
+        if url not in captured:
+            try:
+                captured[url] = (actual_get(url), None)
+            except Exception as error:
+                captured[url] = (None, error)
+        value, error = captured[url]
+        if error is not None:
+            raise error
+        return value
+
+    actual = provider or RoutedDailyProvider()
+    selected = actual.provider_for(symbol) if hasattr(actual, "provider_for") else actual
+    class Prices:
+        source = getattr(selected, "source", "unknown")
+        records = getattr(selected, "records", {})
+        fetched = False
+        value = error = None
+        def load(self, requested, period):
+            if requested != symbol or period != "6mo":
+                raise ValueError("Input batch identity changed")
+            if not self.fetched:
+                self.fetched = True
+                try:
+                    self.value = actual.load(requested, period)
+                except Exception as error:
+                    self.error = error
+            if self.error is not None:
+                raise self.error
+            return self.value
+    prices = Prices()
+    try:
+        twse_fundamentals(symbol, get=get)
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError):
+        pass  # Replayed below through the existing partial-report boundary.
+    try:
+        prices.load(symbol, "6mo")
+    except Exception:
+        pass
+    tw_material_events(symbol, started, get)
+    cutoff = clock()
+    if cutoff.tzinfo is None or cutoff < started:
+        raise ValueError("Current evaluation clock must advance with timezone")
+    return run(symbol, out, now=cutoff, provider=prices, facts_get=get,
+               config_dir=config_dir, clock=lambda: started)
 
 def classify(symbol):
     symbol = symbol.strip().upper()
@@ -39,6 +91,7 @@ def build_run_receipt(result):
     return {
         "schema_version": 1, "symbol": result["symbol"], "market": result["market"],
         "evaluation_cutoff_utc": result["generated_utc"],
+        "started_utc": result["started_utc"],
         "execution": {"status": "completed" if result["complete"] else "partial",
                       "legacy_complete": result["complete"]},
         "source_coverage": {
@@ -107,15 +160,24 @@ def render_run_summary(receipt):
 
 
 def run(symbol, out=Path("company_output"), now=None, provider=None,
-        facts_get=None, sec_user_agent=None, config_dir=ROOT/"config"):
+        facts_get=None, sec_user_agent=None, config_dir=ROOT/"config", clock=None):
     symbol, market = classify(symbol)
-    now = now or datetime.now(timezone.utc)
+    clock = clock or (lambda: datetime.now(timezone.utc))
+    started = clock()
+    if started.tzinfo is None:
+        raise ValueError("Execution start requires timezone")
+    if now is None and market == "tw":
+        return _current_tw(symbol, out, provider, facts_get, config_dir, started, clock)
+    now = now or started
     if now.tzinfo is None:
         raise ValueError("now requires timezone")
     if market == "tw":
         kwargs = {"get":facts_get} if facts_get else {}
         try:
             issuer = twse_fundamentals(symbol, **kwargs)
+            profile_date = tw_report_date(issuer["profile"].get("reported_at"))
+            if profile_date and profile_date > now.astimezone(ZoneInfo("Asia/Taipei")).date():
+                raise ValueError("TWSE profile export date is after evaluation cutoff")
         except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as exc:
             # The requested ticker is known; issuer identity was not verified.
             issuer = {
@@ -188,6 +250,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     readiness = research["research_readiness"]
     result={"schema_version":4,"report_type":"preliminary_company_research",
         "symbol":symbol,"market":market,"generated_utc":now.astimezone(timezone.utc).isoformat(),
+        "started_utc":started.astimezone(timezone.utc).isoformat(),
         "issuer":issuer,"technical":technical,
         "instrument_eligibility":eligibility,
         "source_evidence":evidence,

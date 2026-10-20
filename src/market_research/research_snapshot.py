@@ -7,13 +7,14 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
-from .fundamentals import TW_PROFILE, TW_REVENUE
+from .fundamentals import TW_PROFILE, TW_REVENUE, tw_report_date
 
 MAX_SNAPSHOT_BYTES = 20_000
 READINESS = ("instrument", "source_evidence", "valuation_provenance", "financial",
              "technical", "valuation", "events", "trade_plan", "recommendation")
 LIMITS = {"prices_metadata_only", "events_metadata_only", "artifact_inputs_not_retained",
-          "unapproved_numeric_evidence_omitted", "future_period_evidence_omitted"}
+          "unapproved_numeric_evidence_omitted", "future_period_evidence_omitted",
+          "invalid_or_future_profile_omitted"}
 ATTRIBUTION = {
     "provider": "金融監督管理委員會證券期貨局（證交所資料）",
     "datasets": [
@@ -87,27 +88,26 @@ def _month(value):
 
 
 def _reported_date(value):
-    if value is None:
-        return None
-    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{7,8}", value):
-        raise SnapshotError("Invalid original report date")
     try:
-        year = int(value[:-4]) + (1911 if len(value) == 7 else 0)
-        return date(year, int(value[-4:-2]), int(value[-2:]))
+        return tw_report_date(value)
     except ValueError as error:
         raise SnapshotError("Invalid original report date") from error
 
 
 def validate_snapshot(value):
-    _keys(value, "schema_version id symbol market evaluation_cutoff_utc observed_at_utc run execution "
-          "issuer monthly_revenue technical events readiness source_links comparison_limits availability attribution")
-    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+    fields = "schema_version id symbol market evaluation_cutoff_utc observed_at_utc run execution issuer monthly_revenue technical events readiness source_links comparison_limits availability attribution"
+    if isinstance(value, dict) and value.get("schema_version") == 2:
+        fields += " started_at_utc"
+    _keys(value, fields)
+    if type(value["schema_version"]) is not int or value["schema_version"] not in (1, 2):
         raise SnapshotError("Unsupported research snapshot schema")
     if value["market"] != "tw" or not re.fullmatch(r"[0-9]{4,6}\.TW", str(value["symbol"])):
         raise SnapshotError("Only TWSE-listed research snapshots are supported")
     cutoff, observed = utc(value["evaluation_cutoff_utc"]), utc(value["observed_at_utc"])
     if observed < cutoff:
         raise SnapshotError("Observation precedes evaluation cutoff")
+    if value["schema_version"] == 2 and utc(value["started_at_utc"]) > observed:
+        raise SnapshotError("Execution start is after observation")
     run = value["run"]
     _keys(run, "repository run_id run_attempt code_sha run_url")
     if (not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", str(run["repository"])) or
@@ -127,8 +127,9 @@ def validate_snapshot(value):
             issuer["policy"] == "twse_profile_ogdl_v1" and issuer["source"] != TW_PROFILE or
             issuer["policy"] == "metadata_only" and issuer["company_name"] is not None):
         raise SnapshotError("Issuer retention policy mismatch")
-    if issuer["reported_at"] is not None and not re.fullmatch(r"[0-9]{7,8}", str(issuer["reported_at"])):
-        raise SnapshotError("Invalid profile report date")
+    profile_date = _reported_date(issuer["reported_at"])
+    if profile_date and profile_date > cutoff.astimezone(ZoneInfo("Asia/Taipei")).date():
+        raise SnapshotError("Future profile report date")
     facts = value["monthly_revenue"]
     if not isinstance(facts, list) or len(facts) > 12:
         raise SnapshotError("Monthly evidence exceeds budget")
@@ -208,6 +209,13 @@ def prepare_snapshot(report, run):
     limits = {"prices_metadata_only", "events_metadata_only", "artifact_inputs_not_retained"}
     facts = []
     cutoff = utc(report["generated_utc"])
+    try:
+        profile_date = _reported_date(profile.get("reported_at"))
+        if profile_date and profile_date > cutoff.astimezone(ZoneInfo("Asia/Taipei")).date():
+            raise SnapshotError("Future profile report date")
+    except SnapshotError:
+        permitted = False
+        limits.add("invalid_or_future_profile_omitted")
     for fact in issuer.get("facts", []):
         links.add(public_url(fact.get("source")))
         if fact.get("source") == TW_REVENUE and fact.get("metric") == "monthly_reported_revenue":
@@ -226,7 +234,7 @@ def prepare_snapshot(report, run):
                 "run": identity, "execution": {"status": "completed" if report["complete"] else "partial",
                                                  "legacy_complete": report["complete"]},
                 "issuer": {"company_name": issuer.get("company_name") if permitted else None,
-                           "source": public_url(profile.get("source")), "reported_at": profile.get("reported_at"),
+                           "source": public_url(profile.get("source")), "reported_at": profile.get("reported_at") if permitted else None,
                            "policy": "twse_profile_ogdl_v1" if permitted else "metadata_only"},
                 "monthly_revenue": facts,
                 "technical": {"status": tech["status"], "source": tech.get("source"), "session": tech.get("last_session"),
@@ -239,5 +247,10 @@ def prepare_snapshot(report, run):
                 "source_links": sorted(link for link in links if link), "comparison_limits": sorted(limits),
                 "availability": "first_seen_only_historical_not_verified",
                 "attribution": json.loads(encoded(ATTRIBUTION))}
+    if "invalid_or_future_profile_omitted" in limits:
+        snapshot["readiness"]["instrument"] = "unknown"
+        snapshot["readiness"]["source_evidence"] = "not_evaluated"
+    if "started_utc" in report:
+        snapshot.update(schema_version=2, started_at_utc=report["started_utc"])
     snapshot["id"] = fingerprint(snapshot)
     return validate_snapshot(snapshot)

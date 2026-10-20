@@ -101,3 +101,27 @@ def test_future_announced_revenue_is_omitted_and_missing_values_stay_missing():
     assert snapshot["technical"]["session"] is None
     assert snapshot["execution"]["status"] == "partial"
     assert "future_period_evidence_omitted" in snapshot["comparison_limits"]
+
+
+def test_execution_start_is_separate_and_old_snapshots_remain_readable():
+    old = prepare_snapshot(report(), identity())
+    assert old["schema_version"] == 1
+    payload = report()
+    payload["started_utc"] = "2026-10-19T11:59:50+00:00"
+    current = prepare_snapshot(payload, identity())
+    assert current["schema_version"] == 2
+    assert current["started_at_utc"] == payload["started_utc"]
+    assert current["started_at_utc"] != current["evaluation_cutoff_utc"]
+    validate_snapshot(old)
+    validate_snapshot(current)
+
+
+@pytest.mark.parametrize("stamp", ["1151020", "1150230", "not_a_date"])
+def test_invalid_or_future_profile_cannot_be_verified_evidence(stamp):
+    payload = report()
+    payload["issuer"]["profile"]["reported_at"] = stamp
+    snapshot = prepare_snapshot(payload, identity())
+    assert snapshot["issuer"]["company_name"] is None
+    assert snapshot["issuer"]["reported_at"] is None
+    assert snapshot["readiness"]["instrument"] == "unknown"
+    assert "invalid_or_future_profile_omitted" in snapshot["comparison_limits"]
