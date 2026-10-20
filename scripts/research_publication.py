@@ -1,4 +1,4 @@
-"""2330 manual publication and isolated live recovery acceptance.
+"""2330 manual/daily publication and isolated live recovery acceptance.
 
 Full provider inputs/report files live only in an ephemeral directory. Exported
 artifacts contain the validated compact research namespace and receipts only.

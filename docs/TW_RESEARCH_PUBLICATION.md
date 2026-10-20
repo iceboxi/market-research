@@ -1,6 +1,6 @@
 # 2330 研究版本與固定入口
 
-TW02 以既有 GitStateStore 的 `research` namespace 保存允許公開的精簡證據。報告呈現在固定 GitHub Issue；開發 Issue 繼續只記錄工作與驗收。每日排程與前後變化分析分別由後續工作接入。
+既有 GitStateStore 的 `research` namespace 保存允許公開的精簡證據。報告呈現在固定 GitHub Issue；開發 Issue 繼續只記錄工作與驗收。[前後變化](TW_RESEARCH_COMPARISON.md) 與[每日固定研究](TW_DAILY_RESEARCH.md) 共用此 owner 與 publisher；自然排程另行驗收。
 
 ## 執行與權限
 
@@ -8,6 +8,8 @@ TW02 以既有 GitStateStore 的 `research` namespace 保存允許公開的精�
 
 - `mode=validation`：寫 `research-state-validation`，建立／更新有驗證 marker 的固定 Issue。第一次顯式建立空 research namespace；實際取得 2330 來源，保存 snapshot 後刻意遺失一次 GitHub 成功回覆，再由獨立 Python process 對帳與 ACK。
 - `mode=production`：只允許最新 main 的手動 dispatch。首次必須明確選 `initialize_research=true`，後續使用 false；一般保存不會自動建立或重置 authority。研究來源失敗仍可產生 partial snapshot；CI 綠燈只代表保存／發布契約通過。
+
+以上為本 workflow 的手動入口。每日 TW／both 的 `scan.yml` runtime 另外可提交同一份已計算報告，使用受限 daily context 與共用發布序列；此路徑不可 initialize production，詳見每日研究契約。
 
 workflow 使用現有 GitHub standard runner、`contents: write` 與 `issues: write`；只有 detached state worktree 寫入專用 branch。分析 checkout、main 與其他 namespace 的 owner 不變。validation 與既有 state-store acceptance 共用 concurrency group；production publisher 有獨立序列化 group。沒有新增 schedule、通知、下單或修改既有 company-research workflow 的副作用。
 
