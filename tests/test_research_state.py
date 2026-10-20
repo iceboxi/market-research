@@ -134,3 +134,25 @@ def test_corrupt_snapshot_and_unapproved_paths_fail_closed(repo):
     store.commit("research", corrupt)
     with pytest.raises(StateError):
         archive(snapshot, store)
+
+
+def test_comparison_references_are_saved_with_publication_and_keep_old_good_evidence(repo):
+    from scripts.research_state import publication_comparison, publication_path
+    _, _, store = repo
+    initialize(store)
+    before = prepare_snapshot(report(), identity())
+    archive(before, store)
+    payload = report("2026-10-20T12:00:00+00:00", False)
+    payload["issuer"]["facts"] = []
+    after = prepare_snapshot(payload, identity("101", "2026-10-20T12:01:00+00:00"))
+    archive(after, store)
+    records = read(store)["records"]
+    identifier = records["subjects/tw/2330.TW.json"]["pending_publication_id"]
+    assert records[publication_path(identifier)]["renderer_version"] == 2
+    comparison = publication_comparison(records, identifier)
+    assert comparison["previous_snapshot_id"] == before["id"]
+    assert comparison["last_known_good"]["monthly_revenue"] == before["id"]
+    assert "coverage_change" in comparison["categories"]
+    body = render_publication(records, identifier, store.branch)
+    assert "前後變化" in body
+    assert "最近可用" in body and "1,000" in body

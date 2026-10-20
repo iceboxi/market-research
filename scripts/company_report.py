@@ -14,7 +14,8 @@ from market_research.market_data import load_daily_bars
 from market_research.provider import RoutedDailyProvider
 from market_research.strategies import get_strategy
 from market_research.company_analysis import render_financial_research
-from market_research.research_engine import compute_research
+from market_research.research_engine import RESEARCH_CONTRACT_VERSION, compute_research
+from market_research.research_snapshot import fingerprint
 from market_research.price_context import analyze_price_context, render_price_context
 from market_research.event_risk import tw_material_events, render_events
 from market_research.source_evidence import render_evidence
@@ -198,6 +199,13 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         issuer = sec_fundamentals(symbol, annual_cutoff, **kwargs)
     market_cfg = yaml.safe_load((Path(config_dir)/"markets.yaml").read_text())["markets"]
     strategy_cfg = yaml.safe_load((Path(config_dir)/"strategies.yaml").read_text())["strategies"]
+    model_identity = fingerprint({
+        "research_contract": RESEARCH_CONTRACT_VERSION, "report_schema": 4,
+        "market_config": market_cfg[market],
+        "strategies": [{"id": entry["id"], "version": get_strategy(entry["id"]).version,
+                        "enabled": entry["enabled"], "params": entry.get("params", {})}
+                       for entry in strategy_cfg if entry["id"].startswith("sakata_")],
+    })
     technical = {"status":"unavailable","observations":[],"errors":[],"price_context":None}
     try:
         daily = load_daily_bars(provider or RoutedDailyProvider(),market,symbol,"6mo",
@@ -251,6 +259,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     result={"schema_version":4,"report_type":"preliminary_company_research",
         "symbol":symbol,"market":market,"generated_utc":now.astimezone(timezone.utc).isoformat(),
         "started_utc":started.astimezone(timezone.utc).isoformat(),
+        "model_identity":model_identity,
         "issuer":issuer,"technical":technical,
         "instrument_eligibility":eligibility,
         "source_evidence":evidence,

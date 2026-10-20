@@ -98,6 +98,8 @@ def validate_snapshot(value):
     fields = "schema_version id symbol market evaluation_cutoff_utc observed_at_utc run execution issuer monthly_revenue technical events readiness source_links comparison_limits availability attribution"
     if isinstance(value, dict) and value.get("schema_version") == 2:
         fields += " started_at_utc"
+        if "model_identity" in value:
+            fields += " model_identity"
     _keys(value, fields)
     if type(value["schema_version"]) is not int or value["schema_version"] not in (1, 2):
         raise SnapshotError("Unsupported research snapshot schema")
@@ -108,6 +110,9 @@ def validate_snapshot(value):
         raise SnapshotError("Observation precedes evaluation cutoff")
     if value["schema_version"] == 2 and utc(value["started_at_utc"]) > observed:
         raise SnapshotError("Execution start is after observation")
+    if "model_identity" in value and (not isinstance(value["model_identity"], str) or
+                                      not re.fullmatch(r"[a-f0-9]{64}", value["model_identity"])):
+        raise SnapshotError("Invalid model/config identity")
     run = value["run"]
     _keys(run, "repository run_id run_attempt code_sha run_url")
     if (not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", str(run["repository"])) or
@@ -141,9 +146,10 @@ def validate_snapshot(value):
                 type(fact["value"]) not in (int, float) or not math.isfinite(fact["value"]) or
                 abs(fact["value"]) > 1e18):
             raise SnapshotError("Unapproved numeric research evidence")
-        if _month(fact["period"]) > (cutoff.year, cutoff.month) or fact["period"] in seen:
+        normalized_period = _month(fact["period"])
+        if normalized_period > (cutoff.year, cutoff.month) or normalized_period in seen:
             raise SnapshotError("Future or duplicate revenue period")
-        seen.add(fact["period"])
+        seen.add(normalized_period)
         announced = _reported_date(fact["reported_at"])
         if announced and announced > cutoff.astimezone(ZoneInfo("Asia/Taipei")).date():
             raise SnapshotError("Future revenue announcement")
@@ -252,5 +258,7 @@ def prepare_snapshot(report, run):
         snapshot["readiness"]["source_evidence"] = "not_evaluated"
     if "started_utc" in report:
         snapshot.update(schema_version=2, started_at_utc=report["started_utc"])
+        if "model_identity" in report:
+            snapshot["model_identity"] = report["model_identity"]
     snapshot["id"] = fingerprint(snapshot)
     return validate_snapshot(snapshot)

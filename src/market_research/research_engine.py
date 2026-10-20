@@ -13,6 +13,10 @@ from .source_evidence import (
 )
 from .valuation import evaluate_valuation
 
+# Bump when this module's research/model contract changes; strategy models have
+# their own existing versions. Formatting-only commits are not model changes.
+RESEARCH_CONTRACT_VERSION = 1
+
 
 def _component(status, reason=None):
     return {"status": status, "reason": reason}

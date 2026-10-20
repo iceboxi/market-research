@@ -16,7 +16,11 @@ import time
 from market_research.research_snapshot import prepare_snapshot
 from scripts.company_report import run
 from scripts.research_github import GitHubResearchSink
-from scripts.research_state import SUBJECT, archive, initialize, marker, publish, read, render_publication
+from scripts.research_state import (
+    SUBJECT, archive, initialize, marker, publication_comparison, publication_path,
+    publish, read, render_publication,
+)
+from market_research.research_comparison import render_comparison
 from scripts.state_store import GitStateStore
 
 
@@ -50,8 +54,17 @@ def recover(branch, out):
     save(out / "research_state.json", state)
     subject = state["records"].get(SUBJECT)
     if subject and subject["published_publication_id"]:
-        body = render_publication(state["records"], subject["published_publication_id"], branch)
+        identifier = subject["published_publication_id"]
+        body = render_publication(state["records"], identifier, branch)
         (out / "report.md").write_text(body, encoding="utf-8")
+        if state["records"][publication_path(identifier)]["renderer_version"] == 2:
+            comparison = publication_comparison(state["records"], identifier)
+            save(out / "comparison.json", comparison)
+            snapshots = {value["id"]: value for path, value in state["records"].items() if path.startswith("snapshots/")}
+            rendered = render_comparison(comparison, snapshots)
+            (out / "comparison.md").write_text(rendered, encoding="utf-8")
+            if rendered not in body:
+                raise ValueError("Artifact and fixed report comparison differ")
     if result["status"] not in ("published", "already_current"):
         raise ValueError("Publication is still pending; inspect receipt before retry")
     return result

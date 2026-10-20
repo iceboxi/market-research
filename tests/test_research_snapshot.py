@@ -125,3 +125,10 @@ def test_invalid_or_future_profile_cannot_be_verified_evidence(stamp):
     assert snapshot["issuer"]["reported_at"] is None
     assert snapshot["readiness"]["instrument"] == "unknown"
     assert "invalid_or_future_profile_omitted" in snapshot["comparison_limits"]
+
+
+def test_same_roc_period_with_leading_zero_cannot_hide_duplicate_values():
+    payload = report()
+    payload["issuer"]["facts"].append({**payload["issuer"]["facts"][0], "period": "011509", "value": 1100})
+    with pytest.raises(SnapshotError):
+        prepare_snapshot(payload, identity())
