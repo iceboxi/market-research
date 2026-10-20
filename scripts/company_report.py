@@ -281,6 +281,16 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
        f"Company source: {issuer['profile']['source']}","","## Reported fundamentals","",
        "| Metric | Value and original unit | Period | Source |",
        "| --- | ---: | --- | --- |"]
+    shares = issuer.get("issued_shares")
+    if shares is not None and market == "tw":
+        lines += ["", "## 已發行普通股數（官方現況快照）", "",
+                  f"已發行普通股數：{shares['value']:,} 股；出表日期：{shares['reported_at'] or '未知'}。",
+                  f"資料來源：[TWSE 上市公司基本資料]({shares['source']})（政府資料開放授權條款第 1.0 版）。",
+                  "此為本次取得的已發行股數快照，不是流通股數、基本／稀釋加權平均股數或歷史股數；"
+                  "出表日並非公開時間，未經公司行動與財報分母核對，不可用於每股估值。"]
+    elif market == "tw":
+        lines += ["", "## 已發行普通股數", "",
+                  "本次未取得可用的官方已發行股數快照；不補零、不推估估值分母。"]
     for fact in issuer["facts"]:
         period=fact.get("period_end") or fact.get("period") or "not available"
         lines.append(f"| {fact['metric']} | {fact['value']:,.2f} {fact['unit']} | {period} | {fact['source']} |")
