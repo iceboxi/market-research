@@ -1,5 +1,5 @@
 """Semantic report comparisons against independent, bounded evidence fixtures."""
-from market_research.research_comparison import compare_snapshots
+from market_research.research_comparison import compare_snapshots, render_comparison
 from market_research.research_snapshot import prepare_snapshot
 from test_research_snapshot import report, identity
 
@@ -106,3 +106,35 @@ def test_equivalent_roc_period_representation_does_not_invent_new_period():
     payload["issuer"]["facts"][0]["period"] = "011509"
     after = prepare_snapshot(payload, identity("101", "2026-10-19T12:02:30+00:00"))
     assert compare_snapshots(before, after)["categories"] == ["unchanged"]
+
+
+def test_selected_last_good_cutoff_cannot_look_ahead_of_current_historical_cutoff():
+    good = snapshot()
+    failed_report = report("2026-10-19T11:00:00+00:00", False)
+    failed_report["issuer"]["facts"] = []
+    failed = prepare_snapshot(failed_report, identity("101", "2026-10-19T12:01:30+00:00"))
+    restored_report = report("2026-10-19T11:30:00+00:00")
+    restored_report["issuer"]["facts"][0]["value"] = 1100
+    restored_report["issuer"]["company_name"] = "Corrected fixture name"
+    restored = prepare_snapshot(restored_report, identity("102", "2026-10-19T12:02:30+00:00"))
+    result = compare_snapshots(failed, restored, {"monthly_revenue": good, "issuer": good})
+    assert "coverage_change" in result["categories"]
+    assert "incomparable" in result["categories"]
+    assert "revision" not in result["categories"]
+
+
+def test_restored_identity_uses_retained_last_good_to_detect_name_revision():
+    before = snapshot()
+    failed = prepare_snapshot(report("2026-10-19T12:10:00+00:00", complete=False),
+                              identity("101", "2026-10-19T12:10:30+00:00"))
+    assert failed["issuer"]["company_name"] is None
+    payload = report("2026-10-19T12:20:00+00:00")
+    payload["issuer"]["company_name"] = "Corrected fixture name"
+    restored = prepare_snapshot(payload, identity("102", "2026-10-19T12:20:30+00:00"))
+    result = compare_snapshots(failed, restored, {"issuer": before})
+    assert "revision" in result["categories"]
+    assert any(item["component"] == "issuer" and item["kind"] == "revision" for item in result["changes"])
+    assert result["last_known_good"]["issuer"] == before["id"]
+    rendered = render_comparison(result, {s["id"]: s for s in (before, failed, restored)})
+    assert "Fixture Semiconductor → Corrected fixture name" in rendered
+    assert f"比較 baseline snapshot `{before['id']}`" in rendered

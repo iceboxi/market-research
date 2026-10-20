@@ -1,4 +1,6 @@
 """Pure comparisons of retained evidence; omitted inputs are never inferred."""
+from html import escape
+
 from .research_snapshot import SnapshotError, utc, validate_snapshot
 
 COMPONENTS = ("issuer", "monthly_revenue", "technical", "events")
@@ -56,7 +58,11 @@ def compare_snapshots(previous, current, last_known_good=None):
                 change("coverage_change", key, "source_restored" if available(current, key) else "source_unavailable")
             elif key in ("technical", "events") and previous[key]["status"] != current[key]["status"]:
                 change("coverage_change", key, "source_status_changed")
-        if previous["issuer"]["company_name"] and current["issuer"]["company_name"] and previous["issuer"]["company_name"] != current["issuer"]["company_name"]:
+        issuer_baseline = previous if available(previous, "issuer") else last_known_good.get("issuer", previous)
+        if utc(issuer_baseline["evaluation_cutoff_utc"]) > utc(current["evaluation_cutoff_utc"]):
+            if available(current, "issuer"):
+                change("incomparable", "issuer", "historical_cutoff_reversed")
+        elif issuer_baseline["issuer"]["company_name"] and current["issuer"]["company_name"] and issuer_baseline["issuer"]["company_name"] != current["issuer"]["company_name"]:
             change("revision", "issuer", "reported_identity_changed")
         if previous["technical"]["freshness"] != current["technical"]["freshness"]:
             change("coverage_change", "technical", "freshness_changed")
@@ -64,6 +70,9 @@ def compare_snapshots(previous, current, last_known_good=None):
             if previous["readiness"][key] != status:
                 change("coverage_change", "readiness_" + key, "readiness_changed")
         baseline = previous if previous["monthly_revenue"] else last_known_good.get("monthly_revenue", previous)
+        if not reversed_cutoff and utc(baseline["evaluation_cutoff_utc"]) > utc(current["evaluation_cutoff_utc"]):
+            reversed_cutoff = True
+            change("incomparable", "monthly_revenue", "historical_cutoff_reversed")
         old_facts = {period_key(f["period"]): f for f in baseline["monthly_revenue"]}
         if bool(old_facts) != bool(current["monthly_revenue"]):
             change("incomparable", "monthly_revenue", "retained_values_missing")
@@ -108,12 +117,21 @@ def render_comparison(comparison, snapshots):
     baseline = previous if previous and previous["monthly_revenue"] else snapshots.get(comparison["last_known_good"]["monthly_revenue"])
     for item in comparison["changes"]:
         detail = ""
+        used_baseline = None
         if item["component"] == "monthly_revenue" and item["kind"] in ("revision", "new_period"):
+            used_baseline = baseline
             new = next(f for f in current["monthly_revenue"] if f["period"] == item["period"])
             old = next((f for f in baseline["monthly_revenue"] if period_key(f["period"]) == period_key(item["period"])), None) if baseline else None
             detail = f"：{old['value']:,} → {new['value']:,} {new['unit']}" if old else f"：{new['value']:,} {new['unit']}"
+        elif item["component"] == "issuer" and item["kind"] == "revision":
+            used_baseline = previous if previous and available(previous, "issuer") else snapshots[comparison["last_known_good"]["issuer"]]
+            names = [escape(s["issuer"]["company_name"]).replace("[", "&#91;").replace("]", "&#93;")
+                     for s in (used_baseline, current)]
+            detail = f"：{names[0]} → {names[1]}"
         component = components.get(item["component"], item["component"].replace("readiness_", "研究準備度 "))
         lines.append(f"- {labels[item['kind']]}：{component} {item['period'] or ''}{detail}（{reasons[item['reason']]}）")
+        if used_baseline and used_baseline != previous:
+            lines.append(f"  比較 baseline snapshot `{used_baseline['id']}`")
     for key, identifier in comparison["last_known_good"].items():
         if identifier and not available(current, key):
             previous = snapshots[identifier]

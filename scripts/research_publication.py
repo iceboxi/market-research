@@ -74,7 +74,7 @@ def execute(mode, bootstrap, out):
     branch = "research-state-validation" if mode == "validation" else "research-state"
     store = GitStateStore(branch=branch)
     receipt = {"schema_version": 1, "acceptance": "failed", "mode": mode,
-               "scope": "2330 manual research snapshot / fixed publication; no schedule or diff acceptance",
+               "scope": "2330 manual snapshot / fixed publication / comparison consistency; no schedule or historical replay acceptance",
                "state_branch": branch, "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"}
     try:
         if mode == "production":
@@ -142,7 +142,7 @@ def execute(mode, bootstrap, out):
             f"## 2330 固定研究發布：{receipt['acceptance']}\n\n"
             f"Mode：{mode}；pipeline：{receipt.get('pipeline_outcome', 'unknown')}\n\n"
             f"固定報告：{publication.get('issue_url', '尚未確認；請看 publication_receipt.json')}\n\n"
-            "只驗收精簡證據保存、固定頁面與發布恢復；每日 schedule、前後差異、財報與估值另有工作範圍。\n",
+            "此執行驗收精簡證據保存、固定頁面、發布恢復與比較輸出一致；分類判定另由受控 fixture 驗證。每日 schedule、財報與估值另有工作範圍。\n",
             encoding="utf-8")
     return receipt
 
