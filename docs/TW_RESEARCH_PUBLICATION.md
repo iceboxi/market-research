@@ -17,11 +17,13 @@ workflow 使用現有 GitHub standard runner、`contents: write` 與 `issues: wr
 
 namespace 上限為 2,000 個 records／5,000,000 canonical JSON bytes；snapshot 上限 20,000 bytes。達到上限會明確失敗，不自動刪除歷史。只有 `2330.TW`，新增標的須先擴充與驗證契約。
 
-- `snapshots/tw/2330.TW/<sha256>.json`：schema v1，immutable，checksum 覆蓋 evaluation cutoff、觀測時間、run identity、執行結果與精簡證據。
+- `snapshots/tw/2330.TW/<sha256>.json`：schema v2，新增 started_at_utc，與 evaluation cutoff、觀測時間分開；既有 v1 保持可讀，不回填未知開始時間。immutable checksum 覆蓋時間、run identity、執行結果與精簡證據。
 - `subjects/tw/2330.TW.json`：schema v2，latest observation、last-success、pending／published publication、固定 Issue number 與 creation_attempted 的唯一 owner。可讀既有 v1；下次 archive／ACK 升級為 v2。v1 未確認建立結果時視為曾嘗試，不能假設可以再次 POST。
 - `publications/tw/2330.TW/<sha256>.json`：固定頁面的 snapshot／last-success references、renderer version、body checksum、pending／superseded／acked 與 Issue identity。
 
 snapshot 與 pending 同 commit。latest 依觀測時間排序；last-success 沿用原報告 `complete` 的資料流程結果，不能當作財報／估值／建議已完成。晚到的舊 snapshot 不覆蓋較新的失敗結果；舊版 ACK 不清除新版 pending。
+
+當下台股研究先在記憶體取得單次輸入 batch（每個來源只抓一次，失敗也保存為當次失敗），再固定 cutoff，以同批輸入完成 session／freshness 與研究計算。明確傳入 now 的歷史 cutoff 不會向後移動。原始 batch 不進 Git／Artifact。profile 的無效或未來出表日降級為未驗證身分，行情／事件仍可交付；codec 也防禦性略過該身分證據。
 
 保留政策依 [來源公開保存查證](TW_SOURCE_USAGE_VERIFICATION.md)，其中 TW02 的 profile／monthly 已於 2026-10-20 逐項查證官方 catalog：
 

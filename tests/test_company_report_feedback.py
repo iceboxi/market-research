@@ -235,3 +235,68 @@ def test_report_cutoff_excludes_future_prices_and_events(tmp_path):
     assert result["run_receipt"]["source_coverage"]["technical"]["session"] == "2026-10-19"
     assert [e["title"] for e in result["official_events"]["events"]] == ["Known fixture disclosure"]
     assert "Future fixture disclosure" not in (tmp_path / "report.md").read_text()
+
+
+def test_current_tw_freezes_cutoff_after_all_inputs_and_fetches_each_source_once(tmp_path):
+    from datetime import timedelta
+    ticks = [NOW, NOW + timedelta(seconds=10)]
+    calls = []
+    class Clock:
+        def __call__(self):
+            calls.append("clock")
+            return ticks.pop(0)
+    class CountingPrices(Prices):
+        def load(self, symbol, period):
+            calls.append("prices")
+            return super().load(symbol, period)
+    def get(url):
+        calls.append(url)
+        return facts_get(url)
+    result = run("2330.TW", out=tmp_path, provider=CountingPrices(), facts_get=get, clock=Clock())
+    assert result["started_utc"] == NOW.isoformat()
+    assert result["generated_utc"] == "2026-10-19T12:00:10+00:00"
+    assert calls == ["clock", TW_PROFILE, TW_REVENUE, "prices", TW_MATERIAL_URL, "clock"]
+    assert result["run_receipt"]["evaluation_cutoff_utc"] == result["generated_utc"]
+    assert result["technical"]["analytical_close"] == 100
+
+
+def test_future_profile_is_unavailable_but_prices_and_events_still_report(tmp_path):
+    def get(url):
+        rows = facts_get(url)
+        if url == TW_PROFILE:
+            rows[0]["出表日期"] = "1151020"
+        return rows
+    result = run("2330.TW", out=tmp_path, now=NOW, provider=Prices(), facts_get=get)
+    assert result["issuer"]["company_name"] is None
+    assert result["instrument_eligibility"]["status"] == "unknown"
+    assert result["complete"] is False
+    assert result["technical"]["status"] == "available"
+
+
+@pytest.mark.parametrize("failure", ["profile", "prices", "events"])
+def test_current_input_failure_is_replayed_once_into_readable_partial_results(tmp_path, failure):
+    calls = []
+    def get(url):
+        calls.append(url)
+        if url == {"profile": TW_PROFILE, "events": TW_MATERIAL_URL}.get(failure):
+            raise httpx.ReadTimeout("fixture")
+        return facts_get(url)
+    class MaybePrices(Prices):
+        def load(self, symbol, period):
+            calls.append("prices")
+            if failure == "prices":
+                raise httpx.ReadTimeout("fixture")
+            return super().load(symbol, period)
+    result = run("2330.TW", out=tmp_path, provider=MaybePrices(), facts_get=get, clock=lambda: NOW)
+    assert all(calls.count(key) == 1 for key in set(calls))
+    assert result["complete"] is (failure == "events")
+    assert json.loads((tmp_path / "report.json").read_text()) == result
+    assert "執行摘要" in (tmp_path / "report.md").read_text()
+
+
+def test_session_freshness_uses_post_fetch_cutoff_at_completion_boundary(tmp_path):
+    ticks = iter([datetime(2026, 10, 20, 6, 29, 59, tzinfo=timezone.utc),
+                  datetime(2026, 10, 20, 6, 30, 1, tzinfo=timezone.utc)])
+    result = run("2330.TW", out=tmp_path, provider=Prices(), facts_get=facts_get, clock=lambda: next(ticks))
+    assert result["technical"]["last_session"] == "2026-10-19"
+    assert result["run_receipt"]["source_coverage"]["technical"]["freshness"] == "stale"

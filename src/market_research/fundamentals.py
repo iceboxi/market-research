@@ -55,6 +55,16 @@ def pick(row, *labels):
     return None
 
 
+def tw_report_date(value):
+    """Original ROC/Gregorian export date; never a publication timestamp."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{7,8}", value):
+        raise ValueError("Invalid TW export date")
+    year = int(value[:-4]) + (1911 if len(value) == 7 else 0)
+    return date(year, int(value[-4:-2]), int(value[-2:]))
+
+
 def twse_fundamentals(symbol, get=json_get):
     """TWSE-listed equities only; no assumption that all are generic industry."""
     if not re.fullmatch(r"[0-9]{4,6}\.TW", symbol):
