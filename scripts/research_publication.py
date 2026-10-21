@@ -17,8 +17,8 @@ from market_research.research_snapshot import prepare_snapshot
 from scripts.company_report import run
 from scripts.research_github import GitHubResearchSink
 from scripts.research_state import (
-    SUBJECT, archive, initialize, marker, publication_comparison, publication_path,
-    publish, read, render_publication,
+    SUBJECT, archive, initialize, marker, notify, publication_comparison, publication_path,
+    publish, read, reconcile_rerun_triggers, render_notification, render_publication,
 )
 from market_research.research_comparison import render_comparison
 from scripts.state_store import GitStateStore
@@ -49,6 +49,15 @@ def recover(branch, out):
         result["marker_matches"] = sorted(issue["number"] for issue in matches)
         if expected is None or result["marker_matches"] != [expected]:
             result.update(status="blocked", reason="published_identity_not_unique")
+    notif_result = {"status": "not_attempted"}
+    if result["status"] in ("published", "already_current"):
+        for attempt in range(1, 5):
+            notif_result = notify(sink, store)
+            notif_result["reconciliation_attempts"] = attempt
+            if notif_result.get("reason") != "comment_marker_not_visible_after_attempt" or attempt == 4:
+                break
+            time.sleep(2 * attempt)
+    result["notification"] = notif_result
     save(out / "publication_receipt.json", result)
     state = read(store)
     save(out / "research_state.json", state)
@@ -65,8 +74,13 @@ def recover(branch, out):
             (out / "comparison.md").write_text(rendered, encoding="utf-8")
             if rendered not in body:
                 raise ValueError("Artifact and fixed report comparison differ")
+        if subject.get("published_notification_id"):
+            nid = subject["published_notification_id"]
+            (out / "notification.md").write_text(render_notification(state["records"], nid, branch), encoding="utf-8")
     if result["status"] not in ("published", "already_current"):
         raise ValueError("Publication is still pending; inspect receipt before retry")
+    if notif_result["status"] not in ("delivered", "already_current"):
+        raise ValueError("Notification is still pending; inspect receipt before retry")
     return result
 
 
@@ -106,6 +120,7 @@ def execute(mode, bootstrap, out, *, report=None, daily=False):
         if mode == "validation" or bootstrap:
             receipt["initialization"] = initialize(store)
         read(store)  # Never silently initialize ordinary production writes.
+        receipt["rerun_reconciliation"] = reconcile_rerun_triggers(store)
         with tempfile.TemporaryDirectory(prefix="research-inputs-") as temp:
             if report is None:
                 report = run("2330.TW", out=Path(temp))
@@ -115,8 +130,12 @@ def execute(mode, bootstrap, out, *, report=None, daily=False):
                 "observed_at_utc": datetime.now(timezone.utc).isoformat(),
             })
         save(out / "snapshot.json", snapshot)
-        receipt["archive"] = archive(snapshot, store)
-        receipt["repeat"] = archive(snapshot, store)
+        observed_event_ids = [
+            e["event_id"] for e in (report.get("official_events") or {}).get("events", [])
+            if isinstance(e, dict) and e.get("event_id")
+        ]
+        receipt["archive"] = archive(snapshot, store, consumed_event_ids=observed_event_ids)
+        receipt["repeat"] = archive(snapshot, store, consumed_event_ids=observed_event_ids)
         if receipt["repeat"]["status"] != "already_current":
             raise ValueError("Snapshot rerun was not idempotent")
         before_publish = read(store)
@@ -147,6 +166,8 @@ def execute(mode, bootstrap, out, *, report=None, daily=False):
         receipt["fresh_read_commit"] = final["head"]
         if final["records"][SUBJECT]["pending_publication_id"]:
             raise ValueError("Fresh process still sees pending publication")
+        if final["records"][SUBJECT].get("pending_notification_id"):
+            raise ValueError("Fresh process still sees pending notification")
         receipt["main_after"] = store.main_head()
         receipt["checkout_after"] = store._git("rev-parse", "HEAD").stdout.strip()
         receipt["main_unchanged"] = receipt["main_before"] == receipt["main_after"]

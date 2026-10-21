@@ -37,3 +37,24 @@ def test_api_failure_does_not_expose_raw_response(monkeypatch):
     with pytest.raises(RuntimeError, match="GitHub Issues request failed") as error:
         GitHubResearchSink("owner/repo").find("marker")
     assert "secret" not in str(error.value)
+
+
+def test_find_comments_and_create_comment_pagination_and_payload(monkeypatch):
+    calls = []
+    marker = "<!-- notif -->"
+    body = marker + "\n研究變更摘要"
+    def command(args, **kwargs):
+        calls.append((args, kwargs))
+        if "--paginate" in args:
+            data = [[{"id": 10, "body": "unrelated"}], [{"id": 20, "body": body}]]
+        else:
+            data = {"id": 20, "body": body}
+        return subprocess.CompletedProcess(args, 0, json.dumps(data), "")
+    monkeypatch.setattr("scripts.research_github.subprocess.run", command)
+    sink = GitHubResearchSink("owner/repo")
+    assert [c["id"] for c in sink.find_comments(74, marker)] == [20]
+    created = sink.create_comment(74, body)
+    assert created["id"] == 20
+    assert "repos/owner/repo/issues/74/comments?per_page=100" in calls[0][0]
+    assert "repos/owner/repo/issues/74/comments" in calls[1][0]
+    assert json.loads(calls[1][1]["input"]) == {"body": body}
