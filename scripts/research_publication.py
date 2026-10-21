@@ -21,6 +21,7 @@ from scripts.research_state import (
     publish, read, reconcile_rerun_triggers, render_notification, render_publication,
 )
 from market_research.research_comparison import render_comparison
+from market_research.research_site import write_research_site
 from scripts.state_store import GitStateStore
 
 
@@ -77,6 +78,7 @@ def recover(branch, out):
         if subject.get("published_notification_id"):
             nid = subject["published_notification_id"]
             (out / "notification.md").write_text(render_notification(state["records"], nid, branch), encoding="utf-8")
+        write_research_site(out, state["records"], branch=branch)
     if result["status"] not in ("published", "already_current"):
         raise ValueError("Publication is still pending; inspect receipt before retry")
     if notif_result["status"] not in ("delivered", "already_current"):
@@ -185,6 +187,7 @@ def execute(mode, bootstrap, out, *, report=None, daily=False):
             f"## 2330 固定研究發布：{receipt['acceptance']}\n\n"
             f"Mode：{mode}；pipeline：{receipt.get('pipeline_outcome', 'unknown')}\n\n"
             f"固定報告：{publication.get('issue_url', '尚未確認；請看 publication_receipt.json')}\n\n"
+            f"互動式靜態網頁儀表板：https://iceboxi.github.io/market-research/ （Artifact 內亦附單檔 `index.html` 可離線開啟）\n\n"
             "此執行驗收精簡證據保存、固定頁面、發布恢復與比較輸出一致；分類判定另由受控 fixture 驗證。每日 schedule、財報與估值另有工作範圍。\n",
             encoding="utf-8")
     return receipt
