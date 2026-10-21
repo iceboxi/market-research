@@ -1,0 +1,93 @@
+{
+  "attribution": {
+    "datasets": [
+      {
+        "catalog": "https://data.gov.tw/dataset/18419",
+        "dataset_version": "not_specified",
+        "name": "上市公司基本資料",
+        "released_year": 2015
+      },
+      {
+        "catalog": "https://data.gov.tw/dataset/18420",
+        "dataset_version": "not_specified",
+        "name": "上市公司每月營業收入彙總表",
+        "released_year": 2015
+      }
+    ],
+    "license": "https://data.gov.tw/license",
+    "license_version": "1.0",
+    "provider": "金融監督管理委員會證券期貨局（證交所資料）"
+  },
+  "availability": "first_seen_only_historical_not_verified",
+  "comparison_limits": [
+    "artifact_inputs_not_retained",
+    "events_metadata_only",
+    "prices_metadata_only"
+  ],
+  "evaluation_cutoff_utc": "2026-10-21T12:36:02.359759+00:00",
+  "events": {
+    "coverage": "recent_daily_snapshot_only_not_a_full_history",
+    "snapshot_date": "2026-10-21",
+    "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+    "status": "available"
+  },
+  "execution": {
+    "legacy_complete": true,
+    "status": "completed"
+  },
+  "id": "bda217a6139217c6f95d536ce0971cd94c4474b181dbe12cc28909c5bc6ac953",
+  "issuer": {
+    "company_name": "台灣積體電路製造股份有限公司",
+    "policy": "twse_profile_ogdl_v1",
+    "reported_at": "1151020",
+    "source": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+  },
+  "market": "tw",
+  "model_identity": "5ee6423be84afda6909c62eeff2a6550f0a0e07c44608b7b22b7c7ff5a19839a",
+  "monthly_revenue": [
+    {
+      "metric": "monthly_reported_revenue",
+      "period": "11509",
+      "policy": "twse_monthly_ogdl_v1",
+      "reported_at": "1151017",
+      "source": "https://openapi.twse.com.tw/v1/opendata/t187ap05_L",
+      "unit": "TWD_thousands",
+      "value": 511857399.0
+    }
+  ],
+  "observed_at_utc": "2026-10-21T12:36:02.497420+00:00",
+  "readiness": {
+    "events": "no_recent_observed_events",
+    "financial": "unavailable",
+    "instrument": "candidate_for_nonfinancial_research",
+    "recommendation": "not_available",
+    "source_evidence": "review_only",
+    "technical": "available",
+    "trade_plan": "not_evaluated",
+    "valuation": "not_evaluated",
+    "valuation_provenance": "not_verified"
+  },
+  "run": {
+    "code_sha": "6c9f54852821b0da736aa75116988e14773fad5d",
+    "repository": "iceboxi/market-research",
+    "run_attempt": 1,
+    "run_id": "39600790057",
+    "run_url": "https://github.com/iceboxi/market-research/actions/runs/39600790057"
+  },
+  "schema_version": 2,
+  "source_links": [
+    "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
+    "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+    "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
+  ],
+  "started_at_utc": "2026-10-21T12:35:41.993117+00:00",
+  "symbol": "2330.TW",
+  "technical": {
+    "freshness": "current",
+    "input_sha256": "d3d0f53130d942523d5e2e6d792e5b06460d6afc7dd5243e2d642115e440d214",
+    "price_basis": "twse_official_unadjusted",
+    "session": "2026-10-21",
+    "source": "twse_stock_day_official_raw_ohlcv",
+    "status": "available"
+  }
+}
