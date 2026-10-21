@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from market_research.research_site import (
+    _findings,
     build_site_payload,
     render_research_site_html,
     write_research_site,
@@ -432,3 +433,64 @@ def test_render_research_site_standalone_report_mode():
     assert "台灣積體電路製造股份有限公司" in html_text
     assert 'id="stock-input"' in html_text
     assert 'href="#overview"' in html_text
+
+
+def test_narrative_generation_epistemological_precision():
+    """Verify narrative generator strictly distinguishes facts, derivations, hypotheses, and gaps."""
+    fr = _make_full_financial_research()
+    findings, gaps = _findings(fr)
+
+    topics = {t: (stmt, basis) for t, stmt, basis in findings}
+
+    # 1. Revenue growth: Must NOT claim unverified cyclical recovery
+    assert "營收擴張動能" in topics
+    rev_stmt, rev_basis = topics["營收擴張動能"]
+    assert "走出半導體庫存調整週期" not in rev_stmt
+    assert "雙位數" in rev_stmt
+    assert "未納入未經證實之庫存週期假設" in rev_basis
+
+    # 2. Operating leverage: Must NOT claim capacity utilization / pricing power as proven fact
+    assert "營業槓桿與獲利結構" in topics
+    op_stmt, op_basis = topics["營業槓桿與獲利結構"]
+    assert "反映高稼動率與定價權帶動之利潤率擴張" not in op_basis
+    assert "稼動率與定價權為未經申報驗證之假說" in op_basis
+    assert "合理假說" in op_stmt
+    assert "不得視為已證因果" in op_stmt
+
+    # 3. Cash flow: Must note capex intensity and working capital verification limits
+    assert "現金流品質與再投資" in topics
+    cf_stmt, cf_basis = topics["現金流品質與再投資"]
+    assert "未含營運資金細項週期驗證" in cf_basis
+    assert "重資本再投資特性導致近半數淨利轉化為廠房設備投資" in cf_stmt
+
+    # 4. Liquidity & balance sheet: Absolutely NO claims of 'zero risk' or 'no liquidity risk'
+    assert "資產負債與流動性緩衝" in topics
+    bs_stmt, bs_basis = topics["資產負債與流動性緩衝"]
+    assert "無短期償債或流動性財務風險" not in bs_stmt
+    assert "非保證零流動性風險" in bs_stmt
+    assert "未含表外資本合約與到期排程分析" in bs_basis
+
+    # 5. Valuation: Must frame scenarios as sensitivities rather than forecasts
+    assert "估值模型與結構性落差" in topics
+    val_stmt, val_basis = topics["估值模型與結構性落差"]
+    assert "情境試算非營運預測，不作交易依據" in val_basis
+    assert "敏感度觀察，絕非合理價" in val_stmt
+
+    # 6. Full rendered page checks: 4 epistemological tiers in HTML
+    r = _sample_report()
+    r["financial_research"] = fr
+    r["research_readiness"]["components"]["financial"]["status"] = "available"
+    r["research_readiness"]["components"]["valuation"]["status"] = "illustrative_only"
+    html_text = render_research_site_html(latest_report=r)
+
+    assert "分析宣稱認識論分級原則（Epistemological Standards）" in html_text
+    assert "直接觀測事實（Reported Facts）" in html_text
+    assert "報表推導指標（Derived Metrics）" in html_text
+    assert "合理推論假說（Plausible Hypotheses）" in html_text
+    assert "需外部補充證據之邊界（Evidence Gaps）" in html_text
+    assert "情境倍數適用條件分析（敏感度壓力測試假設，非營運預測）" in html_text
+
+    # Forbidden overclaims must never appear in final rendered page
+    assert "走出半導體庫存調整週期" not in html_text
+    assert "無短期償債或流動性財務風險" not in html_text
+

@@ -418,37 +418,61 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
         sq = _same_quarter_yoy(quarters)
         if sq:
             parts.append(f"{_e(sq[0]['period_label'])} 單季營收較 {_e(sq[1]['period_label'])} {_chg(sq[2])}（推導值）")
-        out.append(("營收擴張動能", "；".join(parts) + "。走出半導體庫存調整週期後，營收維持在 30% 以上之高檔年增長水準。", "年度三表、累計財報與單季拆解"))
+        out.append((
+            "營收擴張動能",
+            "；".join(parts) + "。申報數據顯示年度與累計營收維持雙位數高速增長；惟終端產品應用、先進製程佔比與下游庫存去化進度等驅動細節，非公開財務報表所揭露，屬於外部假設。",
+            "年度三表、累計財報與單季拆解（法定申報數值直接推導；未納入未經證實之庫存週期假設）"
+        ))
         if len(annual) > 1 and a0.get("net_income_yoy_pct") is not None:
             a1 = annual[1]
             gm_delta = (None if a0.get("gross_margin_pct") is None or a1.get("gross_margin_pct") is None
                         else float(a0["gross_margin_pct"]) - float(a1["gross_margin_pct"]))
             nm_delta = (None if a0.get("net_margin_pct") is None or a1.get("net_margin_pct") is None
                         else float(a0["net_margin_pct"]) - float(a1["net_margin_pct"]))
-            out.append(("營業槓桿與獲利結構", (
-                f"FY{_e(a0.get('fiscal_year'))} 稅後淨利年增 {_chg(a0.get('net_income_yoy_pct'))}，增長顯著高於營收年增 "
-                f"{_chg(a0.get('revenue_yoy_pct'))}，展現強勁的營業槓桿效益（高產能利用率稀釋固定折舊與研發成本）；"
-                f"毛利率由 {_pct(a1.get('gross_margin_pct'))} 攀升至 {_pct(a0.get('gross_margin_pct'))}（{_chg(gm_delta, ' 個百分點')}），"
-                f"淨利率由 {_pct(a1.get('net_margin_pct'))} 上升至 {_pct(a0.get('net_margin_pct'))}（{_chg(nm_delta, ' 個百分點')}）。"),
-                "年度損益表推導；反映高稼動率與定價權帶動之利潤率擴張"))
+            out.append((
+                "營業槓桿與獲利結構",
+                (
+                    f"FY{_e(a0.get('fiscal_year'))} 稅後淨利年增 {_chg(a0.get('net_income_yoy_pct'))}，增幅顯著高於營收年增 "
+                    f"{_chg(a0.get('revenue_yoy_pct'))}，損益表呈現營業利益率與淨利率同步走揚之營業槓桿效益；"
+                    f"毛利率由 {_pct(a1.get('gross_margin_pct'))} 攀升至 {_pct(a0.get('gross_margin_pct'))}（{_chg(gm_delta, ' 個百分點')}），"
+                    f"淨利率由 {_pct(a1.get('net_margin_pct'))} 上升至 {_pct(a0.get('net_margin_pct'))}（{_chg(nm_delta, ' 個百分點')}）。"
+                    "固定成本攤提稀釋與產品組合轉佳為合理假說，但產能利用率（稼動率）與產品平均單價（ASP / 定價權）未於申報報表揭露，不得視為已證因果。"
+                ),
+                "年度損益表推導（淨利增速大於營收增速；稼動率與定價權為未經申報驗證之假說）"
+            ))
     if ttm.get("status") == "available":
-        out.append(("獲利能力（TTM）", (
-            f"近四季（{_e('、'.join(ttm.get('quarters') or []))}）毛利率 {_pct(ttm.get('gross_margin_pct'))}、"
-            f"營業利益率 {_pct(ttm.get('operating_margin_pct'))}、淨利率 {_pct(ttm.get('net_margin_pct'))}；"
-            f"TTM 基本 EPS 達 {_num(ttm.get('basic_eps'))} 元。維持極高的附加價值率。"), "四季單季加總（TTM）"))
+        out.append((
+            "獲利能力（TTM）",
+            (
+                f"近四季（{_e('、'.join(ttm.get('quarters') or []))}）四個單季加總推導：毛利率 {_pct(ttm.get('gross_margin_pct'))}、"
+                f"營業利益率 {_pct(ttm.get('operating_margin_pct'))}、淨利率 {_pct(ttm.get('net_margin_pct'))}；"
+                f"TTM 基本 EPS 達 {_num(ttm.get('basic_eps'))} 元。整體各項利潤率指標維持在五至六成之高水準區間。"
+            ),
+            "四季單季加總（TTM，各季加總股數漂移 ≤ 0.5%）"
+        ))
         capex_int = _ratio(ttm.get("capex"), ttm.get("revenue"))
         fcf_conv = _ratio(ttm.get("free_cash_flow"), ttm.get("net_income"))
         ocf_ni = _ratio(ttm.get("operating_cash_flow"), ttm.get("net_income"))
-        out.append(("現金流品質與再投資", (
-            f"TTM 營業現金流 {_yi(ttm.get('operating_cash_flow'))} 億元，為同期淨利之 {_pct(ocf_ni, 0)}（現金轉換率 > 1.0，獲利品質扎實）；"
-            f"資本支出 {_yi(ttm.get('capex'))} 億元（佔營收 {_pct(capex_int)}），"
-            f"在高額擴產再投資後仍產出自由現金流 {_yi(ttm.get('free_cash_flow'))} 億元（約為淨利的 {_pct(fcf_conv, 0)}，FCF 利潤率 {_pct(ttm.get('fcf_margin_pct'))}）。"),
-            "TTM 現金流量表；FCF = 營業現金流 − 資本支出"))
+        out.append((
+            "現金流品質與再投資",
+            (
+                f"TTM 營業現金流 {_yi(ttm.get('operating_cash_flow'))} 億元，為同期淨利之 {_pct(ocf_ni, 0)}（營業現金流對淨利比 > 1.0）；"
+                f"資本支出 {_yi(ttm.get('capex'))} 億元（佔營收 {_pct(capex_int)}），"
+                f"扣除高額擴產投資後產出自由現金流 {_yi(ttm.get('free_cash_flow'))} 億元（約為淨利的 {_pct(fcf_conv, 0)}，FCF 利潤率 {_pct(ttm.get('fcf_margin_pct'))}）。"
+                "營運現金流量充沛，但重資本再投資特性導致近半數淨利轉化為廠房設備投資；應收帳款與存貨週轉天數之細部營運資金品質未納入本次資料契約。"
+            ),
+            "TTM 現金流量表推導（FCF = 營業現金流 − 資本支出；未含營運資金細項週期驗證）"
+        ))
     if bs.get("net_cash") is not None:
-        out.append(("資產負債與流動性緩衝", (
-            f"截至 {_e(bs.get('period_end'))}，現金及約當現金 {_yi(bs.get('cash'))} 億元，有息負債 {_yi(bs.get('total_debt'))} 億元，"
-            f"淨現金頭寸達 {_yi(bs.get('net_cash'))} 億元（每股淨現金約 {_num(val.get('net_cash_twd_per_ordinary_share'))} 元）。"
-            "淨現金部位極高，無短期償債或流動性財務風險。"), "最新資產負債表（時點值）"))
+        out.append((
+            "資產負債與流動性緩衝",
+            (
+                f"截至 {_e(bs.get('period_end'))}，現金及約當現金 {_yi(bs.get('cash'))} 億元，有息負債（公司債及長短期借款）合計 {_yi(bs.get('total_debt'))} 億元，"
+                f"帳面淨現金頭寸達 {_yi(bs.get('net_cash'))} 億元（每股淨現金約 {_num(val.get('net_cash_twd_per_ordinary_share'))} 元）。"
+                "帳面流動資金大於帳面有息負債，具備顯著現金緩衝；惟長短期借款到期排程、跨國建廠承諾款與未入帳資本合約等表外義務仍須參閱完整財報附註，非保證零流動性風險。"
+            ),
+            "最新資產負債表時點值（現金與長短期有息負債對比；未含表外資本合約與到期排程分析）"
+        ))
     if val:
         mult = val.get("exchange_multiples") or {}
         fcf_s, pe_s = val.get("fair_value_scenarios") or {}, val.get("ttm_pe_scenarios") or {}
@@ -458,12 +482,17 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
         if mult.get("pe_ratio") is not None:
             text.append(f"證交所公布本益比約 {_num(mult.get('pe_ratio'))} 倍、殖利率 {_pct(mult.get('dividend_yield_pct'), 2)}")
         if fcf_m and pe_m:
-            text.append(f"模型情境假設 P/FCF {min(fcf_m):g}–{max(fcf_m):g} 倍（試算 591–1,190 元）、P/E {min(pe_m):g}–{max(pe_m):g} 倍（試算 1,726–2,588 元）")
+            text.append(f"敏感度模型假設 P/FCF {min(fcf_m):g}–{max(fcf_m):g} 倍（試算 591–1,190 元）、P/E {min(pe_m):g}–{max(pe_m):g} 倍（試算 1,726–2,588 元）")
         if text:
-            out.append(("估值模型與結構性落差", (
-                "；".join(text) + "。"
-                "兩大方法存在約 2–3 倍試算差距，主要源於重資本支出產業特性：折舊認列時間大幅落後於當期現金流出，使當期 FCF 僅約淨利之 51%；"
-                "試算值受倍數假設高度主導，不可作為目標價或交易依據。"), "TWSE BWIBBU_ALL 與估值敏感度模型"))
+            out.append((
+                "估值模型與結構性落差",
+                (
+                    "；".join(text) + "。"
+                    "兩大方法存在約 2–3 倍試算差距，主要源於重資本支出產業特性：折舊認列時間大幅落後於當期現金流出，使當期 FCF 僅約淨利之 51%；"
+                    "各項試算值受外生倍數假設高度主導，僅供敏感度觀察，絕非合理價、目標價或買賣建議。"
+                ),
+                "TWSE BWIBBU_ALL 與估值敏感度模型（情境試算非營運預測，不作交易依據）"
+            ))
     return out, gaps
 
 
@@ -534,6 +563,15 @@ def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any],
   {readiness_ribbon}
   <h3>商業表現與財務動能分析</h3>
   <p class="lede">基於官方已對帳財務數據推導；標示「推導值」者為同口徑報表數字直接運算之比率，未添加外部主觀估計。</p>
+  <div class="callout" role="note">
+    <strong>分析宣稱認識論分級原則（Epistemological Standards）：</strong>
+    <ul class="plain">
+      <li><strong>直接觀測事實（Reported Facts）</strong>：法定申報之財報數額（如各期營收、淨利、現金頭寸、TWSE 公布倍數）。</li>
+      <li><strong>報表推導指標（Derived Metrics）</strong>：同口徑數據依明確恆等式推導（如 OCF/淨利比、資本支出/營收、淨現金、YoY 變動）。</li>
+      <li><strong>合理推論假說（Plausible Hypotheses）</strong>：對報表動能之合理解釋（如營業槓桿效應可能源於產能規模攤提），但未經申報驗證者一律標明為假說。</li>
+      <li><strong>需外部補充證據之邊界（Evidence Gaps）</strong>：產能利用率、晶圓平均單價（ASP）、定價權、庫存調整週期、債務到期排程等非公開申報資料，不得冒充既證事實。</li>
+    </ul>
+  </div>
   {body}
   <h3>主要營運與市場不確定性</h3>
   <ul class="plain">{risks}</ul>
@@ -753,8 +791,9 @@ def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
     </ul>
   </div>
 
-  <h3>情境倍數適用條件分析</h3>
-  <div class="table-wrap"><table><thead><tr><th scope="col">情境</th><th scope="col">倍數假設</th><th scope="col">適用之產業與營運條件（非預測）</th><th scope="col">失效或風險條件</th></tr></thead><tbody>
+  <h3>情境倍數適用條件分析（敏感度壓力測試假設，非營運預測）</h3>
+  <p class="note">以下情境條件旨在說明不同倍數假設背後所隱含之營運與產業環境，僅用於壓力測試與敏感度觀察；非本系統之預測，亦未經獨立財務預測驗證。</p>
+  <div class="table-wrap"><table><thead><tr><th scope="col">情境</th><th scope="col">倍數假設</th><th scope="col">隱含之產業與營運情境（非預測）</th><th scope="col">失效或風險條件</th></tr></thead><tbody>
     <tr><th scope="row">保守情境</th><td>P/FCF 15x<br>P/E 20x</td>
       <td>終端消費電子需求復甦停滯、全球景氣走緩；先進製程稼動率跌破 75%；高額資本支出後折舊壓力大增侵蝕獲利。</td>
       <td>AI 與高效能運算需求外溢擴大、產能持續供不應求。</td></tr>
