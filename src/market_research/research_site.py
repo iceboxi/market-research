@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from market_research.research_comparison import compare_snapshots
+from market_research.research_comparison import available, compare_snapshots
 from market_research.research_snapshot import prepare_snapshot, utc
 
 
@@ -139,7 +139,8 @@ def build_site_payload(
         comparisons[sid] = comp
         if snap.get("execution", {}).get("status") == "completed":
             prev_good = snap
-            for k in last_good_ids:
+        for k in last_good_ids:
+            if available(snap, k):
                 last_good_ids[k] = sid
 
     snapshots_desc = list(reversed(chronological))
