@@ -26,14 +26,14 @@
     },
     "research": {
       "branch": "research-state",
-      "content_sha256": "ecd374c7b49b91742af27aefbd81ed86bd0eafda3ebe8bf782ba9641399e8790",
+      "content_sha256": "93e5c4192606d85304d17ff6535913e24ff67b4d7e08c31eac65965d0580ecb7",
       "legacy_import": {
         "content_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
         "prefix": "research",
         "record_count": 0,
         "source_sha": "2bff36fe5b9eacbee46355d7d3e8a59453232946"
       },
-      "record_count": 34,
+      "record_count": 36,
       "schema_version": 1
     }
   },
