@@ -243,6 +243,8 @@ def _compact_financial_research(fr):
                 }
                 if ev.get("retained_from_previous"):
                     compact_ev["retained_from_previous"] = True
+                if ev.get("superseded_dates"):
+                    compact_ev["superseded_dates"] = list(ev["superseded_dates"])[:3]
                 compact_events.append(compact_ev)
         cal["events"] = compact_events
     return cleaned

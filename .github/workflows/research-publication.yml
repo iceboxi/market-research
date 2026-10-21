@@ -4,6 +4,7 @@ on:
     paths:
       - 'src/market_research/research_snapshot.py'
       - 'src/market_research/research_comparison.py'
+      - 'src/market_research/research_site.py'
       - 'scripts/research_*.py'
       - 'tests/test_research_*.py'
       - '.github/workflows/research-publication.yml'
@@ -37,7 +38,7 @@ jobs:
       - run: uv lock --check
       - run: uv sync --extra dev --locked
       - name: Compact schema, real Git and external delivery regressions
-        run: uv run --no-sync pytest tests/test_research_snapshot.py tests/test_research_state.py tests/test_research_publication.py tests/test_research_github.py tests/test_research_runner.py tests/test_research_comparison.py tests/test_research_diff_runner.py tests/test_daily_research.py tests/test_tw13_tw14_rerun_and_notifications.py
+        run: uv run --no-sync pytest tests/test_research_snapshot.py tests/test_research_state.py tests/test_research_publication.py tests/test_research_github.py tests/test_research_runner.py tests/test_research_comparison.py tests/test_research_diff_runner.py tests/test_daily_research.py tests/test_tw13_tw14_rerun_and_notifications.py tests/test_research_site.py
       - name: Two fixed-input runner processes on an isolated local bare remote
         run: uv run --no-sync python -m scripts.research_diff_replay --self-test --out publication_validation/controlled_replay
       - name: Actual 2330 snapshot, uncertain reply and fresh-process recovery
@@ -65,6 +66,14 @@ jobs:
       queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy_pages.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -80,6 +89,23 @@ jobs:
             args+=(--initialize)
           fi
           uv run --no-sync python -m scripts.research_publication --mode production "${args[@]}" --out publication_production
+      - name: Configure Pages
+        if: success()
+        uses: actions/configure-pages@v5
+      - name: Prepare Pages directory
+        if: success()
+        run: |
+          mkdir -p _site
+          cp publication_production/index.html _site/index.html
+      - name: Upload Pages artifact
+        if: success()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deploy_pages
+        if: success()
+        uses: actions/deploy-pages@v4
       - name: Publish summary
         if: always()
         run: |
