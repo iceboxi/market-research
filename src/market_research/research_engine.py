@@ -85,7 +85,7 @@ def compute_research(issuer, technical, event_feed, symbol, market, now):
     valuation = evaluate_valuation(issuer, annual_cutoff)
     if valuation["status"] == "illustrative_only" and (
         eligibility["status"] != "candidate_for_nonfinancial_research" or
-        source_gate["status"] != "date_only_prior_filing"
+        source_gate["status"] not in ("date_only_prior_filing", "reconciled_tw_dual_track")
     ):
         valuation = {
             "status": "not_evaluated", "method": None,

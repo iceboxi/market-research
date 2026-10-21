@@ -12,11 +12,17 @@ import httpx
 
 TW_PROFILE = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TW_REVENUE = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
+TW_INCOME_CI = "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"
+TW_BALANCE_CI = "https://openapi.twse.com.tw/v1/opendata/t187ap07_L_ci"
+TW_PROFIT_L = "https://openapi.twse.com.tw/v1/opendata/t187ap17_L"
+TW_DIVIDEND_L = "https://openapi.twse.com.tw/v1/opendata/t187ap45_L"
+TW_VALUATION_L = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
+FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 SEC_FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 SEC_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 
-from .financial_history import normalize_sec_history
+from .financial_history import normalize_sec_history, normalize_tw_financial_history
 from .event_risk import sec_filing_events, unknown
 
 def json_get(url, user_agent=None, client=None):
@@ -65,7 +71,7 @@ def tw_report_date(value):
     return date(year, int(value[-4:-2]), int(value[-2:]))
 
 
-def twse_fundamentals(symbol, get=json_get):
+def twse_fundamentals(symbol, get=json_get, *, financial_get=None, asof=None):
     """TWSE-listed equities only; no assumption that all are generic industry."""
     if not re.fullmatch(r"[0-9]{4,6}\.TW", symbol):
         raise ValueError("Use a valid TWSE listed symbol, e.g. 2330.TW")
@@ -83,6 +89,8 @@ def twse_fundamentals(symbol, get=json_get):
         "company_name": pick(row, "公司名稱", "公司簡稱"),
         "industry_code": pick(row, "產業別", "產業別代碼"),
         "listing_date": pick(row, "上市日期"),
+        "paid_in_capital_twd": number(pick(row, "實收資本額", "實收資本額(元)")),
+        "par_value_desc": pick(row, "普通股每股面額"),
         "profile": {
             "source": TW_PROFILE,
             "reported_at": pick(row, "出表日期"),
@@ -133,6 +141,10 @@ def twse_fundamentals(symbol, get=json_get):
                     "reported_at": pick(r, "出表日期"),
                     "source": TW_REVENUE,
                     "comparability": "monthly_raw_not_annual_earnings",
+                    "yoy_pct": number(pick(r, "營業收入-去年同月增減(%)", "去年同月增減(%)")),
+                    "mom_pct": number(pick(r, "營業收入-上月比較增減(%)", "上月比較增減(%)")),
+                    "cumulative_revenue_twd_thousands": number(pick(r, "累計營業收入-當月累計營收", "當月累計營收")),
+                    "cumulative_yoy_pct": number(pick(r, "累計營業收入-前期比較增減(%)", "前期比較增減(%)")),
                 })
             else:
                 output["warnings"].append("TWSE monthly revenue is unavailable for this issuer")
@@ -140,9 +152,66 @@ def twse_fundamentals(symbol, get=json_get):
             output["warnings"].append("TWSE monthly revenue not uniquely identified")
     except (httpx.HTTPError, ValueError, KeyError, OSError) as exc:
         output["warnings"].append("TWSE monthly revenue unavailable: "+type(exc).__name__)
-    output["warnings"].append(
-        "TWSE profile + monthly revenue do not constitute audited financial statements"
-    )
+
+    ext_get = financial_get or (get if get is json_get else None)
+    if ext_get is not None and str(output.get("industry_code") or "").strip().zfill(2) != "17":
+        cutoff_date = asof if isinstance(asof, date) else date.today()
+        twse_bundle = {"profile": row}
+        for key, url, code_field in (
+            ("income", TW_INCOME_CI, "公司代號"),
+            ("balance", TW_BALANCE_CI, "公司代號"),
+            ("profitability", TW_PROFIT_L, "公司代號"),
+            ("valuation", TW_VALUATION_L, "Code"),
+        ):
+            try:
+                rows_data = ext_get(url)
+                if isinstance(rows_data, list):
+                    matched = [x for x in rows_data if isinstance(x, dict) and str(x.get(code_field, "")).strip() == ticker]
+                    if len(matched) == 1:
+                        rep_dt = pick(matched[0], "出表日期", "Date")
+                        try:
+                            if rep_dt and tw_report_date(rep_dt) > cutoff_date:
+                                continue
+                        except ValueError:
+                            pass
+                        twse_bundle[key] = matched[0]
+            except Exception as exc:
+                output["warnings"].append(f"TWSE {key} source unavailable: {type(exc).__name__}")
+        try:
+            div_rows = ext_get(TW_DIVIDEND_L)
+            if isinstance(div_rows, list):
+                twse_bundle["dividends"] = [
+                    x for x in div_rows if isinstance(x, dict) and str(x.get("公司代號", "")).strip() == ticker
+                ]
+        except Exception as exc:
+            output["warnings"].append(f"TWSE dividends source unavailable: {type(exc).__name__}")
+
+        finmind_bundle = {}
+        for key, ds in (
+            ("income", "TaiwanStockFinancialStatements"),
+            ("balance", "TaiwanStockBalanceSheet"),
+            ("cashflow", "TaiwanStockCashFlowsStatement"),
+            ("dividend_result", "TaiwanStockDividendResult"),
+        ):
+            try:
+                f_url = f"{FINMIND_URL}?dataset={ds}&data_id={ticker}&start_date=2023-01-01"
+                resp = ext_get(f_url)
+                if isinstance(resp, dict) and resp.get("status") == 200 and isinstance(resp.get("data"), list):
+                    finmind_bundle[key] = resp["data"]
+            except Exception as exc:
+                output["warnings"].append(f"FinMind {key} unavailable: {type(exc).__name__}")
+
+        if finmind_bundle.get("income") and finmind_bundle.get("balance") and finmind_bundle.get("cashflow"):
+            history = normalize_tw_financial_history(
+                ticker, cutoff_date, finmind=finmind_bundle, twse=twse_bundle, source=TW_INCOME_CI,
+            )
+            output["financial_history"] = history
+            output["warnings"].extend(history.get("warnings", []))
+
+    if "financial_history" not in output or len(output["financial_history"].get("annual_free_cash_flow", [])) < 3:
+        output["warnings"].append(
+            "TWSE profile + monthly revenue do not constitute audited financial statements"
+        )
     return output
 
 

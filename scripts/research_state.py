@@ -5,6 +5,7 @@ All Git I/O stays in GitStateStore. External delivery is injected at publish().
 from html import escape
 import re
 
+from market_research.company_analysis import render_tw_full_research_sections
 from market_research.research_snapshot import (
     READINESS, SnapshotError, encoded, fingerprint, utc, validate_snapshot,
 )
@@ -203,7 +204,11 @@ def render_publication(records, identifier, branch):
         return body
     delta = publication_comparison(records, identifier)
     snapshots = {value["id"]: value for path, value in records.items() if path.startswith("snapshots/")}
-    return body.replace("；尚未完成前後變化分析。", "。") + "\n" + render_comparison(delta, snapshots)
+    latest = records[snapshot_path(records[publication_path(identifier)]["snapshot_id"])]
+    extra = ""
+    if "financial_research" in latest:
+        extra = "\n" + "\n".join(render_tw_full_research_sections(latest["financial_research"])) + "\n"
+    return body.replace("；尚未完成前後變化分析。", "。") + extra + "\n" + render_comparison(delta, snapshots)
 
 
 def _comparison_refs(records, latest):

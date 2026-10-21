@@ -1,7 +1,7 @@
 """Pure comparisons of retained evidence; omitted inputs are never inferred."""
 from html import escape
 
-from .research_snapshot import SnapshotError, utc, validate_snapshot
+from .research_snapshot import READINESS, SnapshotError, utc, validate_snapshot
 
 COMPONENTS = ("issuer", "monthly_revenue", "technical", "events")
 
@@ -66,7 +66,8 @@ def compare_snapshots(previous, current, last_known_good=None):
             change("revision", "issuer", "reported_identity_changed")
         if previous["technical"]["freshness"] != current["technical"]["freshness"]:
             change("coverage_change", "technical", "freshness_changed")
-        for key, status in current["readiness"].items():
+        for key in READINESS:
+            status = current["readiness"][key]
             if previous["readiness"][key] != status:
                 change("coverage_change", "readiness_" + key, "readiness_changed")
         baseline = previous if previous["monthly_revenue"] else last_known_good.get("monthly_revenue", previous)
@@ -88,6 +89,19 @@ def compare_snapshots(previous, current, last_known_good=None):
                 change("incomparable", "monthly_revenue", "source_or_basis_changed", fact["period"])
             elif fact["value"] != old["value"]:
                 change("revision", "monthly_revenue", "reported_value_changed", fact["period"])
+        old_fr = previous.get("financial_research")
+        new_fr = current.get("financial_research")
+        if not reversed_cutoff and isinstance(old_fr, dict) and isinstance(new_fr, dict):
+            old_q = {q["period_label"]: q for q in old_fr.get("quarterly_summary", []) if isinstance(q, dict) and "period_label" in q}
+            for q in new_fr.get("quarterly_summary", []):
+                if not isinstance(q, dict) or "period_label" not in q:
+                    continue
+                lbl = q["period_label"]
+                if lbl not in old_q:
+                    change("new_period", "financial_research", "new_retained_period", lbl)
+                elif (q.get("revenue") != old_q[lbl].get("revenue") or
+                      q.get("net_income") != old_q[lbl].get("net_income")):
+                    change("revision", "financial_research", "reported_value_changed", lbl)
     limitations = set(current["comparison_limits"])
     if not current.get("model_identity") or previous and not previous.get("model_identity"):
         limitations.add("model_identity_not_retained")
@@ -102,7 +116,8 @@ def render_comparison(comparison, snapshots):
               "revision": "同期間更正", "coverage_change": "來源／readiness 變化",
               "model_change": "模型／設定變更", "incomparable": "無法比較"}
     components = {"issuer": "公司身分", "monthly_revenue": "月營收", "technical": "行情與技術",
-                  "events": "官方事件", "schema": "資料格式", "model": "模型／設定", "time": "評估時間"}
+                  "events": "官方事件", "financial_research": "財報與估值研究",
+                  "schema": "資料格式", "model": "模型／設定", "time": "評估時間"}
     reasons = {"schema_changed": "資料格式版本改變", "model_or_config_changed": "模型版本或設定改變",
                "model_identity_not_retained": "舊版本未保留模型 identity", "source_or_basis_changed": "來源或口徑不同",
                "price_inputs_not_retained": "行情輸入已變但未保留價格數值", "source_or_coverage_changed": "來源或涵蓋範圍改變",

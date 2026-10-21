@@ -1,15 +1,23 @@
 # 2330 免費財報來源採用契約
 
-本契約承接 [TW05 #50](https://github.com/iceboxi/market-research/issues/50) 與已確認的 [spec](design/tw-workflow-spec.md)。文獻、程式測試、runner 實取與正式導入各自驗收；最新 Run／SHA／Artifact 證據留在 Issue，不在文件維護第二份任務狀態。
+本契約承接 [TW05 #50](https://github.com/iceboxi/market-research/issues/50)、[TW06 #58](https://github.com/iceboxi/market-research/issues/58)、[TW07 #59](https://github.com/iceboxi/market-research/issues/59)、[TW10 #55](https://github.com/iceboxi/market-research/issues/55)、[TW11 #60](https://github.com/iceboxi/market-research/issues/60)、[TW12 #62](https://github.com/iceboxi/market-research/issues/62) 與已確認的 [spec](design/tw-workflow-spec.md)。文獻、程式測試、runner 實取與正式導入各自驗收；最新 Run／SHA／Artifact 證據留在 Issue，不在文件維護第二份任務狀態。
 
-## 選型與出口
+## 第一個 Gate：2330 資料完整性矩陣（Data Completeness Matrix）
 
-| 路徑 | 角色與目前採用邊界 | 帳號／quota | 公開出口 |
+| 資料項目 | 來源 | 實際期間 | 驗證結果 | 是否可進研究 |
+| --- | --- | --- | --- | --- |
+| 年度三表（損益表、資產負債表、現金流量表） | FinMind（`TaiwanStockFinancialStatements` / `TaiwanStockBalanceSheet` / `TaiwanStockCashFlowsStatement`）＋ TWSE OpenAPI（`t187ap06_L_ci` / `t187ap07_L_ci` / `t187ap45_L`）交叉對帳 | FY2023、FY2024、FY2025（三個完整會計年度，`2023-01-01` 至 `2025-12-31`） | **pass**（營收、毛利、營業利益、稅後淨利、歸屬母公司淨利、基本 EPS、營業現金流、CAPEX、自由現金流、現金、總資產、總負債、應付公司債、長期借款、權益、普通股股本全數到位且跨來源核對一致） | **是** |
+| 季度／累計／TTM 財報與財務比率 | FinMind（2023Q1–2026Q2 共 14 季）＋ TWSE OpenAPI（`t187ap06_L_ci` 115Q2 累計損益、`t187ap07_L_ci` 115Q2 資產負債、`t187ap17_L` 獲利能力比率、`t187ap45_L` 單季歸屬母公司淨利） | 最新單季 2026Q2、最新累計 2026-H1（`2026-01-01` 至 `2026-06-30`）、連續四季 TTM（2025Q3–2026Q2） | **pass**（透過單季歸屬母公司淨利與累計損益表確定性辨識單季 vs 累計 YTD 口徑，無把累計當單季或把月營收當年度財報） | **是** |
+| 股數／除權息與公司行動 | TWSE OpenAPI（`t187ap03_L` 已發行普通股數與實收資本額、`t187ap45_L` 各季股利分派與董事會決議日、`BWIBBU_ALL` 殖利率／本益比／股價淨值比）＋ FinMind（`TaiwanStockBalanceSheet` 普通股股本、`TaiwanStockDividendResult` 除息參考價與填息紀錄） | 2023–2026Q2 普通股股數（`25,932,071,000` 至 `25,932,370,067` 股，面額 10 元）與季配息紀錄（每股 3.0 → 7.0 元） | **pass**（已發行普通股數與資產負債表普通股股本÷10 完全吻合；季配息與除權息紀錄完整；稀釋加權平均股數未由免費 API 直接提供，明確標註改採普通股股數與基本 EPS 口徑） | **是** |
+| 行情／重大公告與事件 | 既有日 K 行情 adapter（真實歷史 OHLCV 與最新交易日收盤）＋ TWSE OpenAPI（`t187ap04_L` 每日重大訊息、`t187ap05_L` 每月營業收入） | 最新完整交易日 OHLCV、近 12 個月營收（至 11509）、當日重大訊息與法說／股利事件 | **pass**（含價格基準 `unadjusted`、session 日期、SHA-256 驗證與重大訊息覆蓋邊界說明） | **是** |
+
+## 選型與雙軌公開保存政策（Dual-Track Retention Contract）
+
+| 路徑 | 角色與採用邊界 | 帳號／quota | 公開出口政策 |
 | --- | --- | --- | --- |
-| FinMind 單股三表 REST | 2330 當下研究的候選；須逐次通過 issuer、period、schema、單位與代表性科目對帳，尚非 production adapter | 不送 token；Free 單股，文件300次／小時，註冊600；live是否免費另看receipt | raw禁止再散布；必要精簡數值／衍生值各自not_verified；probe只輸出metadata及不含數值／差額的結果 |
-| TWSE 一般業損益／BS OpenAPI | 官方開放資料與允許公開數值的獨立來源；仍需確認同period／scope／單位，未補足CF | 無token；未確認統一SLA／quota，低頻取樣 | 兩個確切dataset適用OGDL1.0並須顯名；不把授權擴大到MOPS／IR |
-| TSMC IR四頁合併簡明財報 | 2330的獨立oracle與人工備援；2025年度、2026上半年分開；不是通用全市場adapter | 免費閱讀；HTTP403即停止此路徑，不繞過封鎖 | 原文／全文不公開保存；必要數值出口not_verified，先保留URL／頁碼／hash／結果 |
-| Yahoo／yfinance | 人工參照與待驗證候選；本probe不另發Yahoo請求，不以它繞過IR的403 | 無可靠免費quota承諾；條款與429限制仍適用 | 未成立，不作正式三表出口 |
+| FinMind 單股三表與除息 REST | 2330 歷史三表（2023Q1–2026Q2）與除息結果的自動化計算來源；每次執行必與 TWSE OpenAPI 獨立對帳 | 不送 token；Free 單股 300 次／小時，GitHub-hosted Runner 實測 HTTP 200 | **禁止將 FinMind 原始 JSON payload 寫入 public repo 或 `research-state` 分支**；僅允許在研究計算後，將與 TWSE 對帳通過的衍生研究摘要、期間、hash 與對帳狀態呈現於報告與精簡 snapshot |
+| TWSE OpenAPI（`t187ap03_L`、`t187ap04_L`、`t187ap05_L`、`t187ap06_L_ci`、`t187ap07_L_ci`、`t187ap17_L`、`t187ap45_L`、`BWIBBU_ALL`） | 政府資料開放授權條款第 1.0 版（OGDL-1.0）之官方權威來源；提供公司基本資料、月營收、當期累計損益表、期末資產負債表、獲利能力比率、單季盈餘與股利分派、交易所每日估值倍數 | 無 token；GitHub-hosted Runner 實測全部 HTTP 200 | 適用 **OGDL-1.0**，允許公開保存原始數值與衍生指標，並於報告與 snapshot 顯名標示來源機關與資料集 |
+| TSMC IR 四頁合併簡明財報 PDF | 獨立人工／離線核對 oracle（2025 年度、2026 上半年） | 免費閱讀；GitHub-hosted Runner 因 Akamai CDN 回傳 HTTP 403，自動切換至 TWSE OpenAPI 對帳路徑，不繞過封鎖 | 原文／全文不公開保存；僅保留 URL、頁碼、hash 與對帳狀態 |
 
 來源與條款的精確依據見 [使用條件查證](TW_SOURCE_USAGE_VERIFICATION.md)；既有 [免費來源筆記](TW_FREE_FINANCIAL_SOURCES.md) 提供候選背景。SDK或parser的程式license不決定資料使用權。
 
