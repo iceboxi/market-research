@@ -392,7 +392,11 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     (out/"run_receipt.json").write_text(json.dumps(result["run_receipt"],indent=2,ensure_ascii=False,allow_nan=False)+"\n",encoding="utf-8")
     if symbol == "2330.TW":
         from market_research.research_site import write_research_site
-        write_research_site(out, latest_report=result)
+        from market_research.research_snapshot import SnapshotError
+        try:
+            write_research_site(out, latest_report=result)
+        except SnapshotError:
+            pass
     return result
 
 def main():

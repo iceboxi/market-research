@@ -396,7 +396,8 @@ def test_render_research_site_multi_snapshot_time_machine_and_xss_safety(tmp_pat
 
 
 def test_render_research_site_standalone_report_mode():
-    r = _sample_report()
+    r = _sample_report(stamp="2026-10-19T12:00:00+00:00")
+    r["started_utc"] = "2026-10-21T12:00:00+00:00"
     r["financial_research"] = _make_full_financial_research()
     payload = build_site_payload(latest_report=r)
     assert len(payload["snapshots"]) == 1

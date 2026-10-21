@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from market_research.research_comparison import compare_snapshots
-from market_research.research_snapshot import prepare_snapshot
+from market_research.research_snapshot import prepare_snapshot, utc
 
 
 def _esc(val: Any) -> str:
@@ -73,6 +73,9 @@ def build_site_payload(
         run_id = raw_run_id if re.fullmatch(r"[0-9]{1,30}", raw_run_id) else "1"
         raw_sha = os.getenv("GITHUB_SHA") or latest_report.get("model_identity") or ("0" * 40)
         code_sha = raw_sha[:40] if re.fullmatch(r"[a-f0-9]{40,64}", str(raw_sha)) else ("0" * 40)
+        gen_str = latest_report.get("generated_utc") or datetime.now(timezone.utc).isoformat()
+        start_str = latest_report.get("started_utc") or gen_str
+        obs_str = max(utc(gen_str), utc(start_str)).isoformat()
         snap = prepare_snapshot(
             latest_report,
             {
@@ -80,7 +83,7 @@ def build_site_payload(
                 "run_id": run_id,
                 "run_attempt": int(os.getenv("GITHUB_RUN_ATTEMPT", "1") or "1"),
                 "code_sha": code_sha,
-                "observed_at_utc": latest_report.get("generated_utc") or datetime.now(timezone.utc).isoformat(),
+                "observed_at_utc": obs_str,
             },
         )
         records = {
