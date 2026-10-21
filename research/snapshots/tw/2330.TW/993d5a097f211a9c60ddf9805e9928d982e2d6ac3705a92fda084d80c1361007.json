@@ -1,0 +1,519 @@
+{
+  "attribution": {
+    "datasets": [
+      {
+        "catalog": "https://data.gov.tw/dataset/18419",
+        "dataset_version": "not_specified",
+        "name": "上市公司基本資料",
+        "released_year": 2015
+      },
+      {
+        "catalog": "https://data.gov.tw/dataset/18420",
+        "dataset_version": "not_specified",
+        "name": "上市公司每月營業收入彙總表",
+        "released_year": 2015
+      }
+    ],
+    "license": "https://data.gov.tw/license",
+    "license_version": "1.0",
+    "provider": "金融監督管理委員會證券期貨局（證交所資料）"
+  },
+  "availability": "first_seen_only_historical_not_verified",
+  "comparison_limits": [
+    "artifact_inputs_not_retained",
+    "events_metadata_only",
+    "prices_metadata_only"
+  ],
+  "evaluation_cutoff_utc": "2026-10-21T00:01:12.172725+00:00",
+  "events": {
+    "coverage": "recent_daily_snapshot_only_not_a_full_history",
+    "snapshot_date": "2026-10-21",
+    "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+    "status": "available"
+  },
+  "execution": {
+    "legacy_complete": true,
+    "status": "completed"
+  },
+  "financial_research": {
+    "annual_summary": [
+      {
+        "basic_eps": 66.26,
+        "capex": 1272410529000.0,
+        "fcf_margin_pct": 26.32,
+        "fcf_yoy_pct": 15.21,
+        "fiscal_year": "2025",
+        "free_cash_flow": 1002565096000.0,
+        "gross_margin_pct": 59.89,
+        "gross_profit": 2281293979000.0,
+        "net_income": 1715396780000.0,
+        "net_income_yoy_pct": 46.31,
+        "net_margin_pct": 45.03,
+        "operating_cash_flow": 2274975625000.0,
+        "operating_income": 1936091677000.0,
+        "operating_margin_pct": 50.83,
+        "ordinary_shares": 25932524500.0,
+        "parent_net_income": 1717882627000.0,
+        "period_end": "2025-12-31",
+        "period_start": "2025-01-01",
+        "revenue": 3809054272000.0,
+        "revenue_yoy_pct": 31.61
+      },
+      {
+        "basic_eps": 45.26,
+        "capex": 956006536000.0,
+        "fcf_margin_pct": 30.06,
+        "fcf_yoy_pct": 197.85,
+        "fiscal_year": "2024",
+        "free_cash_flow": 870170532000.0,
+        "gross_margin_pct": 56.12,
+        "gross_profit": 1624353564000.0,
+        "net_income": 1172431759000.0,
+        "net_income_yoy_pct": 39.95,
+        "net_margin_pct": 40.51,
+        "operating_cash_flow": 1826177068000.0,
+        "operating_income": 1322053050000.0,
+        "operating_margin_pct": 45.68,
+        "ordinary_shares": 25932733200.0,
+        "parent_net_income": 1173267703000.0,
+        "period_end": "2024-12-31",
+        "period_start": "2024-01-01",
+        "revenue": 2894307699000.0,
+        "revenue_yoy_pct": 33.89
+      },
+      {
+        "basic_eps": 32.34,
+        "capex": 949816825000.0,
+        "fcf_margin_pct": 13.51,
+        "fcf_yoy_pct": null,
+        "fiscal_year": "2023",
+        "free_cash_flow": 292150522000.0,
+        "gross_margin_pct": 54.36,
+        "gross_profit": 1175110628000.0,
+        "net_income": 837767517000.0,
+        "net_income_yoy_pct": null,
+        "net_margin_pct": 38.75,
+        "operating_cash_flow": 1241967347000.0,
+        "operating_income": 921465606000.0,
+        "operating_margin_pct": 42.63,
+        "ordinary_shares": 25932071000.0,
+        "parent_net_income": 838497664000.0,
+        "period_end": "2023-12-31",
+        "period_start": "2023-01-01",
+        "revenue": 2161735841000.0,
+        "revenue_yoy_pct": null
+      }
+    ],
+    "currency": "TWD",
+    "dividend_schedule": [
+      {
+        "board_Or_approval_date_roc": "1150811",
+        "cash_dividend_per_share_twd": 7.0,
+        "parent_net_income_twd": 706561938461.0,
+        "period": "2026Q2",
+        "period_end": "2026-06-30",
+        "source": "https://openapi.twse.com.tw/v1/opendata/t187ap45_L",
+        "stock_dividend_per_share_twd": 0.0
+      },
+      {
+        "board_Or_approval_date_roc": "1150512",
+        "cash_dividend_per_share_twd": 7.00000137,
+        "parent_net_income_twd": 572479752038.0,
+        "period": "2026Q1",
+        "period_end": "2026-03-31",
+        "source": "https://openapi.twse.com.tw/v1/opendata/t187ap45_L",
+        "stock_dividend_per_share_twd": 0.0
+      },
+      {
+        "board_Or_approval_date_roc": "1150210",
+        "cash_dividend_per_share_twd": 6.00003573,
+        "parent_net_income_twd": 505743990228.0,
+        "period": "2025Q4",
+        "period_end": "2025-12-31",
+        "source": "https://openapi.twse.com.tw/v1/opendata/t187ap45_L",
+        "stock_dividend_per_share_twd": 0.0
+      }
+    ],
+    "ex_dividend_history": [
+      {
+        "before_price": 2385.0,
+        "dividend_per_share_twd": 7.000001,
+        "ex_date": "2026-09-16",
+        "reference_price": 2377.99,
+        "type": "息"
+      },
+      {
+        "before_price": 2255.0,
+        "dividend_per_share_twd": 6.000035,
+        "ex_date": "2026-06-11",
+        "reference_price": 2248.99,
+        "type": "息"
+      },
+      {
+        "before_price": 1845.0,
+        "dividend_per_share_twd": 6.000035,
+        "ex_date": "2026-03-17",
+        "reference_price": 1838.99,
+        "type": "息"
+      },
+      {
+        "before_price": 1505.0,
+        "dividend_per_share_twd": 5.000011,
+        "ex_date": "2025-12-11",
+        "reference_price": 1499.99,
+        "type": "息"
+      },
+      {
+        "before_price": 1255.0,
+        "dividend_per_share_twd": 5.000017,
+        "ex_date": "2025-09-16",
+        "reference_price": 1249.99,
+        "type": "息"
+      },
+      {
+        "before_price": 1065.0,
+        "dividend_per_share_twd": 4.50002,
+        "ex_date": "2025-06-12",
+        "reference_price": 1060.49,
+        "type": "息"
+      }
+    ],
+    "issued_ordinary_shares": 25932370067,
+    "latest_balance_sheet": {
+      "bonds_payable": 815036716000.0,
+      "capital_stock": 259323701000.0,
+      "cash": 3134218213000.0,
+      "long_term_borrowings": 49226958000.0,
+      "net_cash": 2269954539000.0,
+      "ordinary_shares": 25932370100,
+      "parent_equity": 6432518334000.0,
+      "period_end": "2026-06-30",
+      "total_assets": 9375654727000.0,
+      "total_debt": 864263674000.0,
+      "total_equity": 6474470981000.0,
+      "total_liabilities": 2901183746000.0
+    },
+    "latest_cumulative_interim": {
+      "basic_eps": 49.33,
+      "capex": 846764746000.0,
+      "free_cash_flow": 635576496000.0,
+      "gross_profit": 1611606116000.0,
+      "net_income": 1279582227000.0,
+      "net_income_yoy_pct": 68.76,
+      "operating_cash_flow": 1482341242000.0,
+      "operating_income": 1425568793000.0,
+      "parent_net_income": 1279041690000.0,
+      "period_end": "2026-06-30",
+      "period_label": "2026-H1",
+      "period_start": "2026-01-01",
+      "pre_tax_income": 1550229773000.0,
+      "reconciled_twse_openapi": true,
+      "revenue": 2404483690000.0,
+      "revenue_yoy_pct": 35.61
+    },
+    "ogdl_datasets": [
+      {
+        "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci",
+        "name": "上市公司綜合損益表(一般業)"
+      },
+      {
+        "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap07_L_ci",
+        "name": "上市公司資產負債表(一般業)"
+      },
+      {
+        "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap17_L",
+        "name": "上市公司營益分析查詢彙總表"
+      },
+      {
+        "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap45_L",
+        "name": "上市公司股利分派情形"
+      },
+      {
+        "endpoint": "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL",
+        "name": "上市個股日本益比、殖利率及股價淨值比"
+      }
+    ],
+    "paid_in_capital_twd": 259323700670.0,
+    "par_value_desc": "新台幣                 10.0000元",
+    "quarterly_summary": [
+      {
+        "basic_eps": 27.25,
+        "basis": "standalone_reconciled_t187ap45",
+        "capex": 496001947000.0,
+        "fcf_margin_pct": 22.62,
+        "free_cash_flow": 287363030000.0,
+        "gross_margin_pct": 67.72,
+        "gross_profit": 860310695000.0,
+        "net_income": 706780923000.0,
+        "net_margin_pct": 55.64,
+        "operating_cash_flow": 783364977000.0,
+        "operating_income": 766602651000.0,
+        "operating_margin_pct": 60.34,
+        "ordinary_shares": 25932370100,
+        "parent_net_income": 706561938000.0,
+        "period_end": "2026-06-30",
+        "period_label": "2026Q2",
+        "period_start": "2026-04-01",
+        "revenue": 1270380250000.0
+      },
+      {
+        "basic_eps": 22.08,
+        "basis": "standalone_q1",
+        "capex": 350762799000.0,
+        "fcf_margin_pct": 30.7,
+        "free_cash_flow": 348213466000.0,
+        "gross_margin_pct": 66.25,
+        "gross_profit": 751295421000.0,
+        "net_income": 572801304000.0,
+        "net_margin_pct": 50.51,
+        "operating_cash_flow": 698976265000.0,
+        "operating_income": 658966142000.0,
+        "operating_margin_pct": 58.1,
+        "ordinary_shares": 25932524500,
+        "parent_net_income": 572479752000.0,
+        "period_end": "2026-03-31",
+        "period_label": "2026Q1",
+        "period_start": "2026-01-01",
+        "revenue": 1134103440000.0
+      },
+      {
+        "basic_eps": 19.51,
+        "basis": "standalone_reconciled_t187ap45",
+        "capex": 356906004000.0,
+        "fcf_margin_pct": 35.24,
+        "free_cash_flow": 368602783000.0,
+        "gross_margin_pct": 62.33,
+        "gross_profit": 651986836000.0,
+        "net_income": 505415333000.0,
+        "net_margin_pct": 48.31,
+        "operating_cash_flow": 725508787000.0,
+        "operating_income": 564902413000.0,
+        "operating_margin_pct": 54.0,
+        "ordinary_shares": 25932524500,
+        "parent_net_income": 505743990000.0,
+        "period_end": "2025-12-31",
+        "period_label": "2025Q4",
+        "period_start": "2025-10-01",
+        "revenue": 1046090421000.0
+      },
+      {
+        "basic_eps": 17.44,
+        "basis": "standalone_eps_identity",
+        "capex": 287451994000.0,
+        "fcf_margin_pct": 14.08,
+        "free_cash_flow": 139377087000.0,
+        "gross_margin_pct": 59.45,
+        "gross_profit": 588542829000.0,
+        "net_income": 451755362000.0,
+        "net_margin_pct": 45.64,
+        "operating_cash_flow": 426829081000.0,
+        "operating_income": 500684818000.0,
+        "operating_margin_pct": 50.58,
+        "ordinary_shares": 25932524500,
+        "parent_net_income": 452301407000.0,
+        "period_end": "2025-09-30",
+        "period_label": "2025Q3",
+        "period_start": "2025-07-01",
+        "revenue": 989918318000.0
+      },
+      {
+        "basic_eps": 15.36,
+        "basis": "standalone_eps_identity",
+        "capex": 297225801000.0,
+        "fcf_margin_pct": 21.4,
+        "free_cash_flow": 199838284000.0,
+        "gross_margin_pct": 58.62,
+        "gross_profit": 547369238000.0,
+        "net_income": 397493424000.0,
+        "net_margin_pct": 42.57,
+        "operating_cash_flow": 497064085000.0,
+        "operating_income": 463423638000.0,
+        "operating_margin_pct": 49.63,
+        "ordinary_shares": 25932615500,
+        "parent_net_income": 398273102000.0,
+        "period_end": "2025-06-30",
+        "period_label": "2025Q2",
+        "period_start": "2025-04-01",
+        "revenue": 933791869000.0
+      },
+      {
+        "basic_eps": 13.95,
+        "basis": "standalone_q1",
+        "capex": 330826730000.0,
+        "fcf_margin_pct": 35.12,
+        "free_cash_flow": 294746942000.0,
+        "gross_margin_pct": 58.79,
+        "gross_profit": 493395076000.0,
+        "net_income": 360732661000.0,
+        "net_margin_pct": 42.98,
+        "operating_cash_flow": 625573672000.0,
+        "operating_income": 407080808000.0,
+        "operating_margin_pct": 48.51,
+        "ordinary_shares": 25932733200,
+        "parent_net_income": 361564128000.0,
+        "period_end": "2025-03-31",
+        "period_label": "2025Q1",
+        "period_start": "2025-01-01",
+        "revenue": 839253664000.0
+      }
+    ],
+    "reconciled_period_end": "2026-06-30",
+    "reconciled_twse_openapi": true,
+    "schema_version": 1,
+    "status": "available",
+    "ttm": {
+      "basic_eps": 86.28,
+      "capex": 1491122744000.0,
+      "eps_derivation": "sum_of_four_quarters_within_0.5pct_share_drift",
+      "fcf_margin_pct": 25.75,
+      "free_cash_flow": 1143556366000.0,
+      "gross_margin_pct": 64.23,
+      "gross_profit": 2852135781000.0,
+      "net_income": 2236752922000.0,
+      "net_margin_pct": 50.37,
+      "operating_cash_flow": 2634679110000.0,
+      "operating_income": 2491156024000.0,
+      "operating_margin_pct": 56.1,
+      "parent_net_income": 2237087087000.0,
+      "period_end": "2026-06-30",
+      "period_start": "2025-07-01",
+      "quarter_ends": [
+        "2025-09-30",
+        "2025-12-31",
+        "2026-03-31",
+        "2026-06-30"
+      ],
+      "quarters": [
+        "2025Q3",
+        "2025Q4",
+        "2026Q1",
+        "2026Q2"
+      ],
+      "revenue": 4440492429000.0,
+      "share_count_max_drift_pct": 0.000595,
+      "status": "available"
+    },
+    "valuation_summary": {
+      "asof": "2026-10-21",
+      "denominator": {
+        "basis": "ordinary_share_capital_divided_by_10_twd_par_reconciled_with_twse_t187ap03",
+        "period_end": "2026-06-30",
+        "unit": "shares",
+        "value": 25932370100.0
+      },
+      "exchange_multiples": {
+        "date_roc": "1151020",
+        "dividend_yield_pct": 0.91,
+        "pb_ratio": 9.7,
+        "pe_ratio": 27.88,
+        "source": "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
+      },
+      "fair_value_scenarios": {
+        "base": {
+          "fcf_multiple": 20.0,
+          "indicative_ttm_fcf_twd_per_share": 969.49,
+          "indicative_twd_per_share": 758.64,
+          "median_fcf_component_twd": 671.11,
+          "net_cash_component_twd": 87.53
+        },
+        "conservative": {
+          "fcf_multiple": 15.0,
+          "indicative_ttm_fcf_twd_per_share": 749.0,
+          "indicative_twd_per_share": 590.86,
+          "median_fcf_component_twd": 503.33,
+          "net_cash_component_twd": 87.53
+        },
+        "optimistic": {
+          "fcf_multiple": 25.0,
+          "indicative_ttm_fcf_twd_per_share": 1189.97,
+          "indicative_twd_per_share": 926.42,
+          "median_fcf_component_twd": 838.88,
+          "net_cash_component_twd": 87.53
+        }
+      },
+      "fcf_twd_per_ordinary_share": 33.5554,
+      "latest_balance_sheet_end": "2026-06-30",
+      "latest_fiscal_end": "2025-12-31",
+      "method": "ev_bridged_three_year_median_fcf_and_ttm_pe_scenarios",
+      "net_cash_twd": 2269954539000.0,
+      "net_cash_twd_per_ordinary_share": 87.5336,
+      "normalized_annual_fcf_twd": 870170532000.0,
+      "status": "illustrative_only",
+      "ttm_fcf_twd": 1143556366000.0,
+      "ttm_fcf_twd_per_ordinary_share": 44.0976,
+      "ttm_pe_scenarios": {
+        "base": {
+          "indicative_twd_per_share": 2157.0,
+          "pe_multiple": 25.0,
+          "ttm_basic_eps_twd": 86.28
+        },
+        "conservative": {
+          "indicative_twd_per_share": 1725.6,
+          "pe_multiple": 20.0,
+          "ttm_basic_eps_twd": 86.28
+        },
+        "optimistic": {
+          "indicative_twd_per_share": 2588.4,
+          "pe_multiple": 30.0,
+          "ttm_basic_eps_twd": 86.28
+        }
+      },
+      "why": "Illustrative EV-bridged P/FCF and TTM P/E scenario sensitivities only; no executable entry/exit, stop-loss, target price, or buy/sell recommendation"
+    }
+  },
+  "id": "993d5a097f211a9c60ddf9805e9928d982e2d6ac3705a92fda084d80c1361007",
+  "issuer": {
+    "company_name": "台灣積體電路製造股份有限公司",
+    "policy": "twse_profile_ogdl_v1",
+    "reported_at": "1151020",
+    "source": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+  },
+  "market": "tw",
+  "model_identity": "5ee6423be84afda6909c62eeff2a6550f0a0e07c44608b7b22b7c7ff5a19839a",
+  "monthly_revenue": [
+    {
+      "metric": "monthly_reported_revenue",
+      "period": "11509",
+      "policy": "twse_monthly_ogdl_v1",
+      "reported_at": "1151017",
+      "source": "https://openapi.twse.com.tw/v1/opendata/t187ap05_L",
+      "unit": "TWD_thousands",
+      "value": 511857399.0
+    }
+  ],
+  "observed_at_utc": "2026-10-21T00:01:12.424064+00:00",
+  "readiness": {
+    "events": "no_recent_observed_events",
+    "financial": "available",
+    "instrument": "candidate_for_nonfinancial_research",
+    "recommendation": "not_available",
+    "source_evidence": "review_only",
+    "technical": "available",
+    "trade_plan": "not_evaluated",
+    "valuation": "illustrative_only",
+    "valuation_provenance": "reconciled_tw_dual_track"
+  },
+  "run": {
+    "code_sha": "f4ce2fadcadf99c78277100d3ab0cb30d893fcc0",
+    "repository": "iceboxi/market-research",
+    "run_attempt": 1,
+    "run_id": "39518623026",
+    "run_url": "https://github.com/iceboxi/market-research/actions/runs/39518623026"
+  },
+  "schema_version": 2,
+  "source_links": [
+    "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
+    "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+    "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
+  ],
+  "started_at_utc": "2026-10-21T00:00:55.679211+00:00",
+  "symbol": "2330.TW",
+  "technical": {
+    "freshness": "current",
+    "input_sha256": "26be2cbcb3d0939aaa59f0cc6972dab8badd5c373b5ab66c8c432791f8ae5e8d",
+    "price_basis": "twse_official_unadjusted",
+    "session": "2026-10-20",
+    "source": "twse_stock_day_official_raw_ohlcv",
+    "status": "available"
+  }
+}
