@@ -218,16 +218,33 @@ def _compact_financial_research(fr):
     disc = cleaned.get("disclosure_and_news")
     if isinstance(disc, dict):
         disc.pop("evaluated_at_utc", None)
+        disc.pop("policy_notes", None)
+        disc.pop("manual_verification_links", None)
         disc["news_references"] = []  # Never persist third-party news headlines/links in research-state
-        for item in disc.get("official_disclosures") or []:
+        compact_disclosures = []
+        for item in (disc.get("official_disclosures") or [])[:6]:
             if isinstance(item, dict):
-                item.pop("first_seen_at", None)
+                compact_disclosures.append({
+                    k: item.get(k)
+                    for k in ("disclosure_id", "category", "title", "event_date", "published_at", "reported_at", "source")
+                })
+        disc["official_disclosures"] = compact_disclosures
     cal = cleaned.get("calendar_schedule")
     if isinstance(cal, dict):
         cal.pop("evaluated_at_utc", None)
-        for ev in cal.get("events") or []:
+        cal.pop("manual_verification_links", None)
+        cal.pop("schedule_changes", None)
+        compact_events = []
+        for ev in (cal.get("events") or [])[:8]:
             if isinstance(ev, dict):
-                ev.pop("first_seen_at", None)
+                compact_ev = {
+                    k: ev.get(k)
+                    for k in ("schedule_id", "event_type", "period_label", "title", "scheduled_date", "timezone", "confirmation_status", "source")
+                }
+                if ev.get("retained_from_previous"):
+                    compact_ev["retained_from_previous"] = True
+                compact_events.append(compact_ev)
+        cal["events"] = compact_events
     return cleaned
 
 
