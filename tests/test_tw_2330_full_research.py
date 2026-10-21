@@ -242,7 +242,7 @@ def test_full_2330_report_snapshot_archive_publication_and_idempotent_rerun(repo
     initialize(store)
     router = make_http_router()
     result = run(
-        "2330.TW", out=tmp_path / "run1", now=NOW,
+        "2330.TW", out=tmp_path / "run1", now=NOW, clock=lambda: NOW,
         provider=Prices2330(), facts_get=router, financial_get=router,
     )
     assert result["complete"] is True
@@ -275,9 +275,10 @@ def test_full_2330_report_snapshot_archive_publication_and_idempotent_rerun(repo
     assert archive(snap1, store)["status"] == "already_current"
 
     # Rerun on identical data at a later timestamp -> comparison must be "unchanged"
+    now2 = datetime(2026, 10, 19, 12, 5, tzinfo=timezone.utc)
     result2 = run(
         "2330.TW", out=tmp_path / "run2",
-        now=datetime(2026, 10, 19, 12, 5, tzinfo=timezone.utc),
+        now=now2, clock=lambda: now2,
         provider=Prices2330(), facts_get=router, financial_get=router,
     )
     snap2 = prepare_snapshot(result2, {
