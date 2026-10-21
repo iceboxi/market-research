@@ -18,31 +18,64 @@ SUBJECT = "subjects/tw/2330.TW.json"
 CHECKPOINT = "checkpoints/tw/2330.TW.json"
 HASH = r"[a-f0-9]{64}"
 EVENT_ID_RE = r"[A-Za-z0-9_:-]{3,100}"
+SYMBOL_RE = r"[0-9]{4,6}\.TW"
 
 
-def marker(branch):
+def marker(branch, symbol="2330.TW"):
     if branch not in ("research-state", "research-state-validation"):
         raise StateError("Invalid publication branch")
-    return f"<!-- market-research:fixed-report:{branch}:tw:2330.TW -->"
+    return f"<!-- market-research:fixed-report:{branch}:tw:{symbol} -->"
 
 
-def notification_marker(branch, notification_id):
+def notification_marker(branch, notification_id, symbol="2330.TW"):
     if branch not in ("research-state", "research-state-validation"):
         raise StateError("Invalid publication branch")
     _id(notification_id)
-    return f"<!-- market-research:change-notification:{branch}:tw:2330.TW:{notification_id} -->"
+    return f"<!-- market-research:change-notification:{branch}:tw:{symbol}:{notification_id} -->"
 
 
-def snapshot_path(identifier):
-    return f"snapshots/tw/2330.TW/{identifier}.json"
+def snapshot_path(identifier, symbol="2330.TW"):
+    return f"snapshots/tw/{symbol}/{identifier}.json"
 
 
-def publication_path(identifier):
-    return f"publications/tw/2330.TW/{identifier}.json"
+def publication_path(identifier, symbol="2330.TW"):
+    return f"publications/tw/{symbol}/{identifier}.json"
 
 
-def notification_path(identifier):
-    return f"notifications/tw/2330.TW/{identifier}.json"
+def notification_path(identifier, symbol="2330.TW"):
+    return f"notifications/tw/{symbol}/{identifier}.json"
+
+
+def subject_path(symbol="2330.TW", market="tw"):
+    return f"subjects/{market}/{symbol}.json"
+
+
+def checkpoint_path(symbol="2330.TW", market="tw"):
+    return f"checkpoints/{market}/{symbol}.json"
+
+
+def find_snapshot_path(records, identifier, symbol=None):
+    if symbol:
+        p = snapshot_path(identifier, symbol)
+        if p in records:
+            return p
+    return next((p for p in records if p.endswith(f"/{identifier}.json") and p.startswith("snapshots/")), None)
+
+
+def find_publication_path(records, identifier, symbol=None):
+    if symbol:
+        p = publication_path(identifier, symbol)
+        if p in records:
+            return p
+    return next((p for p in records if p.endswith(f"/{identifier}.json") and p.startswith("publications/")), None)
+
+
+def find_notification_path(records, identifier, symbol=None):
+    if symbol:
+        p = notification_path(identifier, symbol)
+        if p in records:
+            return p
+    return next((p for p in records if p.endswith(f"/{identifier}.json") and p.startswith("notifications/")), None)
 
 
 def _fields(value, keys):
@@ -93,11 +126,13 @@ def validate_records(records, branch):
         if len(encoded(records)) > MAX_NAMESPACE_BYTES:
             raise StateError("Research namespace byte budget exceeded")
         for path, value in records.items():
-            if re.fullmatch(r"snapshots/tw/2330\.TW/" + HASH + r"\.json", path):
+            if m := re.fullmatch(r"snapshots/tw/([0-9]{4,6}\.TW)/" + HASH + r"\.json", path):
+                sym = m.group(1)
                 validate_snapshot(value)
-                if path != snapshot_path(value["id"]) or value["symbol"] != "2330.TW":
+                if path != snapshot_path(value["id"], sym) or value["symbol"] != sym:
                     raise StateError("Snapshot identity/path mismatch")
-            elif re.fullmatch(r"publications/tw/2330\.TW/" + HASH + r"\.json", path):
+            elif m := re.fullmatch(r"publications/tw/([0-9]{4,6}\.TW)/" + HASH + r"\.json", path):
+                sym = m.group(1)
                 keys = "schema_version id kind renderer_version symbol snapshot_id last_success_id status issue_number body_sha256"
                 if isinstance(value, dict) and value.get("schema_version") == 2:
                     keys += " comparison"
@@ -109,7 +144,7 @@ def validate_records(records, branch):
                 _fields(value, keys)
                 if (type(value["schema_version"]) is not int or value["schema_version"] not in (1, 2) or
                         type(value["renderer_version"]) is not int or value["renderer_version"] != value["schema_version"] or
-                        value["kind"] != "fixed_report" or value["symbol"] != "2330.TW" or
+                        value["kind"] != "fixed_report" or value["symbol"] != sym or
                         value["status"] not in ("pending", "acked", "superseded")):
                     raise StateError("Invalid publication schema")
                 _id(value["snapshot_id"])
@@ -117,14 +152,15 @@ def validate_records(records, branch):
                 _id(value["body_sha256"])
                 _issue(value["issue_number"])
                 if (value["id"] != fingerprint(_publication_identity(value)) or
-                        path != publication_path(value["id"])):
+                        path != publication_path(value["id"], sym)):
                     raise StateError("Publication identity mismatch")
-            elif re.fullmatch(r"notifications/tw/2330\.TW/" + HASH + r"\.json", path):
+            elif m := re.fullmatch(r"notifications/tw/([0-9]{4,6}\.TW)/" + HASH + r"\.json", path):
+                sym = m.group(1)
                 keys = "schema_version id kind renderer_version symbol publication_id snapshot_id comparison status issue_number comment_id creation_attempted body_sha256"
                 _fields(value, keys)
                 if (type(value["schema_version"]) is not int or value["schema_version"] != 1 or
                         type(value["renderer_version"]) is not int or value["renderer_version"] != 1 or
-                        value["kind"] != "change_notification" or value["symbol"] != "2330.TW" or
+                        value["kind"] != "change_notification" or value["symbol"] != sym or
                         value["status"] not in ("pending", "acked", "superseded") or
                         type(value["creation_attempted"]) is not bool):
                     raise StateError("Invalid notification schema")
@@ -139,12 +175,13 @@ def validate_records(records, branch):
                 for reference in value["comparison"]["last_good_snapshot_ids"].values():
                     _id(reference, nullable=True)
                 if (value["id"] != fingerprint(_notification_identity(value)) or
-                        path != notification_path(value["id"])):
+                        path != notification_path(value["id"], sym)):
                     raise StateError("Notification identity mismatch")
-            elif path == CHECKPOINT:
+            elif m := re.fullmatch(r"checkpoints/tw/([0-9]{4,6}\.TW)\.json", path):
+                sym = m.group(1)
                 keys = "schema_version symbol consumed_event_ids consumed_financial_version pending_rerun last_completed_snapshot_id"
                 _fields(value, keys)
-                if type(value["schema_version"]) is not int or value["schema_version"] != 1 or value["symbol"] != "2330.TW":
+                if type(value["schema_version"]) is not int or value["schema_version"] != 1 or value["symbol"] != sym:
                     raise StateError("Invalid checkpoint schema")
                 ev_ids = value["consumed_event_ids"]
                 if (not isinstance(ev_ids, list) or len(ev_ids) > 2000 or
@@ -168,7 +205,8 @@ def validate_records(records, branch):
                     tfv = pr["target_financial_version"]
                     if tfv is not None and (not isinstance(tfv, str) or not re.fullmatch(EVENT_ID_RE, tfv)):
                         raise StateError("Invalid pending rerun target financial version")
-            elif path == SUBJECT:
+            elif m := re.fullmatch(r"subjects/tw/([0-9]{4,6}\.TW)\.json", path):
+                sym = m.group(1)
                 keys = "schema_version symbol latest_observation_id last_success_id pending_publication_id published_publication_id issue_number"
                 if isinstance(value, dict) and value.get("schema_version") == 2:
                     keys += " creation_attempted"
@@ -179,7 +217,7 @@ def validate_records(records, branch):
                             keys += f" {opt_key}"
                             _id(value[opt_key], nullable=True)
                 _fields(value, keys)
-                if type(value["schema_version"]) is not int or value["schema_version"] not in (1, 2) or value["symbol"] != "2330.TW":
+                if type(value["schema_version"]) is not int or value["schema_version"] not in (1, 2) or value["symbol"] != sym:
                     raise StateError("Invalid subject schema")
                 for key in ("latest_observation_id", "last_success_id", "pending_publication_id", "published_publication_id"):
                     _id(value[key], nullable=key != "latest_observation_id")
@@ -188,43 +226,49 @@ def validate_records(records, branch):
                 raise StateError("Unapproved research path")
         for path, value in records.items():
             if path.startswith("publications/"):
-                if (snapshot_path(value["snapshot_id"]) not in records or
-                        value["last_success_id"] is not None and snapshot_path(value["last_success_id"]) not in records):
+                sym = value["symbol"]
+                if (snapshot_path(value["snapshot_id"], sym) not in records or
+                        value["last_success_id"] is not None and snapshot_path(value["last_success_id"], sym) not in records):
                     raise StateError("Missing publication snapshot")
                 if value["body_sha256"] != body_hash(render_publication(records, value["id"], branch)):
                     raise StateError("Publication body checksum mismatch")
                 if value["status"] == "acked" and value["issue_number"] is None:
                     raise StateError("Publication ACK lacks Issue identity")
             elif path.startswith("notifications/"):
-                if (snapshot_path(value["snapshot_id"]) not in records or
-                        publication_path(value["publication_id"]) not in records):
+                sym = value["symbol"]
+                if (snapshot_path(value["snapshot_id"], sym) not in records or
+                        publication_path(value["publication_id"], sym) not in records):
                     raise StateError("Missing notification snapshot or publication")
                 if value["body_sha256"] != body_hash(render_notification(records, value["id"], branch)):
                     raise StateError("Notification body checksum mismatch")
                 if value["status"] == "acked" and (value["issue_number"] is None or value["comment_id"] is None):
                     raise StateError("Notification ACK lacks Issue or comment identity")
-        if any(p.startswith("snapshots/") for p in records):
-            subject = records[SUBJECT]
-            snapshots = [v for p, v in records.items() if p.startswith("snapshots/")]
+        symbols_with_snapshots = {v["symbol"] for p, v in records.items() if p.startswith("snapshots/")}
+        for sym in symbols_with_snapshots:
+            s_path = subject_path(sym)
+            if s_path not in records:
+                raise StateError("Missing subject record")
+            subject = records[s_path]
+            snapshots = [v for p, v in records.items() if p.startswith(f"snapshots/tw/{sym}/")]
             if subject["latest_observation_id"] != max(snapshots, key=_order)["id"]:
                 raise StateError("Latest observation reference mismatch")
             good = [v for v in snapshots if v["execution"]["legacy_complete"]]
             if subject["last_success_id"] != (max(good, key=_order)["id"] if good else None):
                 raise StateError("Last-success reference mismatch")
             for key, status in (("pending_publication_id", "pending"), ("published_publication_id", "acked")):
-                if subject[key] is not None and records[publication_path(subject[key])]["status"] != status:
+                if subject[key] is not None and records[publication_path(subject[key], sym)]["status"] != status:
                     raise StateError("Subject publication status mismatch")
             for key, status in (("pending_notification_id", "pending"), ("published_notification_id", "acked")):
-                if subject.get(key) is not None and records[notification_path(subject[key])]["status"] != status:
+                if subject.get(key) is not None and records[notification_path(subject[key], sym)]["status"] != status:
                     raise StateError("Subject notification status mismatch")
             pending = subject["pending_publication_id"]
             if pending:
-                item = records[publication_path(pending)]
+                item = records[publication_path(pending, sym)]
                 if (item["snapshot_id"] != subject["latest_observation_id"] or
                         item["last_success_id"] != subject["last_success_id"]):
                     raise StateError("Pending publication is stale")
             identities = {v["issue_number"] for p, v in records.items()
-                          if p.startswith(("publications/", "notifications/")) and v["issue_number"] is not None}
+                          if p.startswith((f"publications/tw/{sym}/", f"notifications/tw/{sym}/")) and v["issue_number"] is not None}
             if identities and identities != {subject["issue_number"]}:
                 raise StateError("Conflicting fixed Issue identities")
     except (SnapshotError, KeyError, TypeError, ValueError, OverflowError) as error:
@@ -248,19 +292,28 @@ def body_hash(body):
 
 
 def _render_v1(records, identifier, branch):
-    item = records[publication_path(identifier)]
-    latest = records[snapshot_path(item["snapshot_id"])]
-    success = records[snapshot_path(item["last_success_id"])] if item["last_success_id"] else None
+    pub_path = find_publication_path(records, identifier)
+    item = records[pub_path]
+    sym = item.get("symbol")
+    if not sym:
+        m = re.match(r"publications/tw/([^/]+)/", pub_path) if pub_path else None
+        sym = m.group(1) if m else "2330.TW"
+    latest = records.get(snapshot_path(item["snapshot_id"], sym)) or records.get(snapshot_path(item["snapshot_id"]))
+    success = records.get(snapshot_path(item["last_success_id"], sym)) if item.get("last_success_id") else None
+    if not success and item.get("last_success_id"):
+        success = records.get(snapshot_path(item["last_success_id"]))
     def text(value):
         return escape(str(value)).replace("|", "&#124;").replace("[", "&#91;").replace("]", "&#93;")
-    lines = [marker(branch), "# 2330 台積電研究", "",
+    company_name = text(latest['issuer']['company_name'] or '未取得身分資料')
+    title = "2330 台積電研究" if sym == "2330.TW" else f"{sym} {company_name}研究"
+    lines = [marker(branch, sym), f"# {title}", "",
              f"最近嘗試：{latest['observed_at_utc']} — {latest['execution']['status']}",
              f"最近資料流程完成：{success['observed_at_utc'] if success else '尚無'}",
              "資料流程完成不代表財報、估值或買賣建議已完成。", "",
              f"[最近執行]({latest['run']['run_url']})；evaluation cutoff：{latest['evaluation_cutoff_utc']}"]
     if success:
         lines.append(f"[最近資料流程完成的執行]({success['run']['run_url']})")
-    lines += ["", f"公司：{text(latest['issuer']['company_name'] or '未取得身分資料')}", "",
+    lines += ["", f"公司：{company_name}", "",
               "| 研究部分 | 狀態 |", "| --- | --- |"]
     lines += [f"| {key} | {latest['readiness'][key]} |" for key in READINESS]
     lines += ["", "月營收（TWSE 開放資料；原始期別／TWD_thousands）："]
@@ -284,39 +337,71 @@ def _render_v1(records, identifier, branch):
 
 
 def publication_comparison(records, identifier):
-    item = records[publication_path(identifier)]
+    pub_path = find_publication_path(records, identifier)
+    item = records[pub_path]
+    sym = item.get("symbol")
+    if not sym:
+        m = re.match(r"publications/tw/([^/]+)/", pub_path) if pub_path else None
+        sym = m.group(1) if m else "2330.TW"
     refs = item["comparison"]
-    previous = records[snapshot_path(refs["previous_snapshot_id"])] if refs["previous_snapshot_id"] else None
-    current = records[snapshot_path(item["snapshot_id"])]
-    good = {key: records[snapshot_path(value)] for key, value in refs["last_good_snapshot_ids"].items() if value}
+    previous = records.get(snapshot_path(refs["previous_snapshot_id"], sym)) if refs["previous_snapshot_id"] else None
+    if not previous and refs["previous_snapshot_id"]:
+        previous = records.get(snapshot_path(refs["previous_snapshot_id"]))
+    current = records.get(snapshot_path(item["snapshot_id"], sym)) or records.get(snapshot_path(item["snapshot_id"]))
+    good = {}
+    for key, value in refs["last_good_snapshot_ids"].items():
+        if value:
+            cand = records.get(snapshot_path(value, sym)) or records.get(snapshot_path(value))
+            if cand:
+                good[key] = cand
     return compare_snapshots(previous, current, good)
 
 
 def render_publication(records, identifier, branch):
+    pub_path = find_publication_path(records, identifier)
+    item = records[pub_path]
+    sym = item.get("symbol")
+    if not sym:
+        m = re.match(r"publications/tw/([^/]+)/", pub_path) if pub_path else None
+        sym = m.group(1) if m else "2330.TW"
     body = _render_v1(records, identifier, branch)
-    if records[publication_path(identifier)]["renderer_version"] == 1:
+    if item["renderer_version"] == 1:
         return body
     delta = publication_comparison(records, identifier)
-    snapshots = {value["id"]: value for path, value in records.items() if path.startswith("snapshots/")}
-    latest = records[snapshot_path(records[publication_path(identifier)]["snapshot_id"])]
+    snapshots = {value["id"]: value for path, value in records.items() if path.startswith(f"snapshots/tw/{sym}/")}
+    latest = records.get(snapshot_path(item["snapshot_id"], sym)) or records.get(snapshot_path(item["snapshot_id"]))
     extra = ""
-    if "financial_research" in latest:
+    if latest and "financial_research" in latest:
         extra = "\n" + "\n".join(render_tw_full_research_sections(latest["financial_research"])) + "\n"
     return body.replace("；尚未完成前後變化分析。", "。") + extra + "\n" + render_comparison(delta, snapshots)
 
 
 def render_notification(records, identifier, branch):
     """Render a traceable GitHub Issue comment for a meaningful research change (TW14)."""
-    item = records[notification_path(identifier)]
-    latest = records[snapshot_path(item["snapshot_id"])]
+    notif_path = find_notification_path(records, identifier)
+    item = records[notif_path]
+    sym = item.get("symbol")
+    if not sym:
+        m = re.match(r"notifications/tw/([^/]+)/", notif_path) if notif_path else None
+        sym = m.group(1) if m else "2330.TW"
+    latest = records.get(snapshot_path(item["snapshot_id"], sym)) or records.get(snapshot_path(item["snapshot_id"]))
     refs = item["comparison"]
-    previous = records[snapshot_path(refs["previous_snapshot_id"])] if refs["previous_snapshot_id"] else None
-    good = {key: records[snapshot_path(value)] for key, value in refs["last_good_snapshot_ids"].items() if value}
+    previous = records.get(snapshot_path(refs["previous_snapshot_id"], sym)) if refs["previous_snapshot_id"] else None
+    if not previous and refs["previous_snapshot_id"]:
+        previous = records.get(snapshot_path(refs["previous_snapshot_id"]))
+    good = {}
+    for key, value in refs["last_good_snapshot_ids"].items():
+        if value:
+            cand = records.get(snapshot_path(value, sym)) or records.get(snapshot_path(value))
+            if cand:
+                good[key] = cand
     delta = compare_snapshots(previous, latest, good)
-    snapshots = {value["id"]: value for path, value in records.items() if path.startswith("snapshots/")}
+    snapshots = {value["id"]: value for path, value in records.items() if path.startswith(f"snapshots/tw/{sym}/")}
+    company_name = latest['issuer']['company_name'] or ''
+    title = "2330 台積電" if sym == "2330.TW" else f"{sym} {company_name}".strip()
     lines = [
-        notification_marker(branch, identifier),
-        "## 2330 台積電研究變更通知（自動對帳摘要）",
+        notification_marker(branch, identifier, sym),
+        f"## {title}研究變更通知（自動對帳摘要）",
         "",
         f"- **觀測時間 (UTC)**：`{latest['observed_at_utc']}`｜**評估截止時間 (UTC)**：`{latest['evaluation_cutoff_utc']}`",
         f"- **執行紀錄**：[{latest['run']['run_id']}]({latest['run']['run_url']})｜**當次狀態**：`{latest['execution']['status']}`",
@@ -338,9 +423,10 @@ def render_notification(records, identifier, branch):
     return "\n".join(lines)
 
 
-def _comparison_refs(records, latest):
+def _comparison_refs(records, latest, symbol=None):
+    sym = symbol or latest["symbol"]
     older = [value for path, value in records.items()
-             if path.startswith("snapshots/") and _order(value) < _order(latest)]
+             if path.startswith(f"snapshots/tw/{sym}/") and _order(value) < _order(latest)]
     previous = max(older, key=_order) if older else None
     good = {}
     for component in COMPONENTS:
@@ -382,17 +468,19 @@ def _extract_financial_version(snapshot):
     return None
 
 
-def reconcile_rerun_triggers(store=None, *, canonical_event_ids=None, financial_version=None):
+def reconcile_rerun_triggers(store=None, *, symbol="2330.TW", canonical_event_ids=None, financial_version=None):
     """Compare canonical event/financial versions against the research consumption checkpoint (TW13).
 
     Never creates a second source baseline; stores only the research consumer offset
     and durable pending rerun work inside the `research` state namespace.
     """
     store = store or GitStateStore()
+    c_path = checkpoint_path(symbol)
+    s_path = subject_path(symbol)
     if canonical_event_ids is None:
         ev_state = store.read("events")
         if ev_state["status"] == "available":
-            tw_rec = ev_state["records"].get("event_state/tw/2330.TW.json") or {}
+            tw_rec = ev_state["records"].get(f"event_state/tw/{symbol}.json") or {}
             canonical_event_ids = list(tw_rec.get("seen_ids") or [])
         else:
             canonical_event_ids = []
@@ -408,23 +496,23 @@ def reconcile_rerun_triggers(store=None, *, canonical_event_ids=None, financial_
 
     def merge(records):
         validate_records(records, store.branch)
-        cp = records.get(CHECKPOINT)
-        subj = records.get(SUBJECT)
+        cp = records.get(c_path)
+        subj = records.get(s_path)
         if cp is None:
             # First-time checkpoint initialization: adopt current canonical event IDs
             # as baseline without backfilling historical alerts.
             init_fin = financial_version
             if init_fin is None and subj and subj.get("last_success_id"):
-                init_fin = _extract_financial_version(records[snapshot_path(subj["last_success_id"])])
+                init_fin = _extract_financial_version(records[snapshot_path(subj["last_success_id"], symbol)])
             cp = {
                 "schema_version": 1,
-                "symbol": "2330.TW",
+                "symbol": symbol,
                 "consumed_event_ids": list(dict.fromkeys(canonical_event_ids))[-2000:],
                 "consumed_financial_version": init_fin,
                 "pending_rerun": None,
                 "last_completed_snapshot_id": subj["last_success_id"] if subj else None,
             }
-            records[CHECKPOINT] = cp
+            records[c_path] = cp
             outcome.update(
                 trigger_status="baseline_initialized",
                 pending_rerun=None,
@@ -457,7 +545,7 @@ def reconcile_rerun_triggers(store=None, *, canonical_event_ids=None, financial_
 
         if reasons:
             req_payload = {
-                "symbol": "2330.TW",
+                "symbol": symbol,
                 "reasons": reasons,
                 "trigger_event_ids": unconsumed_events,
                 "target_financial_version": target_fin if fin_changed else None,
@@ -481,7 +569,7 @@ def reconcile_rerun_triggers(store=None, *, canonical_event_ids=None, financial_
                 pending_rerun=None,
                 new_event_ids=[],
             )
-        records[CHECKPOINT] = cp
+        records[c_path] = cp
         return validate_records(records, store.branch)
 
     commit_res = _commit(store, merge)
@@ -491,28 +579,30 @@ def reconcile_rerun_triggers(store=None, *, canonical_event_ids=None, financial_
 def archive(snapshot, store=None, *, consumed_event_ids=None, consumed_financial_version=None):
     store = store or GitStateStore()
     validate_snapshot(snapshot)
-    if snapshot["symbol"] != "2330.TW":
-        raise StateError("Only the first 2330 milestone is enabled")
+    sym = snapshot["symbol"]
+    s_path = subject_path(sym)
+    c_path = checkpoint_path(sym)
+
     def merge(records):
         validate_records(records, store.branch)
-        path = snapshot_path(snapshot["id"])
+        path = snapshot_path(snapshot["id"], sym)
         if path in records and records[path] != snapshot:
             raise StateError("Immutable snapshot conflict")
         records[path] = snapshot
-        prior = records.get(SUBJECT, {})
-        snapshots = [v for p, v in records.items() if p.startswith("snapshots/")]
+        prior = records.get(s_path, {})
+        snapshots = [v for p, v in records.items() if p.startswith(f"snapshots/tw/{sym}/")]
         latest = max(snapshots, key=_order)
         good = [v for v in snapshots if v["execution"]["legacy_complete"]]
         success = max(good, key=_order)["id"] if good else None
-        comp_refs = _comparison_refs(records, latest)
+        comp_refs = _comparison_refs(records, latest, sym)
         item = {"schema_version": 2, "kind": "fixed_report", "renderer_version": 2,
-                "symbol": "2330.TW", "snapshot_id": latest["id"], "last_success_id": success,
+                "symbol": sym, "snapshot_id": latest["id"], "last_success_id": success,
                 "comparison": comp_refs}
         item["id"] = fingerprint(item)
-        pubpath = publication_path(item["id"])
+        pubpath = publication_path(item["id"], sym)
         if pubpath not in records:
             if prior.get("pending_publication_id"):
-                records[publication_path(prior["pending_publication_id"])]["status"] = "superseded"
+                records[publication_path(prior["pending_publication_id"], sym)]["status"] = "superseded"
             records[pubpath] = {**item, "status": "pending", "issue_number": None, "body_sha256": ""}
             records[pubpath]["body_sha256"] = body_hash(render_publication(records, item["id"], store.branch))
 
@@ -525,16 +615,16 @@ def archive(snapshot, store=None, *, consumed_event_ids=None, consumed_financial
                 "schema_version": 1,
                 "kind": "change_notification",
                 "renderer_version": 1,
-                "symbol": "2330.TW",
+                "symbol": sym,
                 "publication_id": item["id"],
                 "snapshot_id": latest["id"],
                 "comparison": comp_refs,
             }
             notif_id = fingerprint(notif_base)
-            npath = notification_path(notif_id)
+            npath = notification_path(notif_id, sym)
             if npath not in records:
                 if pending_notif_id and pending_notif_id != notif_id:
-                    old_npath = notification_path(pending_notif_id)
+                    old_npath = notification_path(pending_notif_id, sym)
                     if old_npath in records and records[old_npath]["status"] == "pending":
                         records[old_npath]["status"] = "superseded"
                 records[npath] = {
@@ -556,7 +646,7 @@ def archive(snapshot, store=None, *, consumed_event_ids=None, consumed_financial
 
         subj_obj = {
             "schema_version": 2,
-            "symbol": "2330.TW",
+            "symbol": sym,
             "latest_observation_id": latest["id"],
             "last_success_id": success,
             "pending_publication_id": item["id"] if records[pubpath]["status"] == "pending" else None,
@@ -567,10 +657,10 @@ def archive(snapshot, store=None, *, consumed_event_ids=None, consumed_financial
         if pending_notif_id is not None or published_notif_id is not None or "pending_notification_id" in prior or "published_notification_id" in prior:
             subj_obj["pending_notification_id"] = pending_notif_id
             subj_obj["published_notification_id"] = published_notif_id
-        records[SUBJECT] = subj_obj
+        records[s_path] = subj_obj
 
         # Advance research consumption checkpoint atomically ONLY when snapshot is complete (TW13)
-        cp = records.get(CHECKPOINT)
+        cp = records.get(c_path)
         if cp is not None and snapshot["execution"]["legacy_complete"] and latest["id"] == snapshot["id"]:
             pr = cp.get("pending_rerun") or {}
             add_events = list(consumed_event_ids or pr.get("trigger_event_ids") or [])
@@ -580,13 +670,13 @@ def archive(snapshot, store=None, *, consumed_event_ids=None, consumed_financial
             cp["consumed_financial_version"] = new_fin
             cp["pending_rerun"] = None
             cp["last_completed_snapshot_id"] = snapshot["id"]
-            records[CHECKPOINT] = cp
+            records[c_path] = cp
 
         return validate_records(records, store.branch)
     return _commit(store, merge)
 
 
-def publish(sink, store=None):
+def publish(sink, store=None, symbol="2330.TW"):
     """Deliver the current outbox item, reconcile uncertain writes, then ACK.
 
     The workflow serializes publishers. Git retries protect ACK against newer
@@ -595,20 +685,21 @@ def publish(sink, store=None):
     store = store or GitStateStore()
     state = read(store)
     records = state["records"]
-    subject = records.get(SUBJECT)
+    s_path = subject_path(symbol)
+    subject = records.get(s_path)
     identifier = subject["pending_publication_id"] if subject else None
     receipt = {"schema_version": 1, "state_branch": store.branch,
                "read_state_commit": state["head"], "publication_id": identifier,
                "issue_number": subject["issue_number"] if subject else None}
     if not identifier:
         return {**receipt, "status": "already_current"}
-    item = records[publication_path(identifier)]
-    snapshot = records[snapshot_path(item["snapshot_id"])]
+    item = records[publication_path(identifier, symbol)]
+    snapshot = records[snapshot_path(item["snapshot_id"], symbol)]
     if snapshot["run"]["repository"] != sink.repository:
         return {**receipt, "status": "blocked", "reason": "repository_mismatch"}
     body = render_publication(records, identifier, store.branch)
-    owned_hashes = {v["body_sha256"] for p, v in records.items() if p.startswith("publications/")}
-    stable_marker = marker(store.branch)
+    owned_hashes = {v["body_sha256"] for p, v in records.items() if p.startswith(f"publications/tw/{symbol}/")}
+    stable_marker = marker(store.branch, symbol)
     try:
         matches = sink.find(stable_marker)
         if len(matches) > 1:
@@ -636,7 +727,7 @@ def publish(sink, store=None):
             # Issue list, including after newer snapshots supersede this item.
             def reserve(current):
                 validate_records(current, store.branch)
-                owner = current[SUBJECT]
+                owner = current[s_path]
                 if owner["issue_number"] is not None or _creation_attempted(owner):
                     raise StateError("Creation was already attempted")
                 if owner["pending_publication_id"] != identifier:
@@ -645,7 +736,9 @@ def publish(sink, store=None):
                 return validate_records(current, store.branch)
             receipt["creation_intent_receipt"] = _commit(store, reserve)
             prefix = "[驗證] " if store.branch.endswith("-validation") else ""
-            issue = sink.create(prefix + "2330 台積電固定研究報告", body)
+            company_name = snapshot['issuer']['company_name'] or ""
+            issue_title = prefix + (f"2330 台積電固定研究報告" if symbol == "2330.TW" else f"{symbol} {company_name}固定研究報告".strip())
+            issue = sink.create(issue_title, body)
         number = issue["number"]
         _issue(number)
         if number is None or issue["body"] != body or known is not None and known != number:
@@ -656,10 +749,10 @@ def publish(sink, store=None):
 
     def ack(current):
         validate_records(current, store.branch)
-        owner = current[SUBJECT]
+        owner = current[s_path]
         if owner["issue_number"] not in (None, number):
             raise StateError("Fixed Issue identity conflict during ACK")
-        delivered = current[publication_path(identifier)]
+        delivered = current[publication_path(identifier, symbol)]
         if delivered["body_sha256"] != item["body_sha256"]:
             raise StateError("Publication changed during ACK")
         delivered.update(status="acked", issue_number=number)
@@ -674,18 +767,19 @@ def publish(sink, store=None):
     except StateError:
         return {**receipt, "status": "ack_pending", "issue_number": number,
                 "reason": "state_ack_failed"}
-    remaining = read(store)["records"][SUBJECT]["pending_publication_id"]
+    remaining = read(store)["records"][s_path]["pending_publication_id"]
     return {**receipt, "status": "pending_newer" if remaining else "published", "issue_number": number,
             "issue_url": f"https://github.com/{sink.repository}/issues/{number}",
             "ack_receipt": saved, "pending_publication_id": remaining}
 
 
-def notify(sink, store=None):
+def notify(sink, store=None, symbol="2330.TW"):
     """Deliver the current pending change notification comment to the fixed Issue, reconcile, then ACK (TW14)."""
     store = store or GitStateStore()
     state = read(store)
     records = state["records"]
-    subject = records.get(SUBJECT)
+    s_path = subject_path(symbol)
+    subject = records.get(s_path)
     identifier = subject.get("pending_notification_id") if subject else None
     receipt = {
         "schema_version": 1,
@@ -702,14 +796,14 @@ def notify(sink, store=None):
     number = subject.get("issue_number")
     if number is None:
         return {**receipt, "status": "blocked", "reason": "missing_fixed_issue"}
-    item = records[notification_path(identifier)]
-    snapshot = records[snapshot_path(item["snapshot_id"])]
+    item = records[notification_path(identifier, symbol)]
+    snapshot = records[snapshot_path(item["snapshot_id"], symbol)]
     if snapshot["run"]["repository"] != sink.repository:
         return {**receipt, "status": "blocked", "reason": "repository_mismatch"}
     body = render_notification(records, identifier, store.branch)
-    stable_marker = marker(store.branch)
-    owned_pub_hashes = {v["body_sha256"] for p, v in records.items() if p.startswith("publications/")}
-    n_marker = notification_marker(store.branch, identifier)
+    stable_marker = marker(store.branch, symbol)
+    owned_pub_hashes = {v["body_sha256"] for p, v in records.items() if p.startswith(f"publications/tw/{symbol}/")}
+    n_marker = notification_marker(store.branch, identifier, symbol)
     try:
         issue = sink.get(number)
         _issue(issue["number"])
@@ -730,10 +824,10 @@ def notify(sink, store=None):
                 return {**receipt, "status": "outcome_unknown", "reason": "comment_marker_not_visible_after_attempt"}
             def reserve_comment(current):
                 validate_records(current, store.branch)
-                owner = current[SUBJECT]
+                owner = current[s_path]
                 if owner.get("pending_notification_id") != identifier:
                     raise StateError("Notification changed before creation reservation")
-                target = current[notification_path(identifier)]
+                target = current[notification_path(identifier, symbol)]
                 if target.get("creation_attempted"):
                     raise StateError("Notification creation was already attempted")
                 target["creation_attempted"] = True
@@ -749,10 +843,10 @@ def notify(sink, store=None):
 
     def ack_comment(current):
         validate_records(current, store.branch)
-        owner = current[SUBJECT]
+        owner = current[s_path]
         if owner["issue_number"] != number:
             raise StateError("Fixed Issue identity conflict during notification ACK")
-        delivered = current[notification_path(identifier)]
+        delivered = current[notification_path(identifier, symbol)]
         if delivered["body_sha256"] != item["body_sha256"]:
             raise StateError("Notification changed during ACK")
         delivered.update(status="acked", issue_number=number, comment_id=cid, creation_attempted=True)
@@ -764,7 +858,7 @@ def notify(sink, store=None):
         saved = _commit(store, ack_comment)
     except StateError:
         return {**receipt, "status": "ack_pending", "issue_number": number, "comment_id": cid, "reason": "state_ack_failed"}
-    remaining = read(store)["records"][SUBJECT].get("pending_notification_id")
+    remaining = read(store)["records"][s_path].get("pending_notification_id")
     return {
         **receipt,
         "status": "pending_newer" if remaining else "delivered",
