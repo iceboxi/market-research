@@ -9,7 +9,9 @@ from market_research.fundamentals import (
     FINMIND_URL, TW_BALANCE_CI, TW_DIVIDEND_L, TW_INCOME_CI, TW_PROFILE,
     TW_PROFIT_L, TW_REVENUE, TW_VALUATION_L,
 )
-from market_research.event_risk import TW_MATERIAL_URL
+from market_research.event_risk import (
+    TW_MATERIAL_URL, TW_SHAREHOLDER_ANNOUNCE_URL, TW_SHAREHOLDER_MEETING_URL,
+)
 from market_research.financial_history import normalize_tw_financial_history
 from market_research.research_comparison import compare_snapshots
 from market_research.research_snapshot import prepare_snapshot, validate_snapshot
@@ -184,6 +186,17 @@ def make_http_router():
             return twse["dividends"]
         if url == TW_VALUATION_L:
             return [twse["valuation"]]
+        if url == TW_SHAREHOLDER_ANNOUNCE_URL:
+            return [{
+                "出表日期": "1151019", "公司代號": "2330", "公司名稱": "台積電",
+                "股東常(臨時)會日期-常或臨時": "常會", "股東常(臨時)會日期-日期": "1150604",
+                "公告日期": "1150417", "公告時間": "162154",
+            }]
+        if url == TW_SHAREHOLDER_MEETING_URL:
+            return [{
+                "出表日期": "1151019", "公司代號": "2330", "股東常(臨時)會": "常會",
+                "開會日期": "1150604", "開會地點": "新竹喜來登大飯店", "是否採電子投票": "強制",
+            }]
         if url.startswith(FINMIND_URL):
             if "TaiwanStockFinancialStatements" in url:
                 return {"status": 200, "data": finmind["income"]}
@@ -193,6 +206,11 @@ def make_http_router():
                 return {"status": 200, "data": finmind["cashflow"]}
             if "TaiwanStockDividendResult" in url:
                 return {"status": 200, "data": finmind["dividend_result"]}
+            if "TaiwanStockNews" in url:
+                return {"status": 200, "data": [
+                    {"date": "2026-10-18 10:00:00", "stock_id": "2330", "source": "中央社", "title": "台積電先進製程產能滿載 - 中央社", "link": "https://www.cna.com.tw/news/afe/202610180001.aspx"},
+                    {"date": "2026-10-18 10:15:00", "stock_id": "2330", "source": "Yahoo股市", "title": "台積電先進製程產能滿載｜Yahoo股市", "link": "https://tw.stock.yahoo.com/news/sample"},
+                ]}
         raise AssertionError(f"Unexpected URL: {url}")
     return router
 

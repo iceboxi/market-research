@@ -261,7 +261,30 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         technical["errors"].append({"type":type(exc).__name__,"detail":str(exc)})
     if market == "tw":
         from market_research.fundamentals import json_get
+        from market_research.event_risk import build_tw_calendar_schedule, build_tw_disclosures_and_news
         event_feed = tw_material_events(symbol, now, facts_get or json_get)
+        raw_ev_cal = issuer.pop("event_calendar_raw", None)
+        if raw_ev_cal is not None or "financial_history" in issuer:
+            raw_ev_cal = raw_ev_cal or {}
+            div_source = raw_ev_cal.get("dividends")
+            if div_source is None:
+                div_source = (issuer.get("financial_history") or {}).get("dividend_schedule")
+            issuer["disclosure_and_news"] = build_tw_disclosures_and_news(
+                symbol, now,
+                material_feed=event_feed,
+                shareholder_announce=raw_ev_cal.get("shareholder_announce"),
+                dividend_rows=div_source,
+                finmind_news=raw_ev_cal.get("finmind_news"),
+                source_errors=raw_ev_cal.get("source_errors"),
+            )
+            issuer["calendar_schedule"] = build_tw_calendar_schedule(
+                symbol, now,
+                shareholder_announce=raw_ev_cal.get("shareholder_announce"),
+                shareholder_meeting=raw_ev_cal.get("shareholder_meeting"),
+                dividend_rows=div_source,
+                material_feed=event_feed,
+                source_errors=raw_ev_cal.get("source_errors"),
+            )
     else:
         from market_research.fundamentals import SEC_SUBMISSIONS
         from market_research.event_risk import unknown

@@ -260,12 +260,16 @@ def build_financial_research_summary(result):
         "latest_balance_sheet": financial.get("latest_balance_sheet"),
         "dividend_schedule": (financial.get("dividend_schedule") or [])[:6],
         "ex_dividend_history": (financial.get("ex_dividend_history") or [])[:6],
+        "disclosure_and_news": issuer.get("disclosure_and_news"),
+        "calendar_schedule": issuer.get("calendar_schedule"),
         "valuation_summary": val_summary,
         "ogdl_datasets": [
             {"name": "上市公司綜合損益表(一般業)", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"},
             {"name": "上市公司資產負債表(一般業)", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap07_L_ci"},
             {"name": "上市公司營益分析查詢彙總表", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap17_L"},
             {"name": "上市公司股利分派情形", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap45_L"},
+            {"name": "上市公司召集股東常(臨時)會公告資料彙總表", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap38_L"},
+            {"name": "上市公司召開股東常(臨時)會日期、地點及採用電子投票情形", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap41_L"},
             {"name": "上市個股日本益比、殖利率及股價淨值比", "endpoint": "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"},
         ],
     }
@@ -444,6 +448,72 @@ def render_tw_full_research_sections(fin_research):
             lines.append(
                 f"| {ed.get('ex_date')} | {ed.get('type') or '—'} | {fmt_eps(ed.get('dividend_per_share_twd'))} | "
                 f"{fmt_eps(ed.get('before_price'))} | {fmt_eps(ed.get('reference_price'))} |"
+            )
+
+    disc_news = fin_research.get("disclosure_and_news") or {}
+    if disc_news:
+        lines += [
+            "",
+            "### 重大公告與外部新聞索引（TW08：Official Disclosures & Deduplicated News References）",
+            "",
+            f"- **資料源涵蓋狀態（區分無事件／來源空窗／來源不可用）**：`{disc_news.get('source_statuses')}`（新聞轉載去重移除數：`{disc_news.get('deduplicated_repost_count', 0)}` 則）",
+            "- **時間欄位契約**：嚴格區分 `event_date`（事實／決議日）、`published_at`（來源發布時間）、`reported_at`（彙總出表日）與 `first_seen_at`（系統首次觀測時間）；第三方新聞轉載不視為官方申報，且不擷取未授權全文或生成假摘要。",
+        ]
+        off_list = disc_news.get("official_disclosures") or []
+        if off_list:
+            lines += [
+                "",
+                "#### 1. 官方交易所公告與董事會／股東會決議（Official Exchange Disclosures）",
+                "",
+                "| 類別 | 事實／決議日 (`event_date`) | 發布時間 (`published_at`) | 彙總出表日 (`reported_at`) | 公告摘要 | 官方來源 |",
+                "| --- | --- | --- | --- | --- | --- |",
+            ]
+            for od in off_list[:8]:
+                title_clean = str(od.get("title") or "").replace("|", "｜").replace("\n", " ")
+                lines.append(
+                    f"| `{od.get('category')}` | {od.get('event_date') or '—'} | {od.get('published_at') or '未標示分秒'} | "
+                    f"{od.get('reported_at') or '—'} | {title_clean} | {od.get('source')} |"
+                )
+        news_list = disc_news.get("news_references") or []
+        if news_list:
+            lines += [
+                "",
+                "#### 2. 第三方新聞索引（去重後標題與連結，非官方申報，不做情緒評分）",
+                "",
+                "| 發布時間 (`published_at`) | 去重後新聞標題 | 媒體來源（含轉載合併） | 摘要與情緒狀態 |",
+                "| --- | --- | --- | --- |",
+            ]
+            for nw in news_list[:6]:
+                hl_clean = str(nw.get("headline") or "").replace("|", "｜").replace("\n", " ")
+                outlets = "、".join(nw.get("sources") or []) or "—"
+                if (nw.get("syndicated_count") or 1) > 1:
+                    outlets += f"（共 {nw['syndicated_count']} 則同題轉載）"
+                link_str = f"[原始連結]({nw['link']})" if nw.get("link") else "無外部連結"
+                lines.append(
+                    f"| {nw.get('published_at')} | {hl_clean}（{link_str}） | {outlets} | `{nw.get('summary_status')}` / `{nw.get('sentiment_score')}` |"
+                )
+
+    cal = fin_research.get("calendar_schedule") or {}
+    if cal:
+        lines += [
+            "",
+            "### 財報、法說會、董事會與股東會重要行程（TW09：Corporate Calendar & Filing Schedule）",
+            "",
+            f"- **行程時區**：`{cal.get('timezone', 'Asia/Taipei')}`｜**行程來源狀態**：`{cal.get('source_statuses')}`",
+            "- **未知與更正原則**：未獲官方公告確認之未來法說會或財報公布日一律標記為 `unknown`（**絕不沿用往年日期推算**）；法定申報期限（`statutory_filing_deadline`）與公司實際財報公布日（`earnings_release`）嚴格區分。",
+            "",
+            "| 行程類別 (`event_type`) | 期別 | 預定／實際日期 (`Asia/Taipei`) | 確認狀態 (`confirmation_status`) | 行程說明與注意事項 | 來源 |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        for ev in (cal.get("events") or [])[:10]:
+            t_clean = str(ev.get("title") or "").replace("|", "｜").replace("\n", " ")
+            if ev.get("note"):
+                t_clean += f"（{ev['note']}）"
+            if ev.get("retained_from_previous"):
+                t_clean += "（本次來源不可用，保留前次已驗證行程）"
+            lines.append(
+                f"| `{ev.get('event_type')}` | {ev.get('period_label') or '—'} | {ev.get('scheduled_date') or '未確認 (unknown)'} | "
+                f"**{ev.get('confirmation_status')}** | {t_clean} | {ev.get('source')} |"
             )
 
     lines += [
