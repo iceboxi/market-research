@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from market_research import event_risk, source_evidence
 from market_research.event_risk import (
     TW_DIVIDEND_SCHEDULE_URL,
     TW_MATERIAL_URL,
@@ -19,6 +20,18 @@ from market_research.research_comparison import compare_snapshots, render_compar
 from market_research.research_snapshot import prepare_snapshot, validate_snapshot
 from scripts.company_report import run
 from test_tw_2330_full_research import NOW, Prices2330, make_http_router
+
+
+class FixedClock(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return NOW.astimezone(tz) if tz else NOW.replace(tzinfo=None)
+
+
+@pytest.fixture(autouse=True)
+def source_clock(monkeypatch):
+    monkeypatch.setattr(event_risk, "datetime", FixedClock)
+    monkeypatch.setattr(source_evidence, "datetime", FixedClock)
 
 
 def test_headline_normalization_and_syndicated_news_deduplication():
