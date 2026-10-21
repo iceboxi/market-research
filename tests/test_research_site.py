@@ -426,6 +426,10 @@ def test_render_research_site_standalone_report_mode():
     r = _sample_report(stamp="2026-10-19T12:00:00+00:00")
     r["started_utc"] = "2026-10-21T12:00:00+00:00"
     r["financial_research"] = _make_full_financial_research()
+    r["technical"]["recent_closes"] = [
+        {"date": f"2026-09-{i:02d}", "close": 900.0 + i * 5}
+        for i in range(1, 31)
+    ]
     payload = build_site_payload(latest_report=r)
     assert len(payload["stocks"]["2330.TW"]["snapshots"]) == 1
     html_text = render_research_site_html(latest_report=r)
@@ -433,6 +437,65 @@ def test_render_research_site_standalone_report_mode():
     assert "台灣積體電路製造股份有限公司" in html_text
     assert 'id="stock-input"' in html_text
     assert 'href="#overview"' in html_text
+    assert "近 30 個交易日收盤價走勢" in html_text
+    assert "price-chart" in html_text
+    assert "price-line" in html_text
+
+
+def test_render_research_site_financial_stock_graceful_presentation():
+    """Verify financial holding stock (2881.TW) renders with inapplicable instrument & not_evaluated valuation."""
+    r_fin = {
+        "schema_version": 4,
+        "symbol": "2881.TW",
+        "market": "tw",
+        "started_utc": "2026-10-21T12:00:00+00:00",
+        "generated_utc": "2026-10-21T12:01:00+00:00",
+        "complete": True,
+        "issuer": {
+            "company_name": "富邦金融控股股份有限公司",
+            "profile": {
+                "source": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
+                "reported_at": "1151021",
+            },
+            "facts": [],
+        },
+        "technical": {
+            "status": "available",
+            "source": "twse_stock_day",
+            "last_session": "2026-10-21",
+            "input_sha256": "c" * 64,
+            "price_basis": "unadjusted",
+            "analytical_close": 91.5,
+            "recent_closes": [
+                {"date": "2026-10-20", "close": 90.8},
+                {"date": "2026-10-21", "close": 91.5},
+            ],
+        },
+        "official_events": {
+            "status": "available",
+            "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+            "snapshot_date": "2026-10-21",
+            "coverage": "recent_daily_snapshot_only_not_a_full_history",
+            "events": [],
+        },
+        "research_readiness": {
+            "components": {
+                "instrument": {"status": "inapplicable"},
+                "financial": {"status": "unavailable"},
+                "valuation": {"status": "not_evaluated"},
+                "trade_plan": {"status": "not_evaluated"},
+                "recommendation": {"status": "not_available"},
+            }
+        },
+    }
+    html_text = render_research_site_html(latest_report=r_fin)
+    assert "2881.TW" in html_text
+    assert "富邦金融控股股份有限公司" in html_text
+    assert "不適用（金融/特殊業）" in html_text
+    assert "未進行估值" in html_text
+    assert "此研究版本沒有估值情境" in html_text
+    assert "近 30 個交易日收盤價走勢" in html_text
+
 
 
 def test_narrative_generation_epistemological_precision():

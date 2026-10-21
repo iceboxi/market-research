@@ -41,6 +41,7 @@ STATUS = {
     "available": ("完成", "✓", "ok"),
     "completed": ("完成", "✓", "ok"),
     "candidate_for_nonfinancial_research": ("適用（非金融業）", "✓", "ok"),
+    "inapplicable": ("不適用（金融/特殊業）", "—", "neutral"),
     "reconciled_tw_dual_track": ("雙軌對帳完成", "✓", "ok"),
     "illustrative_only": ("僅示意情境", "◐", "warn"),
     "review_only": ("僅供人工複核", "◐", "warn"),
@@ -58,13 +59,14 @@ MODULES = [
     ("financial", "財務研究", {
         "available": "年度三表、單季拆解與 TTM 已與 TWSE 開放資料對帳。",
         "unavailable": "此版本沒有可用的財務研究資料。",
+        "not_evaluated": "金融控股業未套用製造業財務報表。",
     }),
     ("valuation", "估值", {
         "illustrative_only": "僅有倍數情境試算，不是合理價或目標價。",
-        "not_evaluated": "未進行估值。",
+        "not_evaluated": "未進行估值（金融業不適用一般 FCF 模型，或財報未齊全）。",
     }),
     ("technical", "技術資料", {
-        "available": "行情資料可用；研究狀態只保存 metadata，未保存價格序列。",
+        "available": "行情資料可用；依輕量契約保存近期收盤走勢與檢驗 metadata。",
         "unavailable": "此版本無法取得行情資料。",
     }),
     ("events", "事件觀測", {
@@ -79,6 +81,7 @@ MODULES = [
     }),
     ("instrument", "標的適用性", {
         "candidate_for_nonfinancial_research": "適用一般產業（非金融業）研究模型。",
+        "inapplicable": "金融或特殊產業；一般產業現金流與估值模型不適用。",
     }),
     ("trade_plan", "交易計畫", {
         "not_evaluated": "系統不產生進出場區間、停損或目標價。",
@@ -369,6 +372,86 @@ def _valuation_chart(models: list[tuple[str, list[tuple[str, float]]]]) -> str:
                        f'<text x="{x(v):.1f}" y="{y - 10}" class="axis" text-anchor="middle">{v:,.0f}</text>')
     out.append("</svg>")
     return "".join(out)
+
+
+def _price_chart(closes: list[dict[str, Any]], currency: str = "TWD", levels: dict[str, Any] | None = None) -> str:
+    if not closes:
+        return ""
+    closes = [c for c in closes if c.get("close") is not None and c.get("date")]
+    if len(closes) < 2:
+        return ""
+    levels = levels or {}
+    w, h, left, right, top, bottom = 720, 240, 64, 52, 24, 44
+    pw, ph = w - left - right, h - top - bottom
+
+    prices = [float(c["close"]) for c in closes]
+    sup = float(levels["support_20d"]) if levels.get("support_20d") is not None else None
+    res = float(levels["resistance_20d"]) if levels.get("resistance_20d") is not None else None
+
+    all_vals = list(prices)
+    if sup is not None:
+        all_vals.append(sup)
+    if res is not None:
+        all_vals.append(res)
+
+    pmin_raw, pmax_raw = min(all_vals), max(all_vals)
+    span = max(pmax_raw - pmin_raw, 1.0)
+    pmin = pmin_raw - span * 0.08
+    pmax = pmax_raw + span * 0.08
+
+    def x_coord(i: int) -> float:
+        return left + i * (pw / (len(closes) - 1))
+
+    def y_coord(val: float) -> float:
+        return top + ph - (val - pmin) / (pmax - pmin) * ph
+
+    out = [f'<svg viewBox="0 0 {w} {h}" class="chart price-chart" role="img" aria-labelledby="pchart-title">'
+           f'<title id="pchart-title">官方未還原收盤價走勢（{len(closes)} 個交易日）</title>']
+
+    # Horizontal grid lines (4 ticks)
+    for frac in (0.0, 0.333, 0.667, 1.0):
+        val = pmin + frac * (pmax - pmin)
+        y = y_coord(val)
+        out.append(f'<line x1="{left}" x2="{w - right}" y1="{y:.1f}" y2="{y:.1f}" class="grid"/>'
+                   f'<text x="{left - 8}" y="{y + 4:.1f}" class="axis" text-anchor="end">{val:,.0f}</text>')
+
+    # Support / Resistance reference lines if present
+    if res is not None:
+        ry = y_coord(res)
+        out.append(f'<line x1="{left}" x2="{w - right}" y1="{ry:.1f}" y2="{ry:.1f}" class="level-res"/>'
+                   f'<text x="{w - right + 4}" y="{ry + 3:.1f}" class="axis-res">前20日高 {res:,.0f}</text>')
+    if sup is not None:
+        sy = y_coord(sup)
+        out.append(f'<line x1="{left}" x2="{w - right}" y1="{sy:.1f}" y2="{sy:.1f}" class="level-sup"/>'
+                   f'<text x="{w - right + 4}" y="{sy + 3:.1f}" class="axis-sup">前20日低 {sup:,.0f}</text>')
+
+    # Path points
+    pts = [f"{x_coord(i):.1f},{y_coord(p):.1f}" for i, p in enumerate(prices)]
+    # Fill area polygon
+    poly_pts = [f"{left:.1f},{top + ph:.1f}"] + pts + [f"{w - right:.1f},{top + ph:.1f}"]
+    out.append(f'<polygon points="{" ".join(poly_pts)}" class="price-area"/>')
+    out.append(f'<polyline points="{" ".join(pts)}" class="price-line"/>')
+
+    # Points for all sessions (with title tooltips)
+    for i, (c, p) in enumerate(zip(closes, prices)):
+        cx, cy = x_coord(i), y_coord(p)
+        out.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3" class="price-dot">'
+                   f'<title>{_e(c["date"])}: {p:,.2f} {currency}</title></circle>')
+
+    # Highlight latest session
+    lx, ly = x_coord(len(closes) - 1), y_coord(prices[-1])
+    out.append(f'<circle cx="{lx:.1f}" cy="{ly:.1f}" r="5" class="price-dot-latest"/>'
+               f'<text x="{lx:.1f}" y="{ly - 10:.1f}" class="axis-latest" text-anchor="end">{prices[-1]:,.1f} {currency}</text>')
+
+    # X axis date labels: Start, Mid, End
+    mid_i = len(closes) // 2
+    out.append(f'<text x="{left:.1f}" y="{h - 18}" class="axis" text-anchor="start">{_e(closes[0]["date"])}</text>')
+    out.append(f'<text x="{x_coord(mid_i):.1f}" y="{h - 18}" class="axis" text-anchor="middle">{_e(closes[mid_i]["date"])}</text>')
+    out.append(f'<text x="{w - right:.1f}" y="{h - 18}" class="axis" text-anchor="end">{_e(closes[-1]["date"])}</text>')
+
+    out.append("</svg>")
+    return "".join(out)
+
 
 
 # ---------------------------------------------------------------- sections
@@ -807,9 +890,11 @@ def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
 </section>"""
 
 
-def _technical(snap: dict[str, Any], extra: dict[str, Any]) -> str:
+def _technical(snap: dict[str, Any], extra: dict[str, Any], stock: dict[str, Any] | None = None) -> str:
     tech = snap.get("technical") or {}
     run = snap.get("run") or {}
+    stock = stock or {}
+    rc = tech.get("recent_closes") or []
     obs = sorted(extra.get("observations") or [], key=lambda o: (not o.get("matched"), str(o.get("strategy_id"))))
     if obs:
         matched = [o for o in obs if o.get("matched")]
@@ -834,18 +919,33 @@ def _technical(snap: dict[str, Any], extra: dict[str, Any]) -> str:
   <tr><th scope="row">ATR(14)</th><td class="num">{_num(atr.get('absolute'))}（收盤價的 {_pct(atr.get('percentage_of_close'), 2)}）</td></tr>
   </tbody></table></div>
   <p class="note">歷史區間觀察，不是買進價、停損價或目標價。</p>"""
+
+    chart_html = ""
+    if len(rc) >= 2:
+        chart_html = f"""
+  <h3>近 30 個交易日收盤價走勢</h3>
+  <figure class="chart-box">
+    {_price_chart(rc, stock.get('currency') or 'TWD', ctx.get('levels') or {})}
+    <figcaption>TWSE 官方未還原收盤價走勢（近 {len(rc)} 個交易日）。除權息日可能包含價格缺口；虛線標示前 20 交易日區間高低點。</figcaption>
+  </figure>"""
+
+    callout_html = (
+        f"""<div class="callout" role="note">
+    <strong>行情與價格走勢持久化契約說明：</strong>
+    <p>狀態存儲分支採<strong>輕量化契約（方案 A）</strong>：快照內嵌近期 30 個交易日之未還原收盤價序列（約 750 Bytes），兼顧離線視覺化與 Git 存儲預算（<code>MAX_SNAPSHOT_BYTES = 20,000</code>），嚴格遵循不假造數據原則。長週期 OHLCV 與均線分析可依<strong>方案 B（Sidecar 產物契約）</strong>進行漸進擴充。</p>
+  </div>"""
+        if len(rc) >= 2 else
+        f"""<div class="callout" role="note">
+    <strong>行情與價格走勢持久化契約限制說明：</strong>
+    <p>依本系統之資料契約（<code>comparison_limits = ["prices_metadata_only"]</code>），此歷史版本之快照僅保存行情驗證 metadata，未保存近期收盤價序列。本系統遵循嚴謹研究原則，絕不假造虛擬價格走勢圖。較新之研究版本已採輕量化契約（方案 A）內嵌近期收盤價走勢。</p>
+  </div>"""
+    )
+
     return f"""
 <section id="technical" aria-labelledby="h-tech">
   <h2 id="h-tech">技術分析</h2>
-  <div class="callout" role="note">
-    <strong>行情與價格走勢持久化契約限制說明：</strong>
-    <p>依本系統之資料契約（<code>comparison_limits = ["prices_metadata_only"]</code>），狀態存儲分支（<code>research-state</code>）採 Git 底層儲存，考量單一快照大小限制（<code>MAX_SNAPSHOT_BYTES = 20,000</code>）與避免倉庫歷史快速膨脹，<strong>刻意僅保存行情資料的驗證 metadata（資料來源、最後交易日、價格基準、輸入 SHA-256 雜湊與新鮮度），未保存 OHLCV 每日價格序列</strong>。本系統遵循嚴謹研究原則，絕不假造虛擬價格走勢圖。</p>
-    <p><strong>若未來需在靜態工作區呈現價格走勢圖，所需之資料契約擴充條件：</strong></p>
-    <ul>
-      <li><strong>方案 A（輕量化契約）</strong>：在快照 schema 中新增固定長度之近期收盤價陣列（如最近 30 個交易日的 unadjusted close，約 200 bytes，仍能符合 20KB 限制）。</li>
-      <li><strong>方案 B（Sidecar 產物契約）</strong>：在 GitHub Actions Artifact 中持久化 <code>prices.json</code>，於 Pages 發布步驟時掛載為外掛靜態檔案。</li>
-    </ul>
-  </div>
+  {callout_html}
+  {chart_html}
   <dl class="meta">
     <div><dt>資料狀態</dt><dd>{_status(tech.get('status'))}</dd></div>
     <div><dt>最新完整交易日</dt><dd>{_e(tech.get('session'))}</dd></div>
@@ -1012,7 +1112,7 @@ def _render_view(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, An
     fr = snap.get("financial_research") if (snap.get("financial_research") or {}).get("status") == "available" else None
     return (f'<div class="view" data-snapshot-id="{_e(snap["id"])}">'
             + _overview(snap, comp, stock, extra) + _fundamentals(fr, snap) + _valuation(fr, snap)
-            + _technical(snap, extra) + _events(fr, snap) + _methodology(snap, comp, stock, branch) + "</div>")
+            + _technical(snap, extra, stock) + _events(fr, snap) + _methodology(snap, comp, stock, branch) + "</div>")
 
 
 # ---------------------------------------------------------------- page
@@ -1083,6 +1183,11 @@ table.metrics tbody th{white-space:nowrap}tr[aria-current=true]{background:var(-
 .chart .bar{fill:var(--bar)}.chart .line-a{fill:none;stroke:var(--lineA);stroke-width:2;stroke-dasharray:5 3}.chart .line-b{fill:none;stroke:var(--lineB);stroke-width:2}
 .chart .line-a-pt{fill:var(--lineA)}.chart .line-b-pt{fill:var(--lineB)}.chart .range{stroke:var(--line);stroke-width:6;stroke-linecap:round}
 .chart .pt-conservative{fill:var(--surface);stroke:var(--lineA);stroke-width:2}.chart .pt-base{fill:var(--lineA)}.chart .pt-optimistic{fill:var(--lineB)}
+.price-chart{height:auto;display:block}.price-line{fill:none;stroke:var(--accent);stroke-width:2.5}
+.price-area{fill:var(--accent);fill-opacity:0.08}.price-dot{fill:var(--accent);opacity:0.7}
+.price-dot-latest{fill:var(--surface);stroke:var(--accent);stroke-width:3}
+.level-res{stroke:var(--bad);stroke-dasharray:4 3;stroke-width:1.5}.level-sup{stroke:var(--ok);stroke-dasharray:4 3;stroke-width:1.5}
+.axis-res{fill:var(--bad);font-size:10px}.axis-sup{fill:var(--ok);font-size:10px}.axis-latest{fill:var(--accent);font-weight:700;font-size:12px}
 .empty{padding:14px 16px;border:1px dashed var(--line);border-radius:6px;color:var(--muted);background:var(--surface);margin:8px 0}
 .empty strong{color:var(--text)}.empty p{margin:4px 0 0}
 details{border:1px solid var(--line);border-radius:6px;background:var(--surface);margin:8px 0;padding:0 16px}

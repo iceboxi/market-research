@@ -164,7 +164,10 @@ def validate_snapshot(value):
         if announced and announced > cutoff.astimezone(ZoneInfo("Asia/Taipei")).date():
             raise SnapshotError("Future revenue announcement")
     technical = value["technical"]
-    _keys(technical, "status source session freshness price_basis input_sha256")
+    tech_keys = "status source session freshness price_basis input_sha256"
+    if isinstance(technical, dict) and "recent_closes" in technical:
+        tech_keys += " recent_closes"
+    _keys(technical, tech_keys)
     for key in ("status", "freshness"):
         _code(technical[key])
     for key in ("source", "price_basis"):
@@ -178,6 +181,20 @@ def validate_snapshot(value):
             raise SnapshotError("Invalid technical session") from error
     if technical["input_sha256"] is not None and not re.fullmatch(r"[a-f0-9]{64}", str(technical["input_sha256"])):
         raise SnapshotError("Invalid input checksum")
+    if "recent_closes" in technical:
+        rc = technical["recent_closes"]
+        if not isinstance(rc, list) or len(rc) > 60:
+            raise SnapshotError("Invalid recent_closes budget")
+        for item in rc:
+            _keys(item, "date close")
+            try:
+                d = date.fromisoformat(str(item["date"]))
+                if d > cutoff.date():
+                    raise ValueError("future close date")
+            except (ValueError, TypeError) as err:
+                raise SnapshotError("Invalid close date") from err
+            if type(item["close"]) not in (int, float) or not math.isfinite(item["close"]) or item["close"] <= 0:
+                raise SnapshotError("Invalid close price")
     _keys(value["events"], "status source snapshot_date coverage")
     _code(value["events"]["status"])
     _code(value["events"]["coverage"])
@@ -283,6 +300,15 @@ def prepare_snapshot(report, run):
         else:
             limits.add("unapproved_numeric_evidence_omitted")
     stale = any(w.get("reason") == "stale_history_allowed_for_research" for w in tech.get("warnings", []))
+    tech_data = {"status": tech["status"], "source": tech.get("source"), "session": tech.get("last_session"),
+                 "freshness": "stale" if stale else "current" if tech["status"] == "available" else "unknown",
+                 "price_basis": tech.get("price_basis"), "input_sha256": tech.get("input_sha256")}
+    if tech.get("recent_closes"):
+        tech_data["recent_closes"] = [
+            {"date": str(c["date"]), "close": round(float(c["close"]), 2)}
+            for c in tech["recent_closes"][-30:]
+            if isinstance(c, dict) and c.get("date") and c.get("close") is not None
+        ]
     snapshot = {"schema_version": 1, "symbol": report["symbol"], "market": report["market"],
                 "evaluation_cutoff_utc": report["generated_utc"], "observed_at_utc": observed,
                 "run": identity, "execution": {"status": "completed" if report["complete"] else "partial",
@@ -291,9 +317,7 @@ def prepare_snapshot(report, run):
                            "source": public_url(profile.get("source")), "reported_at": profile.get("reported_at") if permitted else None,
                            "policy": "twse_profile_ogdl_v1" if permitted else "metadata_only"},
                 "monthly_revenue": facts,
-                "technical": {"status": tech["status"], "source": tech.get("source"), "session": tech.get("last_session"),
-                              "freshness": "stale" if stale else "current" if tech["status"] == "available" else "unknown",
-                              "price_basis": tech.get("price_basis"), "input_sha256": tech.get("input_sha256")},
+                "technical": tech_data,
                 "events": {"status": feed["status"], "source": public_url(feed.get("source")),
                            "snapshot_date": feed.get("snapshot_date"), "coverage": feed.get("coverage", "unknown")},
                 "readiness": {key: report["research_readiness"]["components"].get(key, {}).get("status", "not_evaluated")

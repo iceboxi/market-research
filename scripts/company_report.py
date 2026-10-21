@@ -1,6 +1,7 @@
 """Source-grounded, on-demand company snapshot. Never generates price targets."""
 import argparse
 from datetime import datetime, timezone, timedelta
+import math
 from zoneinfo import ZoneInfo
 import json
 from pathlib import Path
@@ -233,6 +234,12 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     try:
         daily = load_daily_bars(provider or RoutedDailyProvider(),market,symbol,"6mo",
                                 now,market_cfg[market]["timezone"],strict_freshness=False)
+        recent_closes = []
+        if hasattr(daily.frame, "close") and len(daily.frame.close) > 0:
+            for idx, val in daily.frame.close.tail(30).items():
+                if val is not None and math.isfinite(float(val)):
+                    d_str = str(idx.date() if hasattr(idx, "date") else str(idx)[:10])
+                    recent_closes.append({"date": d_str, "close": round(float(val), 2)})
         technical = {"status":"available",
             "last_session":daily.metadata["last_date"],
             "analytical_close":round(float(daily.frame.close.iloc[-1]),6),
@@ -241,7 +248,8 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
             "source":daily.metadata["source"],
             "input_sha256":daily.metadata["input_sha256"],
             "warnings":list(daily.warnings),"observations":[],"errors":[],
-            "price_context":analyze_price_context(daily,market)}
+            "price_context":analyze_price_context(daily,market),
+            "recent_closes":recent_closes}
         for entry in strategy_cfg:
             if not entry["id"].startswith("sakata_"):
                 continue

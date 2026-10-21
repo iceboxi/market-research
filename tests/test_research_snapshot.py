@@ -132,3 +132,31 @@ def test_same_roc_period_with_leading_zero_cannot_hide_duplicate_values():
     payload["issuer"]["facts"].append({**payload["issuer"]["facts"][0], "period": "011509", "value": 1100})
     with pytest.raises(SnapshotError):
         prepare_snapshot(payload, identity())
+
+
+def test_retains_recent_closes_within_budget_and_rejects_future_or_invalid_price():
+    payload = report()
+    payload["technical"]["recent_closes"] = [
+        {"date": "2026-10-17", "close": 1075.0},
+        {"date": "2026-10-18", "close": 1080.0},
+        {"date": "2026-10-19", "close": 1085.0},
+    ]
+    snapshot = prepare_snapshot(payload, identity())
+    validate_snapshot(snapshot)
+    assert len(snapshot["technical"]["recent_closes"]) == 3
+    assert snapshot["technical"]["recent_closes"][-1]["close"] == 1085.0
+
+    # Future date rejected
+    bad_future = deepcopy(snapshot)
+    bad_future["technical"]["recent_closes"].append({"date": "2026-10-20", "close": 1090.0})
+    bad_future["id"] = fingerprint({k: v for k, v in bad_future.items() if k != "id"})
+    with pytest.raises(SnapshotError):
+        validate_snapshot(bad_future)
+
+    # Invalid price <= 0 rejected
+    bad_price = deepcopy(snapshot)
+    bad_price["technical"]["recent_closes"][0]["close"] = -5.0
+    bad_price["id"] = fingerprint({k: v for k, v in bad_price.items() if k != "id"})
+    with pytest.raises(SnapshotError):
+        validate_snapshot(bad_price)
+
