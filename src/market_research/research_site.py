@@ -1,10 +1,18 @@
-"""Self-contained static HTML dashboard generator for 2330.TW research state.
+"""Static stock research workspace rendered from validated research state.
 
-Reads validated `research-state` records (or a standalone `company_report` dict)
-and produces a single dependency-free `index.html` with:
-- Server-rendered initial view of the latest snapshot (searchable/testable without JS)
-- Embedded JSON bundle + interactive Snapshot Time Machine & tabbed explorer
-- Strict non-trading / illustrative-only boundary disclosures
+Read-only presentation layer. Inputs are the canonical `research-state` records
+(compact snapshots, subject, checkpoint) or one `company_report` result. Output is
+one dependency-free `index.html`:
+
+- server-rendered latest research version (readable without JavaScript)
+- persistent stock selector listing only symbols whose research state resolves
+- separate research-version (historical snapshot) selector, reflected in the URL
+- sections: overview, fundamentals, valuation, technical, risks & events,
+  data & methodology
+
+Nothing here computes new research conclusions. Values come from the snapshot;
+the few derived ratios (e.g. same-quarter YoY, capex / revenue) are labelled as
+derived and never replace missing inputs with zero.
 """
 
 from __future__ import annotations
@@ -12,50 +20,249 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import html
 import json
+import os
 from pathlib import Path
+import re
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from market_research.research_comparison import available, compare_snapshots
 from market_research.research_snapshot import prepare_snapshot, utc
 
+TAIPEI = ZoneInfo("Asia/Taipei")
+SUBJECT_RE = re.compile(r"subjects/([a-z]+)/([A-Za-z0-9.\-]+)\.json")
 
-def _esc(val: Any) -> str:
-    if val is None:
-        return "—"
-    return html.escape(str(val))
+MARKETS = {
+    "tw": {"exchange": "臺灣證券交易所", "code": "TWSE", "currency": "TWD", "currency_label": "新台幣"},
+}
+
+# status code -> (human label, non-colour symbol, tone)
+STATUS = {
+    "available": ("完成", "✓", "ok"),
+    "completed": ("完成", "✓", "ok"),
+    "candidate_for_nonfinancial_research": ("適用（非金融業）", "✓", "ok"),
+    "reconciled_tw_dual_track": ("雙軌對帳完成", "✓", "ok"),
+    "illustrative_only": ("僅示意情境", "◐", "warn"),
+    "review_only": ("僅供人工複核", "◐", "warn"),
+    "partial": ("部分完成", "◐", "warn"),
+    "degraded": ("來源降級", "◐", "warn"),
+    "no_recent_observed_events": ("近期未觀測到事件", "○", "neutral"),
+    "not_evaluated": ("未評估", "—", "neutral"),
+    "not_available": ("不提供", "—", "neutral"),
+    "not_verified": ("未驗證", "—", "neutral"),
+    "unavailable": ("無資料", "✕", "bad"),
+    "unknown": ("未知", "?", "neutral"),
+}
+
+MODULES = [
+    ("financial", "財務研究", {
+        "available": "年度三表、單季拆解與 TTM 已與 TWSE 開放資料對帳。",
+        "unavailable": "此版本沒有可用的財務研究資料。",
+    }),
+    ("valuation", "估值", {
+        "illustrative_only": "僅有倍數情境試算，不是合理價或目標價。",
+        "not_evaluated": "未進行估值。",
+    }),
+    ("technical", "技術資料", {
+        "available": "行情資料可用；研究狀態只保存 metadata，未保存價格序列。",
+        "unavailable": "此版本無法取得行情資料。",
+    }),
+    ("events", "事件觀測", {
+        "no_recent_observed_events": "最近一次每日快照未觀測到重大訊息；觀測範圍有限，不代表沒有風險。",
+    }),
+    ("valuation_provenance", "估值資料溯源", {
+        "reconciled_tw_dual_track": "估值輸入取自已對帳的財報資料。",
+        "not_verified": "估值輸入未經驗證。",
+    }),
+    ("source_evidence", "來源證據", {
+        "review_only": "來源證據可追溯，但仍需人工複核。",
+    }),
+    ("instrument", "標的適用性", {
+        "candidate_for_nonfinancial_research": "適用一般產業（非金融業）研究模型。",
+    }),
+    ("trade_plan", "交易計畫", {
+        "not_evaluated": "系統不產生進出場區間、停損或目標價。",
+    }),
+    ("recommendation", "投資建議", {
+        "not_available": "系統不產生買進／賣出建議或評等。",
+    }),
+]
+
+COMPARISON_LABELS = {
+    "baseline": "首次基準（無前版可比）",
+    "unchanged": "與前一版本相比無研究變化",
+    "new_period": "新增資料期別",
+    "revision": "同期間數值更正",
+    "coverage_change": "來源或模組狀態變化",
+    "model_change": "模型或設定變更",
+    "incomparable": "部分內容無法比較",
+}
+
+COMPONENT_LABELS = {
+    "issuer": "公司身分", "monthly_revenue": "月營收", "technical": "技術資料", "events": "事件",
+    "financial_research": "財務研究", "calendar_schedule": "行事曆", "model": "模型", "schema": "資料格式",
+    "time": "評估時間",
+}
+
+QUARTER_BASIS = {
+    "standalone_q1": "Q1 單季（即當年累計）",
+    "standalone_reconciled_t187ap45": "累計相減；已與 TWSE 單季淨利核對",
+    "standalone_eps_identity": "累計相減；以 EPS 恆等式核對",
+}
+
+PRICE_BASIS = {"twse_official_unadjusted": "TWSE 官方未還原價格（除權息日有價格缺口）"}
+PRICE_SOURCE = {"twse_stock_day_official_raw_ohlcv": "TWSE 個股日成交資訊（STOCK_DAY）"}
+
+SOURCE_STATUS = {
+    "available": "可用", "available_with_events": "可用，有符合事件",
+    "available_no_matching_events": "可用，無符合事件", "unavailable": "無法取得", "failed": "取得失敗",
+    "degraded": "降級",
+}
 
 
-def _fmt_twd_B(val: float | int | None) -> str:
-    """Format raw TWD amount into 億元 (hundred millions) with 2 decimals."""
-    if val is None:
-        return "—"
-    return f"{float(val) / 1e8:,.2f} 億"
+# ---------------------------------------------------------------- formatting
+
+def _e(value: Any) -> str:
+    return "—" if value is None else html.escape(str(value))
 
 
-def _fmt_pct(val: float | int | None, signed: bool = False) -> str:
-    if val is None:
-        return "—"
-    v = float(val)
-    if signed and v > 0:
-        return f"+{v:.2f}%"
-    return f"{v:.2f}%"
+NA = '<span class="na" title="資料未提供">—</span>'
 
 
-def _fmt_num(val: float | int | None, decimals: int = 2) -> str:
-    if val is None:
-        return "—"
-    return f"{float(val):,.{decimals}f}"
+def _yi(value: Any, decimals: int = 1) -> str:
+    """Raw TWD -> 新台幣億元."""
+    if value is None:
+        return NA
+    return f"{float(value) / 1e8:,.{decimals}f}"
 
 
-def _badge_class(status: str | None) -> str:
-    s = (status or "").lower()
-    if s in ("available", "completed", "acked", "delivered", "confirmed", "current", "reconciled_tw_dual_track"):
-        return "badge-ok"
-    if s in ("illustrative_only", "changed", "partial", "degraded", "review_only", "candidate_for_nonfinancial_research"):
-        return "badge-warn"
-    if s in ("not_evaluated", "not_available", "unchanged", "baseline", "no_recent_observed_events", "unknown"):
-        return "badge-neutral"
-    return "badge-err"
+def _pct(value: Any, decimals: int = 1) -> str:
+    if value is None:
+        return NA
+    return f"{float(value):.{decimals}f}%"
+
+
+def _num(value: Any, decimals: int = 2) -> str:
+    if value is None:
+        return NA
+    return f"{float(value):,.{decimals}f}"
+
+
+def _chg(value: Any, unit: str = "%", decimals: int = 1) -> str:
+    """Signed change with a text arrow so meaning never depends on colour."""
+    if value is None:
+        return NA
+    v = float(value)
+    if v > 0:
+        return f'<span class="chg up">▲ +{v:.{decimals}f}{unit}</span>'
+    if v < 0:
+        return f'<span class="chg down">▼ {v:.{decimals}f}{unit}</span>'
+    return f'<span class="chg">0{unit}</span>'
+
+
+def _ratio(numer: Any, denom: Any) -> float | None:
+    if numer is None or denom in (None, 0):
+        return None
+    return float(numer) / float(denom) * 100
+
+
+def _roc_date(value: Any) -> str | None:
+    s = str(value or "")
+    if re.fullmatch(r"\d{7}", s):
+        return f"{int(s[:3]) + 1911}-{s[3:5]}-{s[5:7]}"
+    return None
+
+
+def _roc_month(value: Any) -> str | None:
+    s = str(value or "")
+    if re.fullmatch(r"\d{5}", s):
+        return f"{int(s[:3]) + 1911}-{s[3:5]}"
+    return None
+
+
+def _tpe(value: Any) -> str:
+    try:
+        return utc(value).astimezone(TAIPEI).strftime("%Y-%m-%d %H:%M")
+    except Exception:  # noqa: BLE001 - display only
+        return _e(value)
+
+
+def _status(code: Any) -> str:
+    label, symbol, tone = STATUS.get(code, (code or "未知", "?", "neutral"))
+    return f'<span class="st st-{tone}"><span aria-hidden="true">{symbol}</span> {_e(label)}</span>'
+
+
+def _link(url: Any, text: str = "來源") -> str:
+    if not isinstance(url, str) or not url.startswith("https://"):
+        return NA
+    return f'<a href="{_e(url)}" target="_blank" rel="noopener">{_e(text)}</a>'
+
+
+def _empty(title: str, message: str) -> str:
+    return f'<div class="empty" role="note"><strong>{_e(title)}</strong><p>{message}</p></div>'
+
+
+# ---------------------------------------------------------------- payload
+
+def _report_records(report: dict[str, Any]) -> dict[str, Any]:
+    raw_run_id = os.getenv("GITHUB_RUN_ID", "1")
+    run_id = raw_run_id if re.fullmatch(r"[0-9]{1,30}", raw_run_id) else "1"
+    raw_sha = os.getenv("GITHUB_SHA") or report.get("model_identity") or ("0" * 40)
+    code_sha = raw_sha[:40] if re.fullmatch(r"[a-f0-9]{40,64}", str(raw_sha)) else ("0" * 40)
+    generated = report.get("generated_utc") or datetime.now(timezone.utc).isoformat()
+    started = report.get("started_utc") or generated
+    snap = prepare_snapshot(report, {
+        "repository": os.getenv("GITHUB_REPOSITORY") or "iceboxi/market-research",
+        "run_id": run_id,
+        "run_attempt": int(os.getenv("GITHUB_RUN_ATTEMPT", "1") or "1"),
+        "code_sha": code_sha,
+        "observed_at_utc": max(utc(generated), utc(started)).isoformat(),
+    })
+    market, symbol = snap["market"], snap["symbol"]
+    return {
+        f"snapshots/{market}/{symbol}/{snap['id']}.json": snap,
+        f"subjects/{market}/{symbol}.json": {
+            "schema_version": 2, "symbol": symbol, "issue_number": None,
+            "latest_observation_id": snap["id"], "last_success_id": snap["id"],
+        },
+    }
+
+
+def _stock_payload(records: dict[str, Any], market: str, symbol: str) -> dict[str, Any] | None:
+    prefix = f"snapshots/{market}/{symbol}/"
+    by_id = {v["id"]: v for p, v in records.items()
+             if p.startswith(prefix) and isinstance(v, dict) and v.get("id")}
+    if not by_id:
+        return None
+    chronological = sorted(by_id.values(), key=lambda s: (s.get("observed_at_utc") or "", s["id"]))
+    comparisons: dict[str, dict[str, Any]] = {}
+    previous = None
+    last_good: dict[str, str] = {}
+    for snap in chronological:
+        comp = compare_snapshots(previous, snap, {k: by_id[v] for k, v in last_good.items()})
+        cats = comp.get("categories") or []
+        comp["status"] = cats[0] if cats in (["baseline"], ["unchanged"]) else "changed"
+        comparisons[snap["id"]] = comp
+        if snap.get("execution", {}).get("status") == "completed":
+            previous = snap
+        for key in ("issuer", "monthly_revenue", "technical", "events"):
+            if available(snap, key):
+                last_good[key] = snap["id"]
+    subject = records.get(f"subjects/{market}/{symbol}.json") or {}
+    latest = subject.get("last_success_id") or subject.get("latest_observation_id")
+    if latest not in by_id:
+        latest = chronological[-1]["id"]
+    meta = MARKETS.get(market, {"exchange": market.upper(), "code": market.upper(), "currency": None, "currency_label": None})
+    name = next((s["issuer"].get("company_name") for s in reversed(chronological)
+                 if (s.get("issuer") or {}).get("company_name")), None)
+    return {
+        "symbol": symbol, "market": market, "name": name, **meta,
+        "subject": subject,
+        "checkpoint": records.get(f"checkpoints/{market}/{symbol}.json"),
+        "snapshots": list(reversed(chronological)),
+        "comparisons": comparisons,
+        "latest_snapshot_id": latest,
+    }
 
 
 def build_site_payload(
@@ -64,614 +271,814 @@ def build_site_payload(
     branch: str = "research-state",
     latest_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Assemble the complete read-only site data bundle from state records and/or a report."""
+    """Assemble the read-only site bundle. Only symbols with resolvable snapshots are listed."""
     records = dict(records or {})
-    if not records and latest_report is not None and latest_report.get("symbol") == "2330.TW":
-        import os
-        import re
-        raw_run_id = os.getenv("GITHUB_RUN_ID", "1")
-        run_id = raw_run_id if re.fullmatch(r"[0-9]{1,30}", raw_run_id) else "1"
-        raw_sha = os.getenv("GITHUB_SHA") or latest_report.get("model_identity") or ("0" * 40)
-        code_sha = raw_sha[:40] if re.fullmatch(r"[a-f0-9]{40,64}", str(raw_sha)) else ("0" * 40)
-        gen_str = latest_report.get("generated_utc") or datetime.now(timezone.utc).isoformat()
-        start_str = latest_report.get("started_utc") or gen_str
-        obs_str = max(utc(gen_str), utc(start_str)).isoformat()
-        snap = prepare_snapshot(
-            latest_report,
-            {
-                "repository": os.getenv("GITHUB_REPOSITORY") or "iceboxi/market-research",
-                "run_id": run_id,
-                "run_attempt": int(os.getenv("GITHUB_RUN_ATTEMPT", "1") or "1"),
-                "code_sha": code_sha,
-                "observed_at_utc": obs_str,
-            },
-        )
-        records = {
-            f"snapshots/tw/2330.TW/{snap['id']}.json": snap,
-            "subjects/tw/2330.TW.json": {
-                "schema_version": 2,
-                "symbol": "2330.TW",
-                "issue_number": 74,
-                "creation_attempted": True,
-                "latest_observation_id": snap["id"],
-                "last_success_id": snap["id"],
-                "pending_publication_id": None,
-                "published_publication_id": None,
-                "pending_notification_id": None,
-                "published_notification_id": None,
-            },
-        }
-
-    subject = records.get("subjects/tw/2330.TW.json") or {}
-    checkpoint = records.get("checkpoints/tw/2330.TW.json")
-    snapshots_by_id: dict[str, dict[str, Any]] = {}
-    for path, val in records.items():
-        if path.startswith("snapshots/tw/2330.TW/") and isinstance(val, dict) and val.get("id"):
-            snapshots_by_id[val["id"]] = val
-
-    # Sort chronologically (oldest -> newest) to compute pairwise comparisons, then reverse for UI
-    chronological = sorted(
-        snapshots_by_id.values(),
-        key=lambda s: (s.get("observed_at_utc") or "", s.get("id") or ""),
-    )
-
-    comparisons: dict[str, dict[str, Any]] = {}
-    prev_good: dict[str, Any] | None = None
-    last_good_ids: dict[str, str | None] = {
-        "issuer": None,
-        "monthly_revenue": None,
-        "technical": None,
-        "events": None,
-    }
-    for snap in chronological:
-        sid = snap["id"]
-        comp = compare_snapshots(
-            prev_good,
-            snap,
-            last_known_good={
-                k: snapshots_by_id[v]
-                for k, v in last_good_ids.items()
-                if v and v in snapshots_by_id
-            },
-        )
-        cats = comp.get("categories") or []
-        comp["status"] = "baseline" if cats == ["baseline"] else ("unchanged" if cats == ["unchanged"] else "changed")
-        comparisons[sid] = comp
-        if snap.get("execution", {}).get("status") == "completed":
-            prev_good = snap
-        for k in last_good_ids:
-            if available(snap, k):
-                last_good_ids[k] = sid
-
-    snapshots_desc = list(reversed(chronological))
-    latest_id = subject.get("last_success_id") or subject.get("latest_observation_id")
-    if not latest_id and snapshots_desc:
-        latest_id = snapshots_desc[0]["id"]
-
-    extra_technical = {}
+    if not records and latest_report is not None and latest_report.get("market") == "tw":
+        records = _report_records(latest_report)
+    keys = set()
+    for path in records:
+        m = SUBJECT_RE.fullmatch(path)
+        if m:
+            keys.add((m.group(1), m.group(2)))
+    for path in records:
+        m = re.fullmatch(r"snapshots/([a-z]+)/([A-Za-z0-9.\-]+)/[a-f0-9]{64}\.json", path)
+        if m:
+            keys.add((m.group(1), m.group(2)))
+    stocks = {}
+    for market, symbol in sorted(keys):
+        stock = _stock_payload(records, market, symbol)
+        if stock:
+            stocks[symbol] = stock
+    default = "2330.TW" if "2330.TW" in stocks else (next(iter(stocks)) if stocks else None)
+    extra = {}
     if isinstance(latest_report, dict):
         tech = latest_report.get("technical") or {}
-        extra_technical = {
-            "analytical_close": tech.get("analytical_close"),
-            "currency": tech.get("currency", "TWD"),
-            "last_session": tech.get("last_session"),
-            "observations": tech.get("observations") or [],
-            "price_context": tech.get("price_context"),
-        }
-
-    return {
-        "schema_version": 1,
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "branch": branch,
-        "symbol": "2330.TW",
-        "latest_snapshot_id": latest_id,
-        "subject": subject,
-        "checkpoint": checkpoint,
-        "snapshots": snapshots_desc,
-        "comparisons": comparisons,
-        "extra_technical": extra_technical,
-    }
+        extra = {"analytical_close": tech.get("analytical_close"), "currency": tech.get("currency"),
+                 "last_session": tech.get("last_session"), "observations": tech.get("observations") or [],
+                 "price_context": tech.get("price_context")}
+    return {"schema_version": 2, "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "branch": branch, "default_symbol": default, "stocks": stocks, "extra_technical": extra}
 
 
-def _render_annual_svg_chart(annual_rows: list[dict[str, Any]]) -> str:
-    """Render an inline SVG grouped bar chart for FY2023-FY2025 Revenue, Net Income, and FCF."""
-    if not annual_rows:
+# ---------------------------------------------------------------- charts
+
+def _quarterly_chart(rows: list[dict[str, Any]]) -> str:
+    rows = [r for r in sorted(rows, key=lambda r: str(r.get("period_end"))) if r.get("revenue") is not None]
+    if len(rows) < 2:
         return ""
-    rows = sorted(annual_rows, key=lambda r: str(r.get("fiscal_year") or ""))
-    max_val = max(
-        max(float(r.get("revenue") or 0), float(r.get("net_income") or 0), float(r.get("free_cash_flow") or 0))
-        for r in rows
-    )
-    if max_val <= 0:
+    w, h, left, right, top, bottom = 720, 260, 56, 56, 24, 44
+    pw, ph = w - left - right, h - top - bottom
+    rmax = max(float(r["revenue"]) for r in rows) * 1.1
+    slot = pw / len(rows)
+    bw = min(46.0, slot * 0.55)
+    out = [f'<svg viewBox="0 0 {w} {h}" class="chart" role="img" aria-labelledby="qchart-title">'
+           '<title id="qchart-title">單季營收（長條，新台幣億元）與毛利率、淨利率（折線，%）</title>']
+    for frac in (0, 0.5, 1):
+        y = top + ph - frac * ph
+        out.append(f'<line x1="{left}" x2="{w - right}" y1="{y:.1f}" y2="{y:.1f}" class="grid"/>'
+                   f'<text x="{left - 6}" y="{y + 4:.1f}" class="axis" text-anchor="end">{rmax * frac / 1e8:,.0f}</text>'
+                   f'<text x="{w - right + 6}" y="{y + 4:.1f}" class="axis">{frac * 100:.0f}%</text>')
+    lines: dict[str, list[str]] = {"gross_margin_pct": [], "net_margin_pct": []}
+    for i, r in enumerate(rows):
+        cx = left + slot * i + slot / 2
+        bh = float(r["revenue"]) / rmax * ph
+        out.append(f'<rect x="{cx - bw / 2:.1f}" y="{top + ph - bh:.1f}" width="{bw:.1f}" height="{bh:.1f}" class="bar">'
+                   f'<title>{_e(r.get("period_label"))} 營收 {float(r["revenue"]) / 1e8:,.1f} 億元</title></rect>'
+                   f'<text x="{cx:.1f}" y="{h - 22}" class="axis" text-anchor="middle">{_e(r.get("period_label"))}</text>')
+        for key in lines:
+            if r.get(key) is not None:
+                lines[key].append(f"{cx:.1f},{top + ph - float(r[key]) / 100 * ph:.1f}")
+    for key, cls in (("gross_margin_pct", "line-a"), ("net_margin_pct", "line-b")):
+        if len(lines[key]) >= 2:
+            out.append(f'<polyline points="{" ".join(lines[key])}" class="{cls}"/>')
+        for pt in lines[key]:
+            x, y = pt.split(",")
+            out.append(f'<circle cx="{x}" cy="{y}" r="3" class="{cls}-pt"/>')
+    out.append(f'<g class="legend" transform="translate({left},{h - 6})">'
+               '<rect x="0" y="-9" width="10" height="10" class="bar"/><text x="14" y="0">單季營收（億元，左軸）</text>'
+               '<line x1="170" x2="186" y1="-4" y2="-4" class="line-a"/><text x="190" y="0">毛利率（右軸）</text>'
+               '<line x1="290" x2="306" y1="-4" y2="-4" class="line-b"/><text x="310" y="0">淨利率（右軸）</text></g>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+def _valuation_chart(models: list[tuple[str, list[tuple[str, float]]]]) -> str:
+    values = [v for _, pts in models for _, v in pts]
+    if not values:
         return ""
-
-    width, height = 680, 230
-    pad_left, pad_right, pad_top, pad_bottom = 60, 24, 28, 42
-    plot_w = width - pad_left - pad_right
-    plot_h = height - pad_top - pad_bottom
-    group_w = plot_w / max(len(rows), 1)
-    bar_w = min(38.0, group_w / 4.2)
-
-    bars_svg = []
-    for idx, r in enumerate(rows):
-        gx = pad_left + idx * group_w + (group_w - bar_w * 3 - 12) / 2
-        series = [
-            ("營收", float(r.get("revenue") or 0), "#3b82f6"),
-            ("稅後淨利", float(r.get("net_income") or 0), "#10b981"),
-            ("自由現金流", float(r.get("free_cash_flow") or 0), "#f59e0b"),
-        ]
-        for s_idx, (label, val, color) in enumerate(series):
-            bh = max(2.0, (val / max_val) * plot_h) if val > 0 else 0.0
-            bx = gx + s_idx * (bar_w + 6)
-            by = pad_top + plot_h - bh
-            val_trillion = val / 1e12
-            bars_svg.append(
-                f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bar_w:.1f}" height="{bh:.1f}" rx="4" fill="{color}">'
-                f"<title>FY{_esc(r.get('fiscal_year'))} {label}: {val / 1e8:,.1f} 億 TWD</title></rect>"
-                f'<text x="{bx + bar_w / 2:.1f}" y="{by - 6:.1f}" text-anchor="middle" fill="#cbd5e1" font-size="10">'
-                f"{val_trillion:.2f}兆</text>"
-            )
-        label_x = pad_left + idx * group_w + group_w / 2
-        bars_svg.append(
-            f'<text x="{label_x:.1f}" y="{height - 14}" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">'
-            f"FY{_esc(r.get('fiscal_year'))} (EPS {_fmt_num(r.get('basic_eps'))}元)</text>"
-        )
-
-    return (
-        f'<svg viewBox="0 0 {width} {height}" class="chart-svg" role="img" aria-label="年度營收、淨利與自由現金流趨勢圖">'
-        f'<line x1="{pad_left}" y1="{pad_top + plot_h}" x2="{width - pad_right}" y2="{pad_top + plot_h}" stroke="#334155" stroke-width="1"/>'
-        + "".join(bars_svg)
-        + '<g transform="translate(65, 14)" font-size="11" fill="#cbd5e1">'
-        + '<rect x="0" y="-9" width="10" height="10" rx="2" fill="#3b82f6"/><text x="14" y="0">營業收入</text>'
-        + '<rect x="85" y="-9" width="10" height="10" rx="2" fill="#10b981"/><text x="99" y="0">稅後淨利</text>'
-        + '<rect x="170" y="-9" width="10" height="10" rx="2" fill="#f59e0b"/><text x="184" y="0">自由現金流 (FCF)</text>'
-        + "</g></svg>"
-    )
+    w, left, right, row = 720, 170, 30, 46
+    h = 30 + row * len(models)
+    vmax = max(values) * 1.12
+    def x(v: float) -> float:
+        return left + v / vmax * (w - left - right)
+    out = [f'<svg viewBox="0 0 {w} {h}" class="chart" role="img" aria-labelledby="vchart-title">'
+           '<title id="vchart-title">各估值方法在保守、基準、樂觀倍數下的每股試算值（新台幣元）</title>']
+    step = 500 if vmax > 1500 else 250
+    tick = 0
+    while tick <= vmax:
+        out.append(f'<line x1="{x(tick):.1f}" x2="{x(tick):.1f}" y1="10" y2="{h - 18}" class="grid"/>'
+                   f'<text x="{x(tick):.1f}" y="{h - 4}" class="axis" text-anchor="middle">{tick:,}</text>')
+        tick += step
+    for i, (label, pts) in enumerate(models):
+        y = 26 + i * row
+        lo, hi = min(v for _, v in pts), max(v for _, v in pts)
+        out.append(f'<text x="{left - 10}" y="{y + 4}" class="axis" text-anchor="end">{_e(label)}</text>'
+                   f'<line x1="{x(lo):.1f}" x2="{x(hi):.1f}" y1="{y}" y2="{y}" class="range"/>')
+        for name, v in pts:
+            out.append(f'<circle cx="{x(v):.1f}" cy="{y}" r="5" class="pt-{name}"><title>{_e(label)} {name}: {v:,.2f} 元</title></circle>'
+                       f'<text x="{x(v):.1f}" y="{y - 10}" class="axis" text-anchor="middle">{v:,.0f}</text>')
+    out.append("</svg>")
+    return "".join(out)
 
 
-def _render_snapshot_static_html(
-    snap: dict[str, Any],
-    comp: dict[str, Any] | None,
-    subject: dict[str, Any],
-    checkpoint: dict[str, Any] | None,
-    extra_technical: dict[str, Any] | None = None,
-) -> str:
-    """Render the full HTML content for a single snapshot (used as default DOM and mirrored in JS)."""
-    readiness = snap.get("readiness") or {}
-    issuer = snap.get("issuer") or {}
-    tech = snap.get("technical") or {}
-    run_info = snap.get("run") or {}
-    fr = snap.get("financial_research") or {}
-    comp = comp or {}
-    extra_technical = extra_technical or {}
+# ---------------------------------------------------------------- sections
 
-    company_name = issuer.get("company_name") or "台灣積體電路製造股份有限公司"
-    symbol = snap.get("symbol") or "2330.TW"
-    issue_num = subject.get("issue_number") or 74
-    repo = run_info.get("repository") or "iceboxi/market-research"
-    issue_url = f"https://github.com/{repo}/issues/{issue_num}"
-    run_url = run_info.get("run_url") or f"https://github.com/{repo}/actions"
+def _annual(fr: dict[str, Any]) -> list[dict[str, Any]]:
+    return sorted(fr.get("annual_summary") or [], key=lambda r: str(r.get("fiscal_year")), reverse=True)
 
-    # Comparison summary
-    comp_status = comp.get("status") or "baseline"
-    changed_Dims = sorted({
-        f"{c.get('component')} ({c.get('kind')})"
-        for c in (comp.get("changes") or [])
-        if isinstance(c, dict) and c.get("component")
-    })
 
-    # Readiness cards
-    readiness_items = [
-        ("財務研究 (Financial)", readiness.get("financial", "unavailable")),
-        ("技術型態 (Technical)", readiness.get("technical", "unavailable")),
-        ("估值模型 (Valuation)", readiness.get("valuation", "not_evaluated")),
-        ("資料對帳 (Provenance)", readiness.get("valuation_provenance", "not_verified")),
-        ("事件觀測 (Events)", readiness.get("events", "unknown")),
-        ("交易計畫 (Trade Plan)", readiness.get("trade_plan", "not_evaluated")),
-        ("投資建議 (Recommendation)", readiness.get("recommendation", "not_available")),
-    ]
-    readiness_html = "".join(
-        f'<div class="status-pill"><span class="pill-label">{_esc(label)}</span>'
-        f'<span class="badge {_badge_class(val)}">{_esc(val)}</span></div>'
-        for label, val in readiness_items
-    )
+def _quarters(fr: dict[str, Any]) -> list[dict[str, Any]]:
+    return sorted(fr.get("quarterly_summary") or [], key=lambda r: str(r.get("period_end")), reverse=True)
 
-    # Financial Research section
-    if fr and fr.get("status") == "available":
-        annual_rows = fr.get("annual_summary") or []
-        q_rows = fr.get("quarterly_summary") or []
+
+def _same_quarter_yoy(quarters: list[dict[str, Any]]) -> tuple[dict, dict, float] | None:
+    if not quarters:
+        return None
+    latest = quarters[0]
+    m = re.fullmatch(r"(\d{4})Q([1-4])", str(latest.get("period_label")))
+    if not m:
+        return None
+    prior_label = f"{int(m.group(1)) - 1}Q{m.group(2)}"
+    prior = next((q for q in quarters if q.get("period_label") == prior_label), None)
+    if not prior or prior.get("revenue") in (None, 0) or latest.get("revenue") is None:
+        return None
+    return latest, prior, (float(latest["revenue"]) / float(prior["revenue"]) - 1) * 100
+
+
+def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]]:
+    """Return (findings, interpretation gaps). Each finding: (topic, statement html, basis)."""
+    annual, quarters = _annual(fr), _quarters(fr)
+    ttm = fr.get("ttm") or {}
+    ytd = fr.get("latest_cumulative_interim") or {}
+    bs = fr.get("latest_balance_sheet") or {}
+    val = fr.get("valuation_summary") or {}
+    out: list[tuple[str, str, str]] = []
+    gaps = ["資料契約未包含製程節點、應用別或地區別營收拆分，無法說明成長由哪些業務驅動；以下僅陳述財報數字的變化。"]
+    if annual:
+        a0 = annual[0]
+        parts = [f"FY{_e(a0.get('fiscal_year'))} 營收 {_yi(a0.get('revenue'))} 億元，年增 {_chg(a0.get('revenue_yoy_pct'))}"]
+        if ytd.get("revenue_yoy_pct") is not None:
+            parts.append(f"{_e(ytd.get('period_label'))} 累計營收 {_yi(ytd.get('revenue'))} 億元，較去年同期 {_chg(ytd.get('revenue_yoy_pct'))}")
+        sq = _same_quarter_yoy(quarters)
+        if sq:
+            parts.append(f"{_e(sq[0]['period_label'])} 單季營收較 {_e(sq[1]['period_label'])} {_chg(sq[2])}（推導值）")
+        out.append(("營收成長", "；".join(parts) + "。", "年度三表、累計財報與單季拆解"))
+        if len(annual) > 1 and a0.get("net_income_yoy_pct") is not None:
+            a1 = annual[1]
+            gm_delta = (None if a0.get("gross_margin_pct") is None or a1.get("gross_margin_pct") is None
+                        else float(a0["gross_margin_pct"]) - float(a1["gross_margin_pct"]))
+            out.append(("獲利成長", (
+                f"FY{_e(a0.get('fiscal_year'))} 稅後淨利年增 {_chg(a0.get('net_income_yoy_pct'))}，高於營收年增 "
+                f"{_chg(a0.get('revenue_yoy_pct'))}；同期毛利率由 {_pct(a1.get('gross_margin_pct'))} 變為 "
+                f"{_pct(a0.get('gross_margin_pct'))}（{_chg(gm_delta, ' 個百分點')}）。"),
+                "年度損益表；利潤率變化為觀測結果，未歸因"))
+    if ttm.get("status") == "available":
+        out.append(("獲利能力", (
+            f"近四季（{_e('、'.join(ttm.get('quarters') or []))}）毛利率 {_pct(ttm.get('gross_margin_pct'))}、"
+            f"營業利益率 {_pct(ttm.get('operating_margin_pct'))}、淨利率 {_pct(ttm.get('net_margin_pct'))}；"
+            f"TTM 基本 EPS {_num(ttm.get('basic_eps'))} 元。"), "四季單季加總（TTM）"))
+        capex_int = _ratio(ttm.get("capex"), ttm.get("revenue"))
+        fcf_conv = _ratio(ttm.get("free_cash_flow"), ttm.get("net_income"))
+        out.append(("現金流", (
+            f"TTM 營業現金流 {_yi(ttm.get('operating_cash_flow'))} 億元，資本支出 {_yi(ttm.get('capex'))} 億元"
+            f"（約營收 {_pct(capex_int)}，推導值），自由現金流 {_yi(ttm.get('free_cash_flow'))} 億元，"
+            f"約為同期淨利的 {_pct(fcf_conv, 0)}（推導值）。"), "TTM 現金流量表；FCF = 營業現金流 − 資本支出"))
+    if bs.get("net_cash") is not None:
+        out.append(("資產負債", (
+            f"{_e(bs.get('period_end'))} 現金 {_yi(bs.get('cash'))} 億元，有息負債 {_yi(bs.get('total_debt'))} 億元，"
+            f"淨現金 {_yi(bs.get('net_cash'))} 億元。"), "最新資產負債表（時點值）"))
+    if val:
+        mult = val.get("exchange_multiples") or {}
+        fcf_s, pe_s = val.get("fair_value_scenarios") or {}, val.get("ttm_pe_scenarios") or {}
+        fcf_m = [s.get("fcf_multiple") for s in fcf_s.values() if s.get("fcf_multiple") is not None]
+        pe_m = [s.get("pe_multiple") for s in pe_s.values() if s.get("pe_multiple") is not None]
+        text = []
+        if mult.get("pe_ratio") is not None:
+            text.append(f"TWSE 公布本益比 {_num(mult.get('pe_ratio'))} 倍（{_e(_roc_date(mult.get('date_roc')) or mult.get('date_roc'))}）")
+        if fcf_m and pe_m:
+            text.append(f"模型情境假設 P/FCF {min(fcf_m):g}–{max(fcf_m):g} 倍、P/E {min(pe_m):g}–{max(pe_m):g} 倍；"
+                        "兩法結果差距大，倍數假設是主要變因，試算值不是目標價")
+        if text:
+            out.append(("估值假設", "；".join(text) + "。", "TWSE BWIBBU_ALL 與估值情境；詳見估值章節"))
+    gaps.append("系統未產生投資論點、評等、目標價或交易計畫；本頁不提供買賣判斷。")
+    return out, gaps
+
+
+def _uncertainties(snap: dict[str, Any], fr: dict[str, Any] | None) -> list[str]:
+    items = []
+    if fr:
         ttm = fr.get("ttm") or {}
-        interim = fr.get("latest_cumulative_interim") or {}
-        bs = fr.get("latest_balance_sheet") or {}
-        val = fr.get("valuation_summary") or {}
-        cal = (fr.get("calendar_schedule") or {}).get("events") or []
-        disc = fr.get("disclosure_and_news") or {}
-        div_sched = fr.get("dividend_schedule") or []
-        ex_divs = fr.get("ex_dividend_history") or []
+        conv = _ratio(ttm.get("free_cash_flow"), ttm.get("net_income"))
+        if conv is not None:
+            items.append(f"自由現金流僅約淨利的 {conv:.0f}%（TTM，推導值）；資本支出變動會直接影響 FCF 與 P/FCF 試算。")
+        for ev in (fr.get("calendar_schedule") or {}).get("events") or []:
+            if ev.get("scheduled_date") is None and ev.get("event_type") != "statutory_filing_deadline":
+                items.append(f"{_e(ev.get('title'))}：日期尚未公告。")
+    if snap.get("readiness", {}).get("events") == "no_recent_observed_events":
+        items.append("事件觀測僅涵蓋最近一次每日快照，不是完整歷史；未觀測到事件不代表沒有風險。")
+    if "prices_metadata_only" in (snap.get("comparison_limits") or []):
+        items.append("研究狀態未保存價格序列，無法在本頁重現技術判斷或價格走勢。")
+    items.append("產業景氣、客戶集中度、匯率與地緣政治等質性風險不在目前資料契約內，本頁未評估。")
+    return items
 
-        # Key KPI highlight cards
-        ttm_rev_t = float(ttm.get("revenue") or 0) / 1e12
-        ttm_fcf_t = float(ttm.get("free_cash_flow") or 0) / 1e12
-        net_cash_t = float(bs.get("net_cash") or 0) / 1e12
-        kpi_html = f"""
-        <div class="kpi-grid">
-          <div class="kpi-card">
-            <div class="kpi-title">TTM 合併營收 ({_esc("–".join([ttm.get("quarters", [""])[0], ttm.get("quarters", [""])[-1]]) if ttm.get("quarters") else "近四季")})</div>
-            <div class="kpi-value">{ttm_rev_t:,.3f} 兆 TWD</div>
-            <div class="kpi-sub">毛利率 {_fmt_pct(ttm.get("gross_margin_pct"))} · 營益率 {_fmt_pct(ttm.get("operating_margin_pct"))} · 淨利率 {_fmt_pct(ttm.get("net_margin_pct"))}</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-title">TTM 累計基本 EPS</div>
-            <div class="kpi-value">{_fmt_num(ttm.get("basic_eps"))} 元/股</div>
-            <div class="kpi-sub">股數最大季度漂移 {_fmt_pct(ttm.get("share_count_max_drift_pct"), False)} (≤0.5% 合規)</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-title">TTM 自由現金流 (OCF − CapEx)</div>
-            <div class="kpi-value">{ttm_fcf_t:,.3f} 兆 TWD</div>
-            <div class="kpi-sub">FCF 利潤率 {_fmt_pct(ttm.get("fcf_margin_pct"))} · 每股 TTM FCF {_fmt_num(val.get("ttm_fcf_twd_per_ordinary_share"))} 元</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-title">最新資產負債表淨現金 ({_esc(bs.get("period_end"))})</div>
-            <div class="kpi-value">{net_cash_t:,.3f} 兆 TWD</div>
-            <div class="kpi-sub">現金 {_fmt_twd_B(bs.get("cash"))} − 有息負債 {_fmt_twd_B(bs.get("total_debt"))} (每股淨現金 {_fmt_num(val.get("net_cash_twd_per_ordinary_share"))} 元)</div>
-          </div>
-        </div>
-        """
 
-        # Annual table
-        annual_trs = "".join(
-            f"<tr>"
-            f"<td><strong>FY{_esc(r.get('fiscal_year'))}</strong><div class='cell-sub'>{_esc(r.get('period_end'))}</div></td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('revenue'))}<div class='cell-sub'>{_fmt_pct(r.get('revenue_yoy_pct'), True)} YoY</div></td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('gross_profit'))}<div class='cell-sub'>毛利率 {_fmt_pct(r.get('gross_margin_pct'))}</div></td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('operating_income'))}<div class='cell-sub'>營益率 {_fmt_pct(r.get('operating_margin_pct'))}</div></td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('net_income'))}<div class='cell-sub'>淨利率 {_fmt_pct(r.get('net_margin_pct'))} ({_fmt_pct(r.get('net_income_yoy_pct'), True)})</div></td>"
-            f"<td class='num'><strong>{_fmt_num(r.get('basic_eps'))}</strong></td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('operating_cash_flow'))}</td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('capex'))}</td>"
-            f"<td class='num'><strong>{_fmt_twd_B(r.get('free_cash_flow'))}</strong><div class='cell-sub'>FCF率 {_fmt_pct(r.get('fcf_margin_pct'))}</div></td>"
-            f"</tr>"
-            for r in annual_rows
-        )
+def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any], extra: dict[str, Any]) -> str:
+    fr = snap.get("financial_research") if (snap.get("financial_research") or {}).get("status") == "available" else None
+    tech = snap.get("technical") or {}
+    readiness = snap.get("readiness") or {}
+    mrev = (snap.get("monthly_revenue") or [None])[0] if snap.get("monthly_revenue") else None
+    price = NA + ' <span class="hint">研究狀態未保存收盤價</span>'
+    if extra.get("analytical_close") is not None:
+        price = (f"{_num(extra['analytical_close'])} {_e(extra.get('currency') or stock.get('currency'))}"
+                 f' <span class="hint">分析用收盤價，{_e(extra.get("last_session"))}</span>')
+    meta = [
+        ("研究產生時間", f"{_tpe(snap.get('observed_at_utc'))} <span class=\"hint\">台北時間</span>"),
+        ("財報基準期", _e(fr.get("reconciled_period_end")) if fr else NA),
+        ("最新完整交易日", _e(tech.get("session"))),
+        ("最新月營收", f"{_e(_roc_month(mrev.get('period')))}" if mrev else NA),
+        ("收盤價", price),
+        ("與前一版本", _e(COMPARISON_LABELS.get(comp.get("status"), "有研究變化")) if comp.get("status") in ("baseline", "unchanged")
+         else "有研究變化 <a href=\"#m-compare\">查看明細</a>"),
+    ]
+    meta_html = "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in meta)
 
-        # Quarterly table
-        q_trs = "".join(
-            f"<tr>"
-            f"<td><strong>{_esc(r.get('period_label'))}</strong><div class='cell-sub'>{_esc(r.get('period_end'))}</div></td>"
-            f"<td><span class='badge badge-neutral'>{_esc(r.get('basis'))}</span></td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('revenue'))}</td>"
-            f"<td class='num'>{_fmt_pct(r.get('gross_margin_pct'))}</td>"
-            f"<td class='num'>{_fmt_pct(r.get('operating_margin_pct'))}</td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('net_income'))}<div class='cell-sub'>淨利率 {_fmt_pct(r.get('net_margin_pct'))}</div></td>"
-            f"<td class='num'><strong>{_fmt_num(r.get('basic_eps'))}</strong></td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('operating_cash_flow'))}</td>"
-            f"<td class='num'>{_fmt_twd_B(r.get('capex'))}</td>"
-            f"<td class='num'><strong>{_fmt_twd_B(r.get('free_cash_flow'))}</strong><div class='cell-sub'>{_fmt_pct(r.get('fcf_margin_pct'))}</div></td>"
-            f"</tr>"
-            for r in q_rows
-        )
+    status_rows = []
+    for key, name, notes in MODULES:
+        code = readiness.get(key, "not_evaluated")
+        status_rows.append(f"<tr><th scope=\"row\">{name}</th><td>{_status(code)}</td><td>{_e(notes.get(code, ''))}</td></tr>")
 
-        # Valuation scenarios
-        fcf_scen = val.get("fair_value_scenarios") or {}
-        pe_scen = val.get("ttm_pe_scenarios") or {}
-        ex_mult = val.get("exchange_multiples") or {}
-
-        fcf_rows_html = "".join(
-            f"<tr>"
-            f"<td><strong>{_esc(name.capitalize())}</strong></td>"
-            f"<td class='num'>{_fmt_num(s.get('fcf_multiple'), 1)}x</td>"
-            f"<td class='num'>{_fmt_num(s.get('median_fcf_component_twd'))} 元</td>"
-            f"<td class='num'>+{_fmt_num(s.get('net_cash_component_twd'))} 元</td>"
-            f"<td class='num'><strong>{_fmt_num(s.get('indicative_twd_per_share'))} 元</strong></td>"
-            f"<td class='num'><strong>{_fmt_num(s.get('indicative_ttm_fcf_twd_per_share'))} 元</strong></td>"
-            f"</tr>"
-            for name in ("conservative", "base", "optimistic")
-            if (s := fcf_scen.get(name))
-        )
-
-        pe_rows_html = "".join(
-            f"<tr>"
-            f"<td><strong>{_esc(name.capitalize())}</strong></td>"
-            f"<td class='num'>{_fmt_num(s.get('pe_multiple'), 1)}x</td>"
-            f"<td class='num'>{_fmt_num(s.get('ttm_basic_eps_twd'))} 元</td>"
-            f"<td class='num'><strong>{_fmt_num(s.get('indicative_twd_per_share'))} 元</strong></td>"
-            f"</tr>"
-            for name in ("conservative", "base", "optimistic")
-            if (s := pe_scen.get(name))
-        )
-
-        # Calendar & disclosures
-        cal_items_html = "".join(
-            f"<div class='timeline-item'>"
-            f"<div class='timeline-date'>{_esc(ev.get('scheduled_date') or '待公告')}</div>"
-            f"<div class='timeline-body'>"
-            f"<div class='timeline-title'>"
-            f"<span class='badge {_badge_class(ev.get('confirmation_status'))}'>{_esc(ev.get('confirmation_status'))}</span> "
-            f"<strong>[{_esc(ev.get('period_label'))}] {_esc(ev.get('title'))}</strong>"
-            f"</div>"
-            f"<div class='timeline-meta'>類型: {_esc(ev.get('event_type'))} · ID: <code>{_esc(ev.get('schedule_id'))}</code> · "
-            f"<a href='{_esc(ev.get('source'))}' target='_blank' rel='noopener'>官方來源</a>"
-            + (
-                f" · <span class='badge badge-warn'>更正前日期: {_esc(', '.join(ev.get('superseded_dates') or []))}</span>"
-                if ev.get("superseded_dates")
-                else ""
-            )
-            + "</div></div></div>"
-            for ev in cal
-        )
-
-        disc_items_html = "".join(
-            f"<li><span class='badge badge-ok'>{_esc(d.get('event_date') or d.get('reported_at'))}</span> "
-            f"<strong>{_esc(d.get('title'))}</strong> "
-            f"<span class='cell-sub'>({_esc(d.get('category'))} · <a href='{_esc(d.get('source'))}' target='_blank' rel='noopener'>來源</a>)</span></li>"
-            for d in (disc.get("official_disclosures") or [])
-        ) or "<li>目前無近期重大公告項目</li>"
-
-        news_items = disc.get("news_references") or []
-        news_items_html = "".join(
-            f"<li><span class='badge badge-neutral'>{_esc((n.get('published_at') or '')[:10])}</span> "
-            f"<a href='{_esc(n.get('url'))}' target='_blank' rel='noopener'>{_esc(n.get('title'))}</a> "
-            f"<span class='cell-sub'>({_esc(n.get('source'))})</span></li>"
-            for n in news_items
-        ) or f"<li>補充新聞已去重（去重移除重貼數：{_esc(disc.get('deduplicated_repost_count', 0))}），目前無額外列示項目。</li>"
-
-        ex_div_trs = "".join(
-            f"<tr><td>{_esc(x.get('ex_date'))}</td><td>{_esc(x.get('type'))}</td>"
-            f"<td class='num'>{_fmt_num(x.get('dividend_per_share_twd'), 4)} 元</td>"
-            f"<td class='num'>{_fmt_num(x.get('before_price'))}</td>"
-            f"<td class='num'>{_fmt_num(x.get('reference_price'))}</td></tr>"
-            for x in ex_divs
-        )
-
-        financial_section_html = f"""
-        {kpi_html}
-
-        <section class="panel" id="section-financials">
-          <div class="panel-header">
-            <h2>財務三表、單季拆解與連續四季 TTM 分析</h2>
-            <div class="tab-bar" role="tablist">
-              <button class="tab-btn active" data-tab="tab-annual" onclick="switchTab('tab-annual')">年度三表 (FY23–FY25)</button>
-              <button class="tab-btn" data-tab="tab-quarterly" onclick="switchTab('tab-quarterly')">單季趨勢與 TTM (25Q1–26Q2)</button>
-              <button class="tab-btn" data-tab="tab-bs" onclick="switchTab('tab-bs')">資產負債與最新半年報</button>
-              <button class="tab-btn" data-tab="tab-shares" onclick="switchTab('tab-shares')">股本與除權息紀錄</button>
-            </div>
-          </div>
-
-          <div id="tab-annual" class="tab-content active">
-            <div class="chart-wrap">
-              {_render_annual_svg_chart(annual_rows)}
-            </div>
-            <div class="table-scroll">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>會計年度</th>
-                    <th class="num">營業收入</th>
-                    <th class="num">營業毛利 / 毛利率</th>
-                    <th class="num">營業利益 / 營益率</th>
-                    <th class="num">本期淨利 / 淨利率</th>
-                    <th class="num">基本 EPS (元)</th>
-                    <th class="num">營業現金流 (OCF)</th>
-                    <th class="num">資本支出 (CapEx)</th>
-                    <th class="num">自由現金流 (FCF)</th>
-                  </tr>
-                </thead>
-                <tbody>{annual_trs}</tbody>
-              </table>
-            </div>
-          </div>
-
-          <div id="tab-quarterly" class="tab-content">
-            <div class="callout callout-info">
-              <strong>單季口徑保護：</strong>Q2 / Q3 / Q4 損益與現金流均已由累計財報拆解為獨立單季（並與 TWSE <code>t187ap45_L</code> 單季母公司淨利及每股盈餘交叉核對），絕不將 H1 或前三季累計值直接當作單季。
-              <strong>TTM ({_esc(", ".join(ttm.get("quarters") or []))})：</strong>合併營收 <strong>{_fmt_twd_B(ttm.get("revenue"))}</strong>、稅後淨利 <strong>{_fmt_twd_B(ttm.get("net_income"))}</strong>、TTM 基本 EPS <strong>{_fmt_num(ttm.get("basic_eps"))} 元</strong>、TTM FCF <strong>{_fmt_twd_B(ttm.get("free_cash_flow"))}</strong>。
-            </div>
-            <div class="table-scroll">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>季度</th>
-                    <th>推導與核對口徑</th>
-                    <th class="num">單季營收</th>
-                    <th class="num">毛利率</th>
-                    <th class="num">營益率</th>
-                    <th class="num">單季淨利</th>
-                    <th class="num">單季 EPS</th>
-                    <th class="num">單季 OCF</th>
-                    <th class="num">單季 CapEx</th>
-                    <th class="num">單季 FCF</th>
-                  </tr>
-                </thead>
-                <tbody>{q_trs}</tbody>
-              </table>
-            </div>
-          </div>
-
-          <div id="tab-bs" class="tab-content">
-            <div class="two-col">
-              <div>
-                <h3>最新合併資產負債表重點 ({_esc(bs.get("period_end"))})</h3>
-                <table class="data-table">
-                  <tbody>
-                    <tr><td>現金及約當現金</td><td class="num"><strong>{_fmt_twd_B(bs.get("cash"))}</strong></td></tr>
-                    <tr><td>應付公司債</td><td class="num">{_fmt_twd_B(bs.get("bonds_payable"))}</td></tr>
-                    <tr><td>長期銀行借款</td><td class="num">{_fmt_twd_B(bs.get("long_term_borrowings"))}</td></tr>
-                    <tr><td>有息負債合計</td><td class="num">{_fmt_twd_B(bs.get("total_debt"))}</td></tr>
-                    <tr><td><strong>帳上淨現金 (Net Cash)</strong></td><td class="num"><strong>{_fmt_twd_B(bs.get("net_cash"))}</strong></td></tr>
-                    <tr><td>資產總計</td><td class="num">{_fmt_twd_B(bs.get("total_assets"))}</td></tr>
-                    <tr><td>負債總計</td><td class="num">{_fmt_twd_B(bs.get("total_liabilities"))}</td></tr>
-                    <tr><td>歸屬母公司業主權益</td><td class="num">{_fmt_twd_B(bs.get("parent_equity"))}</td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div>
-                <h3>最新累計半年報 ({_esc(interim.get("period_label"))} · {_esc(interim.get("period_end"))})</h3>
-                <table class="data-table">
-                  <tbody>
-                    <tr><td>累計營業收入</td><td class="num"><strong>{_fmt_twd_B(interim.get("revenue"))}</strong> ({_fmt_pct(interim.get("revenue_yoy_pct"), True)} YoY)</td></tr>
-                    <tr><td>累計營業毛利</td><td class="num">{_fmt_twd_B(interim.get("gross_profit"))}</td></tr>
-                    <tr><td>累計營業利益</td><td class="num">{_fmt_twd_B(interim.get("operating_income"))}</td></tr>
-                    <tr><td>累計稅前淨利</td><td class="num">{_fmt_twd_B(interim.get("pre_tax_income"))}</td></tr>
-                    <tr><td>累計本期淨利</td><td class="num"><strong>{_fmt_twd_B(interim.get("net_income"))}</strong> ({_fmt_pct(interim.get("net_income_yoy_pct"), True)} YoY)</td></tr>
-                    <tr><td>累計基本 EPS</td><td class="num"><strong>{_fmt_num(interim.get("basic_eps"))} 元</strong></td></tr>
-                    <tr><td>累計營業現金流 / 資本支出</td><td class="num">{_fmt_twd_B(interim.get("operating_cash_flow"))} / {_fmt_twd_B(interim.get("capex"))}</td></tr>
-                    <tr><td>累計自由現金流 (H1 FCF)</td><td class="num"><strong>{_fmt_twd_B(interim.get("free_cash_flow"))}</strong></td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div id="tab-shares" class="tab-content">
-            <div class="callout callout-info">
-              <strong>股本與普通股分母對帳：</strong>TWSE <code>t187ap03_L</code> 實收資本額 <strong>{_fmt_num(fr.get("paid_in_capital_twd"), 0)} 元</strong>（每股面額 10 元 → <strong>{_fmt_num(fr.get("issued_ordinary_shares"), 0)} 股</strong>），資產負債表普通股股本換算股數 <strong>{_fmt_num(bs.get("ordinary_shares"), 0)} 股</strong>。
-            </div>
-            <h3>近期除權息紀錄 (TWSE TWT49U)</h3>
-            <div class="table-scroll">
-              <table class="data-table">
-                <thead>
-                  <tr><th>除權息日</th><th>權/息</th><th class="num">每股現金股利</th><th class="num">除息前收盤價</th><th class="num">除息參考價</th></tr>
-                </thead>
-                <tbody>{ex_div_trs}</tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel" id="section-valuation">
-          <div class="panel-header">
-            <h2>雙模型估值情境敏感度分析 <span class="badge badge-warn">illustrative_only（非目標價／非買賣建議）</span></h2>
-          </div>
-          <div class="callout callout-warn">
-            <strong>研究邊界聲明：</strong>以下 P/FCF 與 TTM P/E 情境僅為歷史與 TTM 財務數據在不同假設倍數下的數學敏感度映射（<code>valuation = illustrative_only</code>）。
-            系統<strong>不提供</strong>目標價、買進價、停損價或進出場區間（<code>trade_plan = not_evaluated</code>，<code>recommendation = not_available</code>）。
-            TWSE 官方盤後參考倍數（<code>BWIBBU_ALL</code>，出表 {_esc(ex_mult.get("date_roc"))}）：P/E <strong>{_fmt_num(ex_mult.get("pe_ratio"))}x</strong> · P/B <strong>{_fmt_num(ex_mult.get("pb_ratio"))}x</strong> · 殖利率 <strong>{_fmt_pct(ex_mult.get("dividend_yield_pct"))}</strong>。
-          </div>
-          <div class="two-col">
-            <div>
-              <h3>模型一：EV 橋接 P/FCF 情境（含每股淨現金 +{_fmt_num(val.get("net_cash_twd_per_ordinary_share"))} 元）</h3>
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>情境</th>
-                    <th class="num">假設 FCF 倍數</th>
-                    <th class="num">3年中位數 FCF/股貢獻</th>
-                    <th class="num">每股淨現金橋接</th>
-                    <th class="num">3年中位數 P/FCF 參考值</th>
-                    <th class="num">TTM P/FCF 參考值</th>
-                  </tr>
-                </thead>
-                <tbody>{fcf_rows_html}</tbody>
-              </table>
-            </div>
-            <div>
-              <h3>模型二：TTM P/E 歷史倍數敏感度（TTM EPS {_fmt_num(ttm.get("basic_eps"))} 元）</h3>
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>情境</th>
-                    <th class="num">假設 P/E 倍數</th>
-                    <th class="num">TTM 基本 EPS</th>
-                    <th class="num">對應每股情境參考值</th>
-                  </tr>
-                </thead>
-                <tbody>{pe_rows_html}</tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel" id="section-calendar-events">
-          <div class="two-col">
-            <div>
-              <h2>財報、董事會與股東常會行事曆 (TW09)</h2>
-              <div class="timeline">{cal_items_html}</div>
-            </div>
-            <div>
-              <h2>官方重大訊息與去重補充新聞 (TW08)</h2>
-              <h3>官方公告與董事會決議</h3>
-              <ul class="clean-list">{disc_items_html}</ul>
-              <h3>補充新聞參考（非官方財報依據）</h3>
-              <ul class="clean-list">{news_items_html}</ul>
-            </div>
-          </div>
-        </section>
-        """
+    if fr:
+        findings, gaps = _findings(fr)
+        findings_html = "".join(
+            f'<li><h4>{_e(t)}</h4><p>{s}</p><p class="basis">依據：{_e(b)}</p></li>' for t, s, b in findings)
+        gaps_html = "".join(f"<li>{g}</li>" for g in gaps)
+        body = (f'<ol class="findings">{findings_html}</ol>'
+                f'<div class="callout"><strong>解讀尚未完成的部分</strong><ul>{gaps_html}</ul></div>'
+                + _key_metrics(fr))
     else:
-        financial_section_html = f"""
-        <section class="panel">
-          <h2>早期研究快照（尚未接入完整三表對帳前之歷史紀錄）</h2>
-          <p>此快照（<code>{_esc(snap.get("id"))}</code>）產生於完整財務三表接入前，當時財務就緒狀態為 <span class="badge badge-neutral">{_esc(readiness.get("financial"))}</span>。請從頂部切換至最新快照查看完整三表、TTM 與雙模型估值。</p>
-        </section>
-        """
+        body = _empty("此研究版本沒有完整財務研究",
+                      f"當時財務研究狀態：{_status(readiness.get('financial', 'unavailable'))}。"
+                      "研究重點與核心指標需要財務研究資料；請切換至較新的研究版本。")
 
-    # Technical & Monthly Revenue & Provenance footer panel
-    mrev = (snap.get("monthly_revenue") or [{}])[0] if snap.get("monthly_revenue") else {}
-    cp_html = ""
-    if checkpoint:
-        cp_html = (
-            f"<div><strong>TW13 消費檢查點：</strong>財報版本 <code>{_esc(checkpoint.get('consumed_financial_version'))}</code> · "
-            f"已消費官方事件數 <code>{len(checkpoint.get('consumed_event_ids') or [])}</code> · "
-            f"待重跑請求 <code>{_esc(checkpoint.get('pending_rerun') or '無 (up_to_date)')}</code></div>"
-        )
-
+    risks = "".join(f"<li>{x}</li>" for x in _uncertainties(snap, fr))
     return f"""
-    <div class="snapshot-view" data-snapshot-id="{_esc(snap.get('id'))}">
-      <section class="panel comparison-banner">
-        <div class="banner-row">
-          <div>
-            <span class="badge {_badge_class(comp_status)}">比較結果: {_esc(comp_status.upper())}</span>
-            <span class="banner-text">
-              當前快照 <code>{_esc((snap.get("id") or "")[:12])}</code>
-              {f" 對照前次成功快照 <code>{_esc((comp.get('previous_snapshot_id') or '')[:12])}</code>" if comp.get("previous_snapshot_id") else " (首筆基準快照)"}
-              {f" · 變動面向: <strong>{_esc(', '.join(changed_Dims))}</strong>" if changed_Dims else " · 實質研究結論無變動"}
-            </span>
-          </div>
-          <div class="banner-links">
-            <a href="{_esc(issue_url)}" target="_blank" rel="noopener" class="btn-link">GitHub 固定報告 Issue #{_esc(issue_num)}</a>
-            <a href="{_esc(run_url)}" target="_blank" rel="noopener" class="btn-link">驗證 Run #{_esc(run_info.get("run_id"))}</a>
-          </div>
-        </div>
-        {cp_html}
-      </section>
+<section id="overview" aria-labelledby="h-overview">
+  <h2 id="h-overview">研究總覽</h2>
+  <dl class="meta">{meta_html}</dl>
+  <h3>研究重點</h3>
+  <p class="lede">以下摘要只引用研究引擎既有輸出；標示「推導值」者為本頁由同口徑數字直接計算的比率。</p>
+  {body}
+  <h3>主要不確定性</h3>
+  <ul class="plain">{risks}</ul>
+  <h3>研究模組狀態</h3>
+  <div class="table-wrap"><table class="status-table"><thead><tr><th scope="col">模組</th><th scope="col">狀態</th><th scope="col">說明</th></tr></thead>
+  <tbody>{''.join(status_rows)}</tbody></table></div>
+</section>"""
 
-      <section class="panel">
-        <h2>研究模組就緒狀態 (Readiness Gate)</h2>
-        <div class="status-grid">{readiness_html}</div>
-      </section>
 
-      {financial_section_html}
+def _key_metrics(fr: dict[str, Any]) -> str:
+    ttm = fr.get("ttm") or {}
+    annual = _annual(fr)[:3]
+    cols = []
+    if ttm.get("status") == "available":
+        q = ttm.get("quarters") or []
+        cols.append((f"TTM<span class=\"sub\">{_e(q[0] if q else '')}–{_e(q[-1] if q else '')}</span>", ttm))
+    cols += [(f"FY{_e(a.get('fiscal_year'))}<span class=\"sub\">{_e(a.get('period_end'))}</span>", a) for a in annual]
+    if not cols:
+        return ""
+    rows = [
+        ("營業收入", "revenue", "yi", "億元"), ("營收年增率", "revenue_yoy_pct", "chg", "%"),
+        ("毛利率", "gross_margin_pct", "pct", "%"), ("營業利益率", "operating_margin_pct", "pct", "%"),
+        ("淨利率", "net_margin_pct", "pct", "%"), ("基本 EPS", "basic_eps", "num", "元"),
+        ("營業現金流", "operating_cash_flow", "yi", "億元"), ("自由現金流", "free_cash_flow", "yi", "億元"),
+        ("FCF 利潤率", "fcf_margin_pct", "pct", "%"),
+    ]
+    fmt = {"yi": _yi, "chg": _chg, "pct": _pct, "num": _num}
+    head = "".join(f'<th scope="col" class="num">{c}</th>' for c, _ in cols)
+    body = "".join(
+        f'<tr><th scope="row">{label}<span class="unit">{unit}</span></th>'
+        + "".join(f'<td class="num">{fmt[kind](src.get(key))}</td>' for _, src in cols) + "</tr>"
+        for label, key, kind, unit in rows)
+    bs = fr.get("latest_balance_sheet") or {}
+    return f"""
+  <h3>核心指標</h3>
+  <div class="table-wrap"><table class="metrics"><thead><tr><th scope="col">指標（單位）</th>{head}</tr></thead><tbody>{body}</tbody></table></div>
+  <p class="note">金額為新台幣億元。TTM 為最近四個單季加總；FY 為完整會計年度；兩者不可直接當作同期比較。
+  TTM 營收年增率未由研究引擎計算，因此顯示「—」。淨現金為 {_e(bs.get('period_end'))} 時點值：{_yi(bs.get('net_cash'))} 億元。</p>"""
 
-      <section class="panel" id="section-technical-provenance">
-        <div class="two-col">
-          <div>
-            <h2>技術研究與最新月營收快照</h2>
-            <table class="data-table">
-              <tbody>
-                <tr><td>技術資料狀態 / 新鮮度</td><td><span class="badge {_badge_class(tech.get('status'))}">{_esc(tech.get("status"))}</span> ({_esc(tech.get("freshness"))})</td></tr>
-                <tr><td>最新完整交易日 (Session)</td><td><strong>{_esc(tech.get("session"))}</strong></td></tr>
-                <tr><td>價格基準與來源</td><td><code>{_esc(tech.get("price_basis"))}</code> ({_esc(tech.get("source"))})</td></tr>
-                <tr><td>技術輸入指紋 (SHA-256)</td><td><code>{_esc((tech.get("input_sha256") or "")[:24])}...</code></td></tr>
-                <tr><td>最新月營收 ({_esc(mrev.get("period"))})</td><td><strong>{_fmt_num(mrev.get("value"), 0)} {_esc(mrev.get("unit"))}</strong> (出表 {_esc(mrev.get("reported_at"))})</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div>
-            <h2>資料來源追溯、授權與比較限制</h2>
-            <p class="cell-sub">授權：{_esc((snap.get("attribution") or {}).get("provider"))}（<a href="{_esc((snap.get('attribution') or {}).get('license'))}" target="_blank" rel="noopener">政府資料開放授權條款 v{_esc((snap.get("attribution") or {}).get("license_version"))}</a>）</p>
-            <ul class="clean-list">
-              {"".join(f"<li><a href='{_esc(link)}' target='_blank' rel='noopener'>{_esc(link)}</a></li>" for link in (snap.get("source_links") or []))}
-            </ul>
-            <div class="cell-sub">
-              <strong>快照保存限制 (Comparison Limits)：</strong><code>{_esc(", ".join(snap.get("comparison_limits") or []))}</code> ·
-              可得時間屬性：<code>{_esc(snap.get("availability"))}</code> ·
-              Commit SHA：<code>{_esc((run_info.get("code_sha") or "")[:12])}</code>
-            </div>
-          </div>
-        </div>
-      </section>
+
+def _fundamentals(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
+    if not fr:
+        return f"""
+<section id="fundamentals" aria-labelledby="h-fund"><h2 id="h-fund">基本面</h2>
+{_empty("此研究版本沒有財務研究資料", f"財務研究狀態：{_status((snap.get('readiness') or {}).get('financial', 'unavailable'))}。")}</section>"""
+    quarters, annual = _quarters(fr), _annual(fr)
+    ttm, ytd, bs = fr.get("ttm") or {}, fr.get("latest_cumulative_interim") or {}, fr.get("latest_balance_sheet") or {}
+    q_rows = "".join(
+        f'<tr><th scope="row">{_e(q.get("period_label"))}<span class="sub">{_e(q.get("period_start"))}–{_e(q.get("period_end"))}</span></th>'
+        f'<td class="num">{_yi(q.get("revenue"))}</td><td class="num">{_pct(q.get("gross_margin_pct"))}</td>'
+        f'<td class="num">{_pct(q.get("operating_margin_pct"))}</td><td class="num">{_pct(q.get("net_margin_pct"))}</td>'
+        f'<td class="num">{_num(q.get("basic_eps"))}</td><td class="num">{_yi(q.get("operating_cash_flow"))}</td>'
+        f'<td class="num">{_yi(q.get("capex"))}</td><td class="num">{_yi(q.get("free_cash_flow"))}</td>'
+        f'<td class="basis-cell">{_e(QUARTER_BASIS.get(q.get("basis"), q.get("basis")))}</td></tr>' for q in quarters)
+    a_rows = "".join(
+        f'<tr><th scope="row">FY{_e(a.get("fiscal_year"))}</th><td class="num">{_yi(a.get("revenue"))}</td>'
+        f'<td class="num">{_yi(a.get("gross_profit"))}</td><td class="num">{_yi(a.get("operating_income"))}</td>'
+        f'<td class="num">{_yi(a.get("net_income"))}</td><td class="num">{_yi(a.get("parent_net_income"))}</td>'
+        f'<td class="num">{_num(a.get("basic_eps"))}</td><td class="num">{_yi(a.get("operating_cash_flow"))}</td>'
+        f'<td class="num">{_yi(a.get("capex"))}</td><td class="num">{_yi(a.get("free_cash_flow"))}</td>'
+        f'<td class="num">{_chg(a.get("fcf_yoy_pct"))}</td></tr>' for a in annual)
+    eps_basis = {"sum_of_four_quarters_within_0.5pct_share_drift": "四季 EPS 加總（各季股數差異 ≤ 0.5%）"}
+    ttm_note = ""
+    if ttm.get("status") == "available":
+        ttm_note = (f'<p class="note">TTM 由 {_e("、".join(ttm.get("quarters") or []))} 四個單季加總：營收 {_yi(ttm.get("revenue"))} 億元、'
+                    f'淨利 {_yi(ttm.get("net_income"))} 億元、EPS {_num(ttm.get("basic_eps"))} 元'
+                    f'（{_e(eps_basis.get(ttm.get("eps_derivation"), ttm.get("eps_derivation")))}；股數最大差異 {_num(ttm.get("share_count_max_drift_pct"), 4)}%）。</p>')
+    bs_rows = [("現金及約當現金", bs.get("cash")), ("應付公司債", bs.get("bonds_payable")),
+               ("長期借款", bs.get("long_term_borrowings")), ("有息負債合計", bs.get("total_debt")),
+               ("淨現金（現金 − 有息負債）", bs.get("net_cash")), ("資產總計", bs.get("total_assets")),
+               ("負債總計", bs.get("total_liabilities")), ("權益總計", bs.get("total_equity")),
+               ("歸屬母公司權益", bs.get("parent_equity"))]
+    ytd_rows = [("營業收入", _yi(ytd.get("revenue")), _chg(ytd.get("revenue_yoy_pct"))),
+                ("營業毛利", _yi(ytd.get("gross_profit")), NA), ("營業利益", _yi(ytd.get("operating_income")), NA),
+                ("稅前淨利", _yi(ytd.get("pre_tax_income")), NA),
+                ("本期淨利", _yi(ytd.get("net_income")), _chg(ytd.get("net_income_yoy_pct"))),
+                ("基本 EPS（元）", _num(ytd.get("basic_eps")), NA),
+                ("營業現金流", _yi(ytd.get("operating_cash_flow")), NA), ("資本支出", _yi(ytd.get("capex")), NA),
+                ("自由現金流", _yi(ytd.get("free_cash_flow")), NA)]
+    div_rows = "".join(
+        f'<tr><th scope="row">{_e(d.get("period"))}</th><td>{_e(_roc_date(d.get("board_Or_approval_date_roc")))}</td>'
+        f'<td class="num">{_num(d.get("cash_dividend_per_share_twd"), 2)}</td><td class="num">{_num(d.get("stock_dividend_per_share_twd"), 2)}</td>'
+        f'<td class="num">{_yi(d.get("parent_net_income_twd"))}</td><td>{_link(d.get("source"))}</td></tr>'
+        for d in fr.get("dividend_schedule") or [])
+    ex_rows = "".join(
+        f'<tr><th scope="row">{_e(x.get("ex_date"))}</th><td>{_e(x.get("type"))}</td>'
+        f'<td class="num">{_num(x.get("dividend_per_share_twd"), 2)}</td><td class="num">{_num(x.get("before_price"))}</td>'
+        f'<td class="num">{_num(x.get("reference_price"))}</td></tr>' for x in fr.get("ex_dividend_history") or [])
+    val = fr.get("valuation_summary") or {}
+    denom = val.get("denominator") or {}
+    return f"""
+<section id="fundamentals" aria-labelledby="h-fund">
+  <h2 id="h-fund">基本面</h2>
+  <h3>單季趨勢</h3>
+  <figure class="chart-box">{_quarterly_chart(quarters)}<figcaption>單季數字由累計財報拆解，各季核對方式見表格最後一欄。</figcaption></figure>
+  <div class="table-wrap"><table><thead><tr><th scope="col">季度</th><th scope="col" class="num">營收<span class="unit">億元</span></th>
+  <th scope="col" class="num">毛利率</th><th scope="col" class="num">營益率</th><th scope="col" class="num">淨利率</th>
+  <th scope="col" class="num">EPS<span class="unit">元</span></th><th scope="col" class="num">營業現金流<span class="unit">億元</span></th>
+  <th scope="col" class="num">資本支出<span class="unit">億元</span></th><th scope="col" class="num">自由現金流<span class="unit">億元</span></th>
+  <th scope="col">單季口徑</th></tr></thead><tbody>{q_rows}</tbody></table></div>
+  {ttm_note}
+
+  <h3>年度損益與現金流</h3>
+  <div class="table-wrap"><table><thead><tr><th scope="col">會計年度</th><th scope="col" class="num">營收</th><th scope="col" class="num">毛利</th>
+  <th scope="col" class="num">營業利益</th><th scope="col" class="num">淨利</th><th scope="col" class="num">母公司淨利</th>
+  <th scope="col" class="num">EPS<span class="unit">元</span></th><th scope="col" class="num">營業現金流</th><th scope="col" class="num">資本支出</th>
+  <th scope="col" class="num">自由現金流</th><th scope="col" class="num">FCF 年增</th></tr></thead><tbody>{a_rows}</tbody></table></div>
+  <p class="note">金額單位：新台幣億元。合併報表口徑。</p>
+
+  <div class="two-col">
+    <div>
+      <h3>資產負債（{_e(bs.get('period_end'))} 時點）</h3>
+      <div class="table-wrap"><table class="kv"><tbody>{''.join(f'<tr><th scope="row">{k}</th><td class="num">{_yi(v)}</td></tr>' for k, v in bs_rows)}</tbody></table></div>
+      <p class="note">單位：新台幣億元。</p>
     </div>
-    """
+    <div>
+      <h3>年初至今累計（{_e(ytd.get('period_label'))}）</h3>
+      <div class="table-wrap"><table class="kv"><thead><tr><th scope="col">{_e(ytd.get('period_start'))}–{_e(ytd.get('period_end'))}</th><th scope="col" class="num">金額</th><th scope="col" class="num">較去年同期</th></tr></thead>
+      <tbody>{''.join(f'<tr><th scope="row">{k}</th><td class="num">{v}</td><td class="num">{c}</td></tr>' for k, v, c in ytd_rows)}</tbody></table></div>
+      <p class="note">累計值不是單季值。金額單位：新台幣億元。</p>
+    </div>
+  </div>
+
+  <h3>股利與股數</h3>
+  <div class="table-wrap"><table><thead><tr><th scope="col">盈餘期別</th><th scope="col">董事會決議日</th><th scope="col" class="num">現金股利<span class="unit">元/股</span></th>
+  <th scope="col" class="num">股票股利<span class="unit">元/股</span></th><th scope="col" class="num">該期母公司淨利<span class="unit">億元</span></th><th scope="col">來源</th></tr></thead>
+  <tbody>{div_rows or f'<tr><td colspan="6">{NA} 無股利分派資料</td></tr>'}</tbody></table></div>
+  <div class="table-wrap"><table><caption>除權息紀錄（TWSE）</caption><thead><tr><th scope="col">除權息日</th><th scope="col">類型</th>
+  <th scope="col" class="num">每股配發<span class="unit">元</span></th><th scope="col" class="num">除權息前收盤</th><th scope="col" class="num">參考價</th></tr></thead>
+  <tbody>{ex_rows or f'<tr><td colspan="5">{NA} 無除權息資料</td></tr>'}</tbody></table></div>
+  <p class="note">股數核對：TWSE 公司基本資料實收資本額 {_num(fr.get('paid_in_capital_twd'), 0)} 元，對應已發行普通股 {_num(fr.get('issued_ordinary_shares'), 0)} 股；
+  資產負債表股本換算 {_num(bs.get('ordinary_shares'), 0)} 股；估值分母採 {_num(denom.get('value'), 0)} 股（{_e(denom.get('period_end'))}）。</p>
+</section>"""
+
+
+def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
+    val = (fr or {}).get("valuation_summary") or {}
+    readiness = snap.get("readiness") or {}
+    if not val:
+        return f"""
+<section id="valuation" aria-labelledby="h-val"><h2 id="h-val">估值</h2>
+{_empty("此研究版本沒有估值情境", f"估值狀態：{_status(readiness.get('valuation', 'not_evaluated'))}。")}</section>"""
+    mult = val.get("exchange_multiples") or {}
+    fcf_s, pe_s = val.get("fair_value_scenarios") or {}, val.get("ttm_pe_scenarios") or {}
+    ttm = (fr or {}).get("ttm") or {}
+    names = [("conservative", "保守"), ("base", "基準"), ("optimistic", "樂觀")]
+    nc = val.get("net_cash_twd_per_ordinary_share")
+    rows = "".join(
+        f'<tr><th scope="row">{zh}</th>'
+        f'<td class="num">{_num((fcf_s.get(k) or {}).get("fcf_multiple"), 0)}x</td>'
+        f'<td class="num">{_num((fcf_s.get(k) or {}).get("indicative_twd_per_share"))}</td>'
+        f'<td class="num">{_num((fcf_s.get(k) or {}).get("indicative_ttm_fcf_twd_per_share"))}</td>'
+        f'<td class="num">{_num((pe_s.get(k) or {}).get("pe_multiple"), 0)}x</td>'
+        f'<td class="num">{_num((pe_s.get(k) or {}).get("indicative_twd_per_share"))}</td></tr>'
+        for k, zh in names if k in fcf_s or k in pe_s)
+    models = []
+    for label, src, key in (("P/FCF（三年中位數）", fcf_s, "indicative_twd_per_share"),
+                            ("P/FCF（TTM）", fcf_s, "indicative_ttm_fcf_twd_per_share"),
+                            ("P/E（TTM）", pe_s, "indicative_twd_per_share")):
+        pts = [(k, float(src[k][key])) for k, _ in names if k in src and src[k].get(key) is not None]
+        if pts:
+            models.append((label, pts))
+    sens = []
+    for label, per_share in (("P/FCF（三年中位數 FCF）", val.get("fcf_twd_per_ordinary_share")),
+                             ("P/FCF（TTM FCF）", val.get("ttm_fcf_twd_per_ordinary_share")),
+                             ("P/E（TTM EPS）", ttm.get("basic_eps"))):
+        if per_share is not None:
+            sens.append(f'<tr><th scope="row">{label}</th><td class="num">{_num(per_share)}</td><td class="num">±{_num(per_share)}</td></tr>')
+    capex_int = _ratio(ttm.get("capex"), ttm.get("revenue"))
+    conv = _ratio(ttm.get("free_cash_flow"), ttm.get("net_income"))
+    denom = val.get("denominator") or {}
+    return f"""
+<section id="valuation" aria-labelledby="h-val">
+  <h2 id="h-val">估值</h2>
+  <div class="callout warn" role="note"><strong>示意試算，不是目標價。</strong>
+  以下情境以假設倍數乘上已對帳的財務數字，用來觀察假設的敏感度；不是合理價、目標價或買賣價格。
+  交易計畫狀態：{_status(readiness.get('trade_plan', 'not_evaluated'))}；投資建議：{_status(readiness.get('recommendation', 'not_available'))}。</div>
+
+  <h3>市場觀察倍數</h3>
+  <dl class="meta">
+    <div><dt>本益比（P/E）</dt><dd>{_num(mult.get('pe_ratio'))} 倍</dd></div>
+    <div><dt>股價淨值比（P/B）</dt><dd>{_num(mult.get('pb_ratio'))} 倍</dd></div>
+    <div><dt>殖利率</dt><dd>{_pct(mult.get('dividend_yield_pct'), 2)}</dd></div>
+    <div><dt>資料日期</dt><dd>{_e(_roc_date(mult.get('date_roc')) or mult.get('date_roc'))} · {_link(mult.get('source'), 'TWSE BWIBBU_ALL')}</dd></div>
+  </dl>
+  <p class="note">交易所公布值，計算基礎由 TWSE 定義，與下方以 TTM EPS 為基礎的模型不必然一致。</p>
+
+  <h3>模型輸入</h3>
+  <div class="table-wrap"><table class="kv"><tbody>
+    <tr><th scope="row">三年中位數年度自由現金流</th><td class="num">{_yi(val.get('normalized_annual_fcf_twd'))} 億元</td><td class="num">{_num(val.get('fcf_twd_per_ordinary_share'))} 元/股</td></tr>
+    <tr><th scope="row">TTM 自由現金流</th><td class="num">{_yi(val.get('ttm_fcf_twd'))} 億元</td><td class="num">{_num(val.get('ttm_fcf_twd_per_ordinary_share'))} 元/股</td></tr>
+    <tr><th scope="row">淨現金（{_e(val.get('latest_balance_sheet_end'))}）</th><td class="num">{_yi(val.get('net_cash_twd'))} 億元</td><td class="num">{_num(nc)} 元/股</td></tr>
+    <tr><th scope="row">TTM 基本 EPS</th><td class="num">{NA}</td><td class="num">{_num(ttm.get('basic_eps'))} 元/股</td></tr>
+    <tr><th scope="row">股數分母（{_e(denom.get('period_end'))}）</th><td class="num" colspan="2">{_num(denom.get('value'), 0)} 股</td></tr>
+  </tbody></table></div>
+
+  <h3>情境試算</h3>
+  <ul class="formula">
+    <li>P/FCF 法：每股 FCF × 假設倍數 + 每股淨現金 {_num(nc)} 元</li>
+    <li>P/E 法：TTM 基本 EPS × 假設倍數（不加計淨現金）</li>
+  </ul>
+  <div class="table-wrap"><table><thead><tr><th scope="col">情境</th><th scope="col" class="num">P/FCF 倍數</th>
+  <th scope="col" class="num">三年中位數 FCF 法<span class="unit">元/股</span></th><th scope="col" class="num">TTM FCF 法<span class="unit">元/股</span></th>
+  <th scope="col" class="num">P/E 倍數</th><th scope="col" class="num">TTM P/E 法<span class="unit">元/股</span></th></tr></thead><tbody>{rows}</tbody></table></div>
+  <figure class="chart-box">{_valuation_chart(models)}<figcaption>點位由左至右為保守、基準、樂觀。圖中未標示市價，因研究狀態未保存經驗證的收盤價。</figcaption></figure>
+
+  <h3>敏感度：哪個輸入影響最大</h3>
+  <div class="table-wrap"><table><thead><tr><th scope="col">方法</th><th scope="col" class="num">每股基礎值<span class="unit">元</span></th>
+  <th scope="col" class="num">倍數每變動 1x 的影響<span class="unit">元/股</span></th></tr></thead><tbody>{''.join(sens)}</tbody></table></div>
+  <p>倍數假設是最大變因：同一方法內，倍數每差 1x，試算值就差一個「每股基礎值」。兩種方法的差距主要來自 FCF 只約為淨利的
+  {_pct(conv, 0)}（TTM，推導值），反映資本支出約占營收 {_pct(capex_int)}（TTM，推導值）。資本支出計畫改變時，P/FCF 法結果會明顯移動。</p>
+</section>"""
+
+
+def _technical(snap: dict[str, Any], extra: dict[str, Any]) -> str:
+    tech = snap.get("technical") or {}
+    run = snap.get("run") or {}
+    obs = sorted(extra.get("observations") or [], key=lambda o: (not o.get("matched"), str(o.get("strategy_id"))))
+    if obs:
+        matched = [o for o in obs if o.get("matched")]
+        rows = "".join(
+            f'<tr><th scope="row">{_e(o.get("strategy_id"))}</th><td>{"✓ 本次出現" if o.get("matched") else "— 未出現"}</td>'
+            f'<td>{"已啟用（通過驗證）" if o.get("active") else "研究中（未驗證）"}</td></tr>' for o in obs)
+        observations = (f'<p>{len(matched)} 個型態在 {_e(extra.get("last_session"))} 出現，共檢查 {len(obs)} 個。</p>'
+                        f'<div class="table-wrap"><table><thead><tr><th scope="col">型態</th><th scope="col">本次</th><th scope="col">策略狀態</th></tr></thead><tbody>{rows}</tbody></table></div>'
+                        '<p class="note">型態出現只代表歷史價格符合規則，不代表後續走勢；研究中策略未通過前瞻驗證。</p>')
+    else:
+        observations = _empty("研究狀態未保存型態觀測結果",
+                              f'每次執行的型態掃描結果保存在該次 GitHub Actions Artifact 的 report.json。{_link(run.get("run_url"), "前往此版本的執行紀錄")}')
+    ctx = extra.get("price_context") or {}
+    ctx_html = ""
+    if ctx.get("status") == "observation_only":
+        lv, atr = ctx.get("levels") or {}, ctx.get("atr") or {}
+        ctx_html = f"""
+  <h3>價格區間觀察</h3>
+  <div class="table-wrap"><table class="kv"><tbody>
+  <tr><th scope="row">前 20 交易日低／高</th><td class="num">{_num(lv.get('support_20d'))} / {_num(lv.get('resistance_20d'))}</td></tr>
+  <tr><th scope="row">前 60 交易日低／高</th><td class="num">{_num(lv.get('support_60d'))} / {_num(lv.get('resistance_60d'))}</td></tr>
+  <tr><th scope="row">ATR(14)</th><td class="num">{_num(atr.get('absolute'))}（收盤價的 {_pct(atr.get('percentage_of_close'), 2)}）</td></tr>
+  </tbody></table></div>
+  <p class="note">歷史區間觀察，不是買進價、停損價或目標價。</p>"""
+    return f"""
+<section id="technical" aria-labelledby="h-tech">
+  <h2 id="h-tech">技術分析</h2>
+  <dl class="meta">
+    <div><dt>資料狀態</dt><dd>{_status(tech.get('status'))}</dd></div>
+    <div><dt>最新完整交易日</dt><dd>{_e(tech.get('session'))}</dd></div>
+    <div><dt>資料新鮮度</dt><dd>{ {'current': '最新', 'stale': '過時（沿用舊資料）'}.get(tech.get('freshness'), _e(tech.get('freshness'))) }</dd></div>
+    <div><dt>價格基準</dt><dd>{_e(PRICE_BASIS.get(tech.get('price_basis'), tech.get('price_basis')))}</dd></div>
+    <div><dt>資料來源</dt><dd>{_e(PRICE_SOURCE.get(tech.get('source'), tech.get('source')))}</dd></div>
+  </dl>
+  <h3>價格走勢</h3>
+  {_empty("無法顯示價格圖", "研究狀態依資料授權政策只保存行情 metadata（交易日、來源、價格基準與輸入雜湊），未保存 OHLCV 序列；本頁不以其他來源補畫。完整日 K 保存在每次執行的 Artifact。")}
+  <h3>型態觀測</h3>
+  {observations}
+  {ctx_html}
+</section>"""
+
+
+def _events(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
+    cutoff_date = _tpe(snap.get("evaluation_cutoff_utc"))[:10]
+    cal = ((fr or {}).get("calendar_schedule") or {}).get("events") or []
+    groups: dict[str, list[str]] = {"upcoming": [], "unknown": [], "past": [], "rule": []}
+    for ev in cal:
+        date, status = ev.get("scheduled_date"), ev.get("confirmation_status")
+        if ev.get("event_type") == "statutory_filing_deadline":
+            key, label = "rule", "法規期限（非公司公告日）"
+        elif status == "cancelled":
+            key, label = "past", "已取消"
+        elif not date or status == "unknown":
+            key, label = "unknown", "日期未定"
+        elif status == "confirmed":
+            key, label = ("upcoming", "已確認・即將到來") if date >= cutoff_date else ("past", "已確認・已發生")
+        else:
+            key, label = ("upcoming" if date >= cutoff_date else "past"), f"預估（{_e(status)}）"
+        sup = ev.get("superseded_dates") or []
+        sup_html = f'<span class="hint">原訂 {_e("、".join(sup))}，已更正</span>' if sup else ""
+        groups[key].append(
+            f'<tr><th scope="row">{_e(date) if date else NA}</th><td>{_e(ev.get("title"))} {sup_html}</td>'
+            f'<td>{label}</td><td>{_e(ev.get("period_label"))}</td><td>{_link(ev.get("source"))}</td></tr>')
+    cal_rows = "".join(groups["upcoming"] + groups["unknown"] + groups["past"] + groups["rule"])
+    disc = (fr or {}).get("disclosure_and_news") or {}
+    discl = "".join(
+        f'<li><time>{_e(d.get("event_date") or d.get("reported_at"))}</time> {_e(d.get("title"))} {_link(d.get("source"))}</li>'
+        for d in disc.get("official_disclosures") or [])
+    news = "".join(
+        f'<li><time>{_e((n.get("published_at") or "")[:10] or None)}</time> {_link(n.get("url"), n.get("title") or "新聞")} '
+        f'<span class="hint">{_e(n.get("source"))}</span></li>' for n in disc.get("news_references") or [])
+    statuses = "、".join(f"{_e(k)}：{_e(SOURCE_STATUS.get(v, v))}" for k, v in (disc.get("source_statuses") or {}).items())
+    ev = snap.get("events") or {}
+    return f"""
+<section id="events" aria-labelledby="h-events">
+  <h2 id="h-events">風險與事件</h2>
+  <p class="callout">事件觀測狀態：{_status((snap.get('readiness') or {}).get('events'))}。觀測範圍：{_e({'recent_daily_snapshot_only_not_a_full_history': '僅最近一次每日快照，非完整歷史'}.get(ev.get('coverage'), ev.get('coverage')))}（{_e(ev.get('snapshot_date'))}）。
+  未觀測到事件不代表沒有風險。主要不確定性列於<a href="#overview">研究總覽</a>。</p>
+  <h3>財報、董事會與股東會行事曆</h3>
+  {f'<div class="table-wrap"><table><thead><tr><th scope="col">日期</th><th scope="col">事件</th><th scope="col">日期性質</th><th scope="col">期別</th><th scope="col">來源</th></tr></thead><tbody>{cal_rows}</tbody></table></div>' if cal_rows else _empty("此版本沒有行事曆資料", "行事曆需要財務研究資料（TW09）。")}
+  <p class="note">「即將到來／已發生」以本版本評估日 {_e(cutoff_date)}（台北）判斷。</p>
+  <div class="two-col">
+    <div><h3>官方公告與董事會決議</h3>{f'<ul class="plain dated">{discl}</ul>' if discl else _empty("無官方公告項目", "觀測範圍內沒有符合條件的公告。")}</div>
+    <div><h3>補充新聞</h3>{f'<ul class="plain dated">{news}</ul>' if news else _empty("無列示新聞", f"去重後未保留新聞項目（移除重複轉載 {_e(disc.get('deduplicated_repost_count', 0))} 則）。新聞不作為財報依據。")}</div>
+  </div>
+  {f'<p class="note">來源狀態：{statuses}</p>' if statuses else ''}
+</section>"""
+
+
+def _methodology(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any], branch: str) -> str:
+    fr = snap.get("financial_research") or {}
+    run = snap.get("run") or {}
+    tech = snap.get("technical") or {}
+    attr = snap.get("attribution") or {}
+    readiness = snap.get("readiness") or {}
+    checkpoint = stock.get("checkpoint")
+    subject = stock.get("subject") or {}
+    history = []
+    for s in stock["snapshots"]:
+        c = stock["comparisons"].get(s["id"]) or {}
+        current = ' aria-current="true"' if s["id"] == snap["id"] else ""
+        action = ("目前檢視" if current else
+                  '<button type="button" class="link-btn" data-snapshot="' + _e(s["id"]) + '">檢視此版本</button>')
+        run_s = s.get("run") or {}
+        history.append(
+            f'<tr{current}><th scope="row">{_tpe(s.get("observed_at_utc"))}</th>'
+            f'<td>{_status((s.get("execution") or {}).get("status"))}</td>'
+            f'<td>{_status((s.get("readiness") or {}).get("financial"))}</td>'
+            f'<td>{_e(COMPARISON_LABELS.get(c.get("status"), "有研究變化"))}</td>'
+            f'<td>{_link(run_s.get("run_url"), "#" + str(run_s.get("run_id")))}</td>'
+            f'<td>{action}</td></tr>')
+    changes = "".join(
+        f'<tr><td>{_e(COMPARISON_LABELS.get(c.get("kind"), c.get("kind")))}</td>'
+        f'<td>{_e(COMPONENT_LABELS.get(c.get("component"), c.get("component")))}</td><td><code>{_e(c.get("reason"))}</code></td>'
+        f'<td>{_e(c.get("period"))}</td></tr>' for c in comp.get("changes") or [])
+    sources = "".join(f"<li>{_link(u, u)}</li>" for u in snap.get("source_links") or [])
+    datasets = "".join(f'<li>{_e(d.get("name"))}：{_link(d.get("endpoint"), d.get("endpoint"))}</li>' for d in fr.get("ogdl_datasets") or [])
+    attr_ds = "".join(f'<li>{_link(d.get("catalog"), d.get("name"))}（上架 {_e(d.get("released_year"))}）</li>' for d in attr.get("datasets") or [])
+    raw_status = "".join(f"<tr><td>{_e(k)}</td><td><code>{_e(v)}</code></td></tr>" for k, v in readiness.items())
+    cp_html = "<p>此標的尚未建立重新研究檢查點。</p>"
+    if checkpoint:
+        cp_html = (f'<dl class="meta"><div><dt>已消費財報版本</dt><dd><code>{_e(checkpoint.get("consumed_financial_version"))}</code></dd></div>'
+                   f'<div><dt>已消費官方事件數</dt><dd>{len(checkpoint.get("consumed_event_ids") or [])}</dd></div>'
+                   f'<div><dt>待重新研究</dt><dd>{_e(checkpoint.get("pending_rerun")) if checkpoint.get("pending_rerun") else "無"}</dd></div>'
+                   f'<div><dt>最後完成版本</dt><dd><code>{_e((checkpoint.get("last_completed_snapshot_id") or "")[:12])}</code></dd></div></dl>')
+    limits = {"prices_metadata_only": "行情只保存 metadata", "events_metadata_only": "事件只保存 metadata",
+              "artifact_inputs_not_retained": "完整輸入只在有期限的 Artifact 中", "model_identity_not_retained": "未保存模型識別"}
+    limit_items = "".join(f"<li>{_e(limits.get(x, x))}（<code>{_e(x)}</code>）</li>" for x in snap.get("comparison_limits") or [])
+    issue = subject.get("issue_number")
+    repo = run.get("repository") or "iceboxi/market-research"
+    return f"""
+<section id="methodology" aria-labelledby="h-method">
+  <h2 id="h-method">資料與方法</h2>
+  <p class="lede">來源、對帳、識別碼與歷史版本。這些資訊用於稽核，不代表投資論點的品質。</p>
+  <details open id="m-history"><summary>研究版本（歷史快照，共 {len(stock['snapshots'])} 個）</summary>
+    <div class="table-wrap"><table><thead><tr><th scope="col">產生時間（台北）</th><th scope="col">執行</th><th scope="col">財務研究</th>
+    <th scope="col">與前版比較</th><th scope="col">執行紀錄</th><th scope="col">動作</th></tr></thead><tbody>{''.join(history)}</tbody></table></div>
+  </details>
+  <details id="m-compare"><summary>與前一版本的比較明細</summary>
+    <p>結果：{_e(COMPARISON_LABELS.get(comp.get('status'), '有研究變化'))}；前一版本 <code>{_e((comp.get('previous_snapshot_id') or '無')[:12])}</code>。</p>
+    {f'<div class="table-wrap"><table><thead><tr><th scope="col">類型</th><th scope="col">內容</th><th scope="col">原因代碼</th><th scope="col">期別</th></tr></thead><tbody>{changes}</tbody></table></div>' if changes else '<p>沒有逐項變化。</p>'}
+    <p class="note">比較限制：{_e('、'.join(comp.get('limitations') or []))}</p>
+  </details>
+  <details><summary>資料來源與授權</summary>
+    <h4>本版本引用的來源</h4><ul class="plain">{sources}</ul>
+    {f'<h4>財務資料集（TWSE OpenAPI）</h4><ul class="plain">{datasets}</ul>' if datasets else ''}
+    <h4>開放資料授權</h4><p>{_e(attr.get('provider'))}；依 {_link(attr.get('license'), '政府資料開放授權條款第 ' + str(attr.get('license_version')) + ' 版')} 使用。</p>
+    <ul class="plain">{attr_ds}</ul>
+  </details>
+  <details><summary>計算方法與對帳</summary>
+    <ul class="plain">
+      <li>財務資料：TWSE OpenAPI 與 FinMind 雙軌取得，以 TWSE 為準對帳（對帳完成：{'是' if fr.get('reconciled_twse_openapi') else '否'}；基準期 {_e(fr.get('reconciled_period_end'))}）。</li>
+      <li>單季值：Q1 直接採用；Q2–Q4 以累計值相減，並以 TWSE 單季淨利或 EPS 恆等式核對。累計值與單季值分開呈現。</li>
+      <li>TTM：最近四個單季加總；EPS 為四季加總，前提是各季股數差異 ≤ 0.5%。</li>
+      <li>自由現金流 = 營業現金流 − 資本支出。淨現金 = 現金及約當現金 − 有息負債（公司債＋長期借款）。</li>
+      <li>估值：{_e((fr.get('valuation_summary') or {}).get('why'))}</li>
+      <li>本頁推導值（同季年增、資本支出/營收、FCF/淨利）由同口徑數字直接相除，缺任一輸入即不顯示。</li>
+      <li>缺值顯示為「—」，不補零。</li>
+    </ul>
+  </details>
+  <details><summary>模組狀態原始代碼</summary>
+    <div class="table-wrap"><table><thead><tr><th scope="col">模組</th><th scope="col">代碼</th></tr></thead><tbody>{raw_status}</tbody></table></div>
+  </details>
+  <details><summary>執行與完整性識別碼</summary>
+    <dl class="meta ids">
+      <div><dt>研究版本 ID</dt><dd><code>{_e(snap.get('id'))}</code></dd></div>
+      <div><dt>評估截止（UTC）</dt><dd>{_e(snap.get('evaluation_cutoff_utc'))}</dd></div>
+      <div><dt>開始／觀測（UTC）</dt><dd>{_e(snap.get('started_at_utc'))} / {_e(snap.get('observed_at_utc'))}</dd></div>
+      <div><dt>執行</dt><dd>{_link(run.get('run_url'), f"Run #{run.get('run_id')}（attempt {run.get('run_attempt')}）")}</dd></div>
+      <div><dt>程式版本</dt><dd><code>{_e(run.get('code_sha'))}</code></dd></div>
+      <div><dt>模型設定識別</dt><dd><code>{_e(snap.get('model_identity'))}</code></dd></div>
+      <div><dt>行情輸入雜湊</dt><dd><code>{_e(tech.get('input_sha256'))}</code></dd></div>
+      <div><dt>可得時間屬性</dt><dd><code>{_e(snap.get('availability'))}</code></dd></div>
+      <div><dt>狀態分支</dt><dd><code>{_e(branch)}</code></dd></div>
+      {f'<div><dt>固定研究報告</dt><dd>{_link(f"https://github.com/{repo}/issues/{issue}", f"Issue #{issue}")}</dd></div>' if issue else ''}
+    </dl>
+  </details>
+  <details><summary>重新研究檢查點</summary>{cp_html}</details>
+  <details><summary>保存限制與合規聲明</summary>
+    <ul class="plain">{limit_items}</ul>
+    <p>所有數據來自公開來源，缺值不補零。估值情境為示意性質，技術觀察僅供研究，皆不構成合理價、進出場區間、停損價、目標價或投資建議。
+    資料完整、對帳完成或模組可用，不代表投資論點正確。</p>
+  </details>
+</section>"""
+
+
+def _render_view(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any], branch: str, extra: dict[str, Any]) -> str:
+    fr = snap.get("financial_research") if (snap.get("financial_research") or {}).get("status") == "available" else None
+    return (f'<div class="view" data-snapshot-id="{_e(snap["id"])}">'
+            + _overview(snap, comp, stock, extra) + _fundamentals(fr, snap) + _valuation(fr, snap)
+            + _technical(snap, extra) + _events(fr, snap) + _methodology(snap, comp, stock, branch) + "</div>")
+
+
+# ---------------------------------------------------------------- page
+
+NAV = [("overview", "總覽"), ("fundamentals", "基本面"), ("valuation", "估值"),
+       ("technical", "技術分析"), ("events", "風險與事件"), ("methodology", "資料與方法")]
+
+CSS = """
+:root{--bg:#f5f6f8;--surface:#fff;--text:#1a1d21;--muted:#5d6672;--line:#e1e4e8;--accent:#1f5fbf;
+--ok:#1a7f37;--warn:#9a6700;--bad:#b42318;--neutral:#5d6672;--bar:#7fa3d6;--lineA:#3d4650;--lineB:#c0561b;--warn-bg:#fff8e6}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1216;--surface:#161a20;--text:#e6e8eb;--muted:#9aa3ad;--line:#2a3039;
+--accent:#79a8ff;--ok:#4cc38a;--warn:#e3b341;--bad:#f47067;--neutral:#9aa3ad;--bar:#3f6aa8;--lineA:#c9d1d9;--lineB:#f0883e;--warn-bg:#2b2410}}
+*{box-sizing:border-box}html{scroll-padding-top:120px}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif}
+a{color:var(--accent)}code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.skip{position:absolute;left:-999px}.skip:focus{left:8px;top:8px;z-index:50;background:var(--surface);padding:6px 10px}
+.topbar{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
+.topbar-inner,.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+.topbar-inner{display:flex;align-items:center;gap:16px;min-height:56px;flex-wrap:wrap}
+.brand{font-weight:700;font-size:15px;white-space:nowrap}.brand span{font-weight:400;color:var(--muted);margin-left:6px}
+.picker{position:relative;flex:1 1 320px;max-width:460px}
+.picker label{position:absolute;left:-999px}
+.picker input{width:100%;font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text)}
+.picker input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.picker ul{position:absolute;left:0;right:0;top:calc(100% + 4px);margin:0;padding:4px 0;list-style:none;background:var(--surface);
+border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);max-height:320px;overflow:auto}
+.picker li{padding:8px 12px;cursor:pointer;display:flex;gap:10px;align-items:baseline}
+.picker li[aria-selected=true]{background:var(--bg)}.picker li .t{font-weight:600;min-width:72px}
+.picker li .m{margin-left:auto;color:var(--muted);font-size:12px}.picker li.msg{cursor:default;color:var(--muted);display:block}
+.secnav{display:flex;gap:4px;overflow-x:auto;max-width:1180px;margin:0 auto;padding:0 12px}
+.secnav a{padding:8px 10px;color:var(--muted);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent;font-size:14px}
+.secnav a[aria-current=true]{color:var(--text);border-bottom-color:var(--accent)}
+.identity{padding:22px 0 12px;display:flex;flex-wrap:wrap;gap:12px 28px;align-items:flex-end;justify-content:space-between}
+.identity h1{margin:0;font-size:24px;line-height:1.3}.identity .ticker{font-weight:600;color:var(--muted);margin-left:8px;font-size:18px}
+.identity .sub{color:var(--muted);font-size:14px;margin-top:2px}
+.version{display:flex;flex-direction:column;gap:4px;padding:8px 12px;border:1px dashed var(--line);border-radius:6px;background:var(--surface)}
+.version label{font-size:12px;color:var(--muted)}.version select{font:inherit;font-size:14px;padding:4px 6px;max-width:420px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px}
+.disclaimer{font-size:13px;color:var(--muted);border-left:3px solid var(--warn);padding:6px 12px;margin:4px 0 8px;background:var(--surface)}
+.banner{margin:10px 0;padding:10px 14px;border:1px solid var(--bad);border-radius:6px;background:var(--surface)}
+main section{padding:28px 0 8px;border-top:1px solid var(--line)}main section:first-child{border-top:0}
+h2{font-size:20px;margin:0 0 14px}h3{font-size:16px;margin:26px 0 10px}h4{font-size:14px;margin:0 0 4px}
+.lede,.note,.hint,.basis{color:var(--muted)}.lede{margin-top:-6px}.note{font-size:13px}.hint{font-size:12px;margin-left:4px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 24px;margin:0 0 8px;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:6px}
+.meta dt{font-size:12px;color:var(--muted)}.meta dd{margin:2px 0 0;font-weight:600}.meta.ids{grid-template-columns:1fr}.meta.ids dd{font-weight:400}
+.findings{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:2px 28px}
+.findings li{padding:12px 0;border-bottom:1px solid var(--line)}.findings p{margin:0}.basis{font-size:12px;margin-top:4px!important}
+.callout{padding:12px 16px;border:1px solid var(--line);border-radius:6px;background:var(--surface);margin:16px 0}
+.callout.warn{border-color:var(--warn);background:var(--warn-bg)}.callout ul{margin:6px 0 0;padding-left:18px}
+.plain{padding-left:18px;margin:6px 0}.plain li{margin:4px 0}.dated time{color:var(--muted);font-variant-numeric:tabular-nums;margin-right:6px}
+.formula{margin:0 0 10px;padding-left:18px;color:var(--muted)}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface);margin:8px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}caption{text-align:left;padding:8px 12px;font-weight:600}
+th,td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}tbody tr:last-child>*{border-bottom:0}
+thead th{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;background:var(--bg)}
+tbody th{font-weight:500}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.unit,.sub{display:block;font-size:11px;font-weight:400;color:var(--muted)}.basis-cell{font-size:12px;color:var(--muted);min-width:180px}
+table.metrics tbody th{white-space:nowrap}tr[aria-current=true]{background:var(--bg)}
+.na{color:var(--muted)}.chg.up{color:var(--ok)}.chg.down{color:var(--bad)}
+.st{white-space:nowrap}.st-ok{color:var(--ok)}.st-warn{color:var(--warn)}.st-bad{color:var(--bad)}.st-neutral{color:var(--neutral)}
+.two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:0 28px}
+.chart-box{margin:8px 0;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:6px}
+.chart-box figcaption{font-size:12px;color:var(--muted);margin-top:6px}
+.chart{width:100%;height:auto;display:block}.chart .grid{stroke:var(--line)}.chart .axis,.chart .legend text{fill:var(--muted);font-size:11px}
+.chart .bar{fill:var(--bar)}.chart .line-a{fill:none;stroke:var(--lineA);stroke-width:2;stroke-dasharray:5 3}.chart .line-b{fill:none;stroke:var(--lineB);stroke-width:2}
+.chart .line-a-pt{fill:var(--lineA)}.chart .line-b-pt{fill:var(--lineB)}.chart .range{stroke:var(--line);stroke-width:6;stroke-linecap:round}
+.chart .pt-conservative{fill:var(--surface);stroke:var(--lineA);stroke-width:2}.chart .pt-base{fill:var(--lineA)}.chart .pt-optimistic{fill:var(--lineB)}
+.empty{padding:14px 16px;border:1px dashed var(--line);border-radius:6px;color:var(--muted);background:var(--surface);margin:8px 0}
+.empty strong{color:var(--text)}.empty p{margin:4px 0 0}
+details{border:1px solid var(--line);border-radius:6px;background:var(--surface);margin:8px 0;padding:0 16px}
+details[open]{padding-bottom:12px}summary{cursor:pointer;padding:12px 0;font-weight:600}
+.link-btn{font:inherit;font-size:13px;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+footer{color:var(--muted);font-size:12px;padding:24px 0 40px;border-top:1px solid var(--line);margin-top:24px}
+@media (max-width:640px){body{font-size:14px}.identity h1{font-size:20px}.brand span{display:none}.picker{flex-basis:100%;max-width:none;order:3;margin-bottom:8px}
+html{scroll-padding-top:150px}.findings{grid-template-columns:1fr}.two-col{grid-template-columns:1fr}.version{width:100%}.version select{max-width:none}}
+"""
+
+JS = r"""
+(function(){
+  var app=document.getElementById('app');
+  var DATA;
+  try{DATA=JSON.parse(document.getElementById('site-data').textContent);}
+  catch(e){var b=document.getElementById('error-banner');b.hidden=false;
+    b.textContent='互動資料載入失敗：股票搜尋與版本切換無法使用，以下為頁面產生時的最新版本靜態內容。';return;}
+  var current=DATA.default_symbol, currentSnap=null;
+  var input=document.getElementById('stock-input'), list=document.getElementById('stock-list'),
+      live=document.getElementById('stock-live'), sel=document.getElementById('version-select');
+  var active=-1, shown=[];
+  function stock(sym){for(var i=0;i<DATA.stocks.length;i++){if(DATA.stocks[i].symbol===sym)return DATA.stocks[i];}return null;}
+  function label(s){return s.symbol+'  '+(s.name||'')+'  ·  '+s.exchange_code;}
+  function setUrl(){var p=new URLSearchParams(location.search);p.set('symbol',current);
+    var s=stock(current);if(currentSnap&&s&&currentSnap!==s.latest_snapshot_id)p.set('snapshot',currentSnap.slice(0,12));else p.delete('snapshot');
+    history.replaceState(null,'','?'+p.toString()+location.hash);}
+  function render(id){var s=stock(current);if(!s)return;var views=DATA.views[current]||{};
+    if(!views[id])id=s.latest_snapshot_id;
+    app.innerHTML=views[id];currentSnap=id;sel.value=id;bindView();spy();}
+  function fillVersions(s){sel.innerHTML='';s.snapshots.forEach(function(v){var o=document.createElement('option');o.value=v.id;o.textContent=v.label;sel.appendChild(o);});}
+  function selectStock(sym,snap){var s=stock(sym);if(!s){unsupported(sym);return;}
+    current=sym;input.value=label(s);document.getElementById('id-name').textContent=s.name||s.symbol;
+    document.getElementById('id-ticker').textContent=s.symbol;
+    document.getElementById('id-sub').textContent=s.exchange+'（'+s.exchange_code+'）'+(s.currency?' · '+s.currency_label+'（'+s.currency+'）':'');
+    document.title=s.symbol+' '+(s.name||'')+' — 個股研究';fillVersions(s);render(snap||s.latest_snapshot_id);setUrl();}
+  function unsupported(q){var names=DATA.stocks.map(function(s){return s.symbol;}).join('、');
+    app.innerHTML='<section><h2>沒有「'+esc(q)+'」的研究資料</h2><div class="empty"><strong>此標的尚未納入研究管線</strong><p>目前可研究的標的：'+esc(names)+
+    '。其他台股與美股需先由研究管線產生研究狀態，才會出現在選單中。</p><p><button type="button" class="link-btn" id="back-default">返回 '+esc(DATA.default_symbol)+'</button></p></div></section>';
+    document.getElementById('back-default').onclick=function(){selectStock(DATA.default_symbol);};}
+  function esc(t){return String(t).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function match(q){q=q.trim().toLowerCase();if(!q)return DATA.stocks.slice();
+    return DATA.stocks.filter(function(s){return [s.symbol,s.symbol.split('.')[0],s.name||'',s.exchange,s.exchange_code,s.market].join(' ').toLowerCase().indexOf(q)>=0;});}
+  function open(q){shown=match(q);active=shown.length?0:-1;list.innerHTML='';
+    if(!shown.length){var li=document.createElement('li');li.className='msg';li.setAttribute('role','option');li.setAttribute('aria-disabled','true');
+      li.textContent='找不到「'+q.trim()+'」。目前只有 '+DATA.stocks.map(function(s){return s.symbol;}).join('、')+' 有研究資料。';list.appendChild(li);
+      live.textContent='沒有符合的股票';}
+    else{shown.forEach(function(s,i){var li=document.createElement('li');li.id='opt-'+i;li.setAttribute('role','option');
+      li.innerHTML='<span class="t">'+esc(s.symbol)+'</span><span>'+esc(s.name||'')+'</span><span class="m">'+esc(s.exchange_code)+(s.symbol===current?' · 目前':'')+'</span>';
+      li.onmousedown=function(e){e.preventDefault();choose(i);};list.appendChild(li);});live.textContent=shown.length+' 個符合的股票';}
+    list.hidden=false;input.setAttribute('aria-expanded','true');mark();}
+  function close(restore){list.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');
+    if(restore){var s=stock(current);if(s)input.value=label(s);}}
+  function mark(){Array.prototype.forEach.call(list.children,function(li,i){li.setAttribute('aria-selected',i===active?'true':'false');});
+    if(active>=0){input.setAttribute('aria-activedescendant','opt-'+active);var el=document.getElementById('opt-'+active);if(el)el.scrollIntoView({block:'nearest'});}}
+  function choose(i){var s=shown[i];if(!s)return;close(false);if(s.symbol!==current)selectStock(s.symbol);else input.value=label(s);input.blur();}
+  input.addEventListener('focus',function(){input.select();open('');});
+  input.addEventListener('input',function(){open(input.value);});
+  input.addEventListener('blur',function(){close(true);});
+  input.addEventListener('keydown',function(e){
+    if(e.key==='ArrowDown'){e.preventDefault();if(list.hidden)open(input.value);else if(shown.length){active=(active+1)%shown.length;mark();}}
+    else if(e.key==='ArrowUp'){e.preventDefault();if(shown.length){active=(active-1+shown.length)%shown.length;mark();}}
+    else if(e.key==='Enter'){e.preventDefault();if(active>=0)choose(active);else if(input.value.trim()){close(false);unsupported(input.value.trim());}}
+    else if(e.key==='Escape'){close(true);}});
+  sel.addEventListener('change',function(){render(sel.value);setUrl();document.getElementById('overview').scrollIntoView();});
+  function bindView(){Array.prototype.forEach.call(app.querySelectorAll('[data-snapshot]'),function(b){
+    b.onclick=function(){render(b.getAttribute('data-snapshot'));setUrl();document.getElementById('overview').scrollIntoView();};});}
+  var observer=null;
+  function spy(){if(!('IntersectionObserver' in window))return;if(observer)observer.disconnect();
+    var links=document.querySelectorAll('.secnav a');
+    observer=new IntersectionObserver(function(entries){entries.forEach(function(en){if(en.isIntersecting){
+      links.forEach(function(a){a.setAttribute('aria-current',a.getAttribute('href')==='#'+en.target.id?'true':'false');});}});},{rootMargin:'-120px 0px -70% 0px'});
+    app.querySelectorAll('section[id]').forEach(function(s){observer.observe(s);});}
+  var p=new URLSearchParams(location.search), q=(p.get('symbol')||'').trim();
+  var sym=current;
+  if(q){var found=DATA.stocks.filter(function(s){return s.symbol.toLowerCase()===q.toLowerCase()||s.symbol.split('.')[0]===q;})[0];
+    if(!found){current=DATA.default_symbol;fillVersions(stock(current));currentSnap=stock(current).latest_snapshot_id;unsupported(q);return;}sym=found.symbol;}
+  var snapQ=p.get('snapshot'), snapId=null;
+  if(snapQ){stock(sym).snapshots.forEach(function(v){if(v.id.indexOf(snapQ)===0)snapId=v.id;});}
+  selectStock(sym,snapId);
+})();
+"""
+
+
+def _empty_page(branch: str) -> str:
+    return (f'<!DOCTYPE html><html lang="zh-Hant-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+            f'<title>個股研究工作區</title><style>{CSS}</style></head><body><main class="wrap"><section><h2>尚無研究資料</h2>'
+            + _empty("研究狀態中沒有任何研究版本", f"狀態分支 <code>{_e(branch)}</code> 尚未保存可解析的研究快照。研究管線完成第一次執行後，此頁會顯示研究內容。")
+            + "</section></main></body></html>")
 
 
 def render_research_site_html(
@@ -680,413 +1087,80 @@ def render_research_site_html(
     branch: str = "research-state",
     latest_report: dict[str, Any] | None = None,
 ) -> str:
-    """Render a complete, self-contained HTML5 dashboard for 2330.TW research."""
+    """Render the complete, self-contained research workspace."""
     payload = build_site_payload(records, branch=branch, latest_report=latest_report)
-    snapshots = payload["snapshots"]
-    latest_id = payload["latest_snapshot_id"]
-    latest_snap = next((s for s in snapshots if s["id"] == latest_id), snapshots[0] if snapshots else None)
-
-    if latest_snap is None:
-        raise ValueError("Cannot render research site without at least one snapshot or report")
-
-    # Pre-render static HTML views for every snapshot so switching snapshots in the browser
-    # is 100% faithful and instant without duplicating formatting logic!
-    rendered_views: dict[str, str] = {}
-    for snap in snapshots:
-        sid = snap["id"]
-        rendered_views[sid] = _render_snapshot_static_html(
-            snap,
-            payload["comparisons"].get(sid),
-            payload["subject"],
-            payload["checkpoint"],
-            payload["extra_technical"] if sid == latest_id else None,
-        )
-
-    options_html = []
-    for idx, snap in enumerate(snapshots):
-        sid = snap["id"]
-        obs = (snap.get("observed_at_utc") or "")[:19].replace("T", " ")
-        comp_st = (payload["comparisons"].get(sid) or {}).get("status", "baseline")
-        fin_st = (snap.get("readiness") or {}).get("financial", "unavailable")
-        tag = "★ 最新正式快照" if sid == latest_id else f"歷史快照 #{len(snapshots) - idx}"
-        sel = " selected" if sid == latest_id else ""
-        options_html.append(
-            f'<option value="{_esc(sid)}"{sel}>{_esc(tag)} — {_esc(obs)} UTC [{_esc(comp_st)} | 財務:{_esc(fin_st)}] ({_esc(sid[:8])})</option>'
-        )
-
-    embedded_json = json.dumps(
-        {
-            "latest_snapshot_id": latest_id,
-            "generated_at_utc": payload["generated_at_utc"],
-            "branch": branch,
-            "snapshot_count": len(snapshots),
-            "views": rendered_views,
-        },
-        ensure_ascii=False,
-    ).replace("</", "<\\/")
-
-    issuer_name = (latest_snap.get("issuer") or {}).get("company_name") or "台灣積體電路製造股份有限公司"
-
+    if not payload["stocks"]:
+        return _empty_page(branch)
+    extra = payload["extra_technical"]
+    registry, views = [], {}
+    for symbol, stock in payload["stocks"].items():
+        views[symbol] = {}
+        options = []
+        for idx, snap in enumerate(stock["snapshots"]):
+            sid = snap["id"]
+            comp = stock["comparisons"].get(sid) or {}
+            views[symbol][sid] = _render_view(snap, comp, stock, branch, extra if sid == stock["latest_snapshot_id"] else {})
+            tag = "最新" if sid == stock["latest_snapshot_id"] else f"#{len(stock['snapshots']) - idx}"
+            fin = "含財務研究" if (snap.get("readiness") or {}).get("financial") == "available" else "無財務研究"
+            options.append({"id": sid, "label": f"{_tpe(snap.get('observed_at_utc'))}（{tag}）· {fin} · {COMPARISON_LABELS.get(comp.get('status'), '有研究變化')}"})
+        registry.append({"symbol": symbol, "name": stock["name"], "market": stock["market"],
+                         "exchange": stock["exchange"], "exchange_code": stock["code"],
+                         "currency": stock["currency"], "currency_label": stock["currency_label"],
+                         "latest_snapshot_id": stock["latest_snapshot_id"], "snapshots": options})
+    default = payload["default_symbol"]
+    stock = payload["stocks"][default]
+    latest_id = stock["latest_snapshot_id"]
+    reg_default = next(r for r in registry if r["symbol"] == default)
+    option_html = "".join(f'<option value="{_e(o["id"])}"{" selected" if o["id"] == latest_id else ""}>{_e(o["label"])}</option>'
+                          for o in reg_default["snapshots"])
+    data = json.dumps({"schema_version": 2, "default_symbol": default, "branch": branch,
+                       "generated_at_utc": payload["generated_at_utc"], "stocks": registry, "views": views},
+                      ensure_ascii=False).replace("</", "<\\/")
+    nav = "".join(f'<a href="#{k}">{v}</a>' for k, v in NAV)
+    picker_value = f"{default}  {stock['name'] or ''}  ·  {stock['code']}"
+    cur = f" · {stock['currency_label']}（{stock['currency']}）" if stock.get("currency") else ""
     return f"""<!DOCTYPE html>
 <html lang="zh-Hant-TW">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>2330.TW {_esc(issuer_name)} — 個股研究儀表板 (Market Research)</title>
-  <style>
-    :root {{
-      --bg: #0f172a;
-      --panel: #1e293b;
-      --panel-alt: #0b1120;
-      --border: #334155;
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --ok-bg: rgba(16, 185, 129, 0.16);
-      --ok-fg: #34d399;
-      --warn-bg: rgba(245, 158, 11, 0.18);
-      --warn-fg: #fbbf24;
-      --neutral-bg: rgba(148, 163, 184, 0.16);
-      --neutral-fg: #cbd5e1;
-      --err-bg: rgba(239, 68, 68, 0.18);
-      --err-fg: #f87171;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.55;
-    }}
-    a {{ color: var(--accent); text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    code {{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.86em;
-      background: rgba(15, 23, 42, 0.65);
-      padding: 2px 6px;
-      border-radius: 4px;
-      color: #e2e8f0;
-    }}
-    .top-header {{
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      background: rgba(15, 23, 42, 0.92);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--border);
-      padding: 14px 24px;
-    }}
-    .header-inner {{
-      max-width: 1360px;
-      margin: 0 auto;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-    }}
-    .brand-title {{
-      font-size: 1.25rem;
-      font-weight: 700;
-      margin: 0;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }}
-    .brand-sub {{
-      font-size: 0.82rem;
-      color: var(--muted);
-      margin-top: 2px;
-    }}
-    .time-machine {{
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: var(--panel);
-      padding: 8px 12px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-    }}
-    .time-machine label {{
-      font-size: 0.82rem;
-      color: var(--muted);
-      white-space: nowrap;
-      font-weight: 600;
-    }}
-    .time-machine select {{
-      background: var(--bg);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 6px 10px;
-      font-size: 0.85rem;
-      max-width: 460px;
-    }}
-    .container {{
-      max-width: 1360px;
-      margin: 20px auto 48px;
-      padding: 0 24px;
-    }}
-    .disclaimer-bar {{
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid rgba(245, 158, 11, 0.4);
-      color: #fde68a;
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-size: 0.86rem;
-      margin-bottom: 18px;
-    }}
-    .panel {{
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 18px;
-    }}
-    .panel h2 {{
-      margin: 0 0 14px 0;
-      font-size: 1.1rem;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }}
-    .panel h3 {{
-      margin: 12px 0 10px 0;
-      font-size: 0.96rem;
-      color: #e2e8f0;
-    }}
-    .panel-header {{
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 14px;
-    }}
-    .panel-header h2 {{ margin: 0; }}
-    .comparison-banner {{
-      background: linear-gradient(90deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      font-size: 0.88rem;
-    }}
-    .banner-row {{
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-    }}
-    .banner-links {{ display: flex; gap: 10px; flex-wrap: wrap; }}
-    .btn-link {{
-      background: rgba(56, 189, 248, 0.14);
-      border: 1px solid rgba(56, 189, 248, 0.35);
-      color: var(--accent);
-      padding: 5px 12px;
-      border-radius: 6px;
-      font-size: 0.82rem;
-      font-weight: 600;
-    }}
-    .kpi-grid {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 14px;
-      margin-bottom: 18px;
-    }}
-    .kpi-card {{
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px 18px;
-    }}
-    .kpi-title {{ font-size: 0.8rem; color: var(--muted); font-weight: 600; }}
-    .kpi-value {{ font-size: 1.45rem; font-weight: 700; margin: 6px 0 4px; color: #f8fafc; }}
-    .kpi-sub {{ font-size: 0.78rem; color: var(--muted); }}
-    .status-grid {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 10px;
-    }}
-    .status-pill {{
-      background: var(--panel-alt);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }}
-    .pill-label {{ font-size: 0.78rem; color: var(--muted); }}
-    .badge {{
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      width: fit-content;
-    }}
-    .badge-ok {{ background: var(--ok-bg); color: var(--ok-fg); }}
-    .badge-warn {{ background: var(--warn-bg); color: var(--warn-fg); }}
-    .badge-neutral {{ background: var(--neutral-bg); color: var(--neutral-fg); }}
-    .badge-err {{ background: var(--err-bg); color: var(--err-fg); }}
-    .tab-bar {{ display: flex; gap: 8px; flex-wrap: wrap; }}
-    .tab-btn {{
-      background: var(--panel-alt);
-      color: var(--muted);
-      border: 1px solid var(--border);
-      padding: 7px 14px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 0.84rem;
-      font-weight: 600;
-    }}
-    .tab-btn.active {{
-      background: rgba(56, 189, 248, 0.16);
-      color: var(--accent);
-      border-color: var(--accent);
-    }}
-    .tab-content {{ display: none; }}
-    .tab-content.active {{ display: block; }}
-    .chart-wrap {{
-      background: var(--panel-alt);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 14px;
-      overflow-x: auto;
-    }}
-    .chart-svg {{ width: 100%; max-width: 720px; height: auto; display: block; margin: 0 auto; }}
-    .table-scroll {{ overflow-x: auto; }}
-    .data-table {{
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.85rem;
-    }}
-    .data-table th, .data-table td {{
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border);
-      text-align: left;
-      vertical-align: top;
-    }}
-    .data-table th {{
-      color: var(--muted);
-      font-weight: 600;
-      background: rgba(15, 23, 42, 0.5);
-      white-space: nowrap;
-    }}
-    .data-table th.num, .data-table td.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
-    .cell-sub {{ font-size: 0.75rem; color: var(--muted); margin-top: 2px; }}
-    .two-col {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-      gap: 20px;
-    }}
-    .callout {{
-      padding: 12px 14px;
-      border-radius: 8px;
-      font-size: 0.84rem;
-      margin-bottom: 14px;
-    }}
-    .callout-info {{
-      background: rgba(56, 189, 248, 0.1);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      color: #e0f2fe;
-    }}
-    .callout-warn {{
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid rgba(245, 158, 11, 0.35);
-      color: #fef3c7;
-    }}
-    .timeline {{ display: flex; flex-direction: column; gap: 10px; }}
-    .timeline-item {{
-      display: flex;
-      gap: 12px;
-      background: var(--panel-alt);
-      border: 1px solid var(--border);
-      padding: 10px 12px;
-      border-radius: 8px;
-    }}
-    .timeline-date {{
-      font-family: ui-monospace, monospace;
-      font-size: 0.82rem;
-      font-weight: 700;
-      color: var(--accent);
-      min-width: 92px;
-    }}
-    .timeline-title {{ font-size: 0.86rem; margin-bottom: 4px; }}
-    .timeline-meta {{ font-size: 0.76rem; color: var(--muted); }}
-    .clean-list {{ margin: 0 0 14px 0; padding-left: 18px; font-size: 0.85rem; }}
-    .clean-list li {{ margin-bottom: 8px; }}
-    .site-footer {{
-      text-align: center;
-      font-size: 0.78rem;
-      color: var(--muted);
-      padding: 20px 0;
-      border-top: 1px solid var(--border);
-      margin-top: 28px;
-    }}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{_e(default)} {_e(stock['name'])} — 個股研究</title>
+<style>{CSS}</style>
 </head>
 <body>
-  <header class="top-header">
-    <div class="header-inner">
-      <div>
-        <h1 class="brand-title">
-          <span>2330.TW {_esc(issuer_name)}</span>
-          <span class="badge badge-ok">實證資料驅動研究報告</span>
-        </h1>
-        <div class="brand-sub">
-          資料分支: <code>{_esc(branch)}</code> · 頁面生成 (UTC): <code>{_esc(payload["generated_at_utc"][:19])}</code> · 共收錄 <strong>{len(snapshots)}</strong> 期研究快照
-        </div>
-      </div>
-      <div class="time-machine">
-        <label for="snapshot-selector">歷史快照切換器 (Time Machine)：</label>
-        <select id="snapshot-selector" onchange="switchSnapshot(this.value)">
-          {"".join(options_html)}
-        </select>
-      </div>
+<a class="skip" href="#app">跳到研究內容</a>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">Market Research<span>個股研究工作區</span></div>
+    <div class="picker" role="search">
+      <label for="stock-input">搜尋股票（代號、公司名稱或市場）</label>
+      <input id="stock-input" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
+        aria-controls="stock-list" autocomplete="off" spellcheck="false" value="{_e(picker_value)}" placeholder="搜尋代號或公司名稱">
+      <ul id="stock-list" role="listbox" aria-label="可研究的股票" hidden></ul>
+      <span id="stock-live" class="skip" aria-live="polite"></span>
     </div>
-  </header>
-
-  <main class="container">
-    <div class="disclaimer-bar">
-      <strong>投資研究合規與非交易建議聲明：</strong>
-      本頁面所有數據皆來自公開官方來源（TWSE OpenAPI / 政府資料開放平臺 / MOPS / FinMind 雙軌核對），缺值不補零。
-      估值情境（<code>illustrative_only</code>）與技術觀察僅供研究敏感度對照，<strong>不可冒充合理買賣價、進出場區間或停損目標價</strong>（<code>trade_plan = not_evaluated</code>，<code>recommendation = not_available</code>）。
+  </div>
+  <nav class="secnav" aria-label="研究章節">{nav}</nav>
+</header>
+<div class="wrap">
+  <div class="identity">
+    <div>
+      <h1><span id="id-name">{_e(stock['name'] or default)}</span><span class="ticker" id="id-ticker">{_e(default)}</span></h1>
+      <div class="sub" id="id-sub">{_e(stock['exchange'])}（{_e(stock['code'])}）{_e(cur)}</div>
     </div>
-
-    <div id="app">
-      {rendered_views[latest_id]}
+    <div class="version">
+      <label for="version-select">研究版本（歷史快照）</label>
+      <select id="version-select">{option_html}</select>
     </div>
-
-    <footer class="site-footer">
-      Market Research Static Dashboard · Single State Owner: <code>GitStateStore ({_esc(branch)})</code> · Zero Backend Dependency
-    </footer>
-  </main>
-
-  <script id="research-site-data" type="application/json">{embedded_json}</script>
-  <script>
-    const SITE_DATA = JSON.parse(document.getElementById("research-site-data").textContent);
-    function switchSnapshot(snapshotId) {{
-      const app = document.getElementById("app");
-      if (SITE_DATA.views && SITE_DATA.views[snapshotId]) {{
-        app.innerHTML = SITE_DATA.views[snapshotId];
-      }}
-    }}
-    function switchTab(tabId) {{
-      const root = document.getElementById("app");
-      root.querySelectorAll(".tab-btn").forEach(btn => {{
-        btn.classList.toggle("active", btn.getAttribute("data-tab") === tabId);
-      }});
-      root.querySelectorAll(".tab-content").forEach(panel => {{
-        panel.classList.toggle("active", panel.id === tabId);
-      }});
-    }}
-  </script>
+  </div>
+  <p class="disclaimer">研究資料整理，不是投資建議。估值為示意情境、技術觀察僅供研究，皆不構成目標價、進出場或停損價格。缺值以「—」表示，不補零。</p>
+  <div id="error-banner" class="banner" role="alert" hidden></div>
+  <noscript><p class="banner">未啟用 JavaScript：顯示最新研究版本；股票搜尋與版本切換需要 JavaScript。</p></noscript>
+  <main id="app" tabindex="-1">{views[default][latest_id]}</main>
+  <footer>資料來源：TWSE OpenAPI、政府資料開放平臺、FinMind。狀態分支 <code>{_e(branch)}</code>；頁面產生於 {_tpe(payload['generated_at_utc'])}（台北）。</footer>
+</div>
+<script id="site-data" type="application/json">{data}</script>
+<script>{JS}</script>
 </body>
 </html>
 """
@@ -1102,7 +1176,6 @@ def write_research_site(
     """Write `index.html` into `out_dir` and return its path."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    html_text = render_research_site_html(records, branch=branch, latest_report=latest_report)
     target = out_dir / "index.html"
-    target.write_text(html_text, encoding="utf-8")
+    target.write_text(render_research_site_html(records, branch=branch, latest_report=latest_report), encoding="utf-8")
     return target
