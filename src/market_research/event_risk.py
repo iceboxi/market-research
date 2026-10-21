@@ -408,12 +408,20 @@ def build_tw_disclosures_and_news(
             board_d = _parse_roc_or_iso_date(board_raw)
             if board_d and board_d > cutoff_date:
                 continue
-            yr_raw = str(r.get("年度") or "").strip()
-            q_raw = str(r.get("季別") or r.get("period") or "").strip()
+            yr_raw = str(r.get("股利年度") if r.get("股利年度") is not None else (r.get("年度") or "")).strip()
+            q_raw = str(r.get("股利所屬年(季)度") or r.get("季別") or r.get("period") or "").strip()
             period_label = q_raw if "Q" in q_raw else (
                 f"{int(yr_raw) + 1911}{q_raw}" if yr_raw.isdigit() else q_raw
             )
-            cash_div = r.get("現金股利(元/股)") if "現金股利(元/股)" in r else r.get("cash_dividend_per_share_twd")
+            cash_raw = (
+                r.get("股東配發-盈餘分配之現金股利(元/股)")
+                if r.get("股東配發-盈餘分配之現金股利(元/股)") is not None
+                else (r.get("現金股利(元/股)") if "現金股利(元/股)" in r else r.get("cash_dividend_per_share_twd"))
+            )
+            try:
+                cash_div = f"{float(str(cash_raw).replace(',', '')):,.2f}" if cash_raw is not None else "—"
+            except ValueError:
+                cash_div = str(cash_raw)
             progress = str(r.get("決議（擬議）進度") or "董事會決議").strip()
             if not board_d:
                 continue
@@ -640,8 +648,8 @@ def build_tw_calendar_schedule(
             board_d = _parse_roc_or_iso_date(board_raw)
             if not board_d or board_d > cutoff_date:
                 continue
-            yr_raw = str(r.get("年度") or "").strip()
-            q_raw = str(r.get("季別") or r.get("period") or "").strip()
+            yr_raw = str(r.get("股利年度") if r.get("股利年度") is not None else (r.get("年度") or "")).strip()
+            q_raw = str(r.get("股利所屬年(季)度") or r.get("季別") or r.get("period") or "").strip()
             if "Q" in q_raw:
                 p_lbl = q_raw
             elif yr_raw.isdigit() and "1" in q_raw:
