@@ -255,3 +255,26 @@ standalone 2024-Q4 cash flow or automatically resolve a multi-document bundle.
 There is no license to check in real XBRL data to this public repository.
 Unit tests use fabricated `test.invalid` namespaces and cannot stand in for
 live 2330 acceptance. F05 stays `needs-info`; F06 remains blocked.
+
+
+## 2026-10-21 Cross-Reconciled 2330 Pilot Update (TW05 / TW06 / TW07 / TW10)
+
+On 2026-10-21, the 2330.TW vertical slice established a live, GitHub-hosted runner
+three-statement reconciliation contract documented in
+[`docs/TW_FINANCIAL_SOURCE_CONTRACT.md`](TW_FINANCIAL_SOURCE_CONTRACT.md) and verified by
+[`tw-source-adoption.yml` Run #39519450177](https://github.com/iceboxi/market-research/actions/runs/39519450177)
+(`acceptance_status: reconciled_current_sample`):
+
+- **Current Official Benchmark (TWSE OpenAPI OGDL v1.0)**:
+  - `t187ap06_L_ci` (consolidated comprehensive income, ROC 115 Q2 / `2026-H1` cumulative YTD),
+  - `t187ap07_L_ci` (consolidated balance sheet as of `2026-06-30`),
+  - `t187ap17_L` (profitability ratios),
+  - `t187ap45_L` (board dividend & quarterly parent net income resolutions for `2025Q4`, `2026Q1`, `2026Q2`),
+  - `t187ap38_L` & `t187ap41_L` (shareholder meeting announcements & locations).
+- **Multi-Year & Quarterly Series (`2023Q1–2026Q2`)**:
+  - FinMind (`TaiwanStockFinancialStatements`, `TaiwanStockBalanceSheet`, `TaiwanStockCashFlowsStatement`) cross-reconciled against TWSE OpenAPI current official tables (`2026Q1 + 2026Q2 = 2026-H1` revenue `2,404,483,690,000` TWD, gross profit `1,611,606,116,000` TWD, operating income `1,425,568,793,000` TWD, net income `1,279,582,227,000` TWD, and balance sheet assets/liabilities/equity/capital stock with zero discrepancy) and against TSMC's audited FY2023–FY2024 consolidated financial statement PDFs.
+- **Remaining F05 Boundaries Explicitly Preserved**:
+  1. Direct MOPS XBRL automated machine-API download (`t203sb01` / `t203sb02`) remains unapproved for scheduled scraping; the system uses TWSE OpenAPI JSON + cross-reconciled FinMind series instead.
+  2. Neither TWSE `出表日期` nor FinMind `date` (`YYYY-MM-DD`) provides historical second-level initial filing timestamps (`published_at`); the system strictly records `first_seen_at` (`first_seen_only_historical_not_verified`) and never claims historical point-in-time replay of past filing revisions.
+  3. Bulk third-party raw responses are never committed to the public repository; only compact, reconciled research summaries and OGDL-attributed evidence are retained.
+

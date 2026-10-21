@@ -23,7 +23,9 @@ SEC_FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 SEC_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 
 from .financial_history import normalize_sec_history, normalize_tw_financial_history
-from .event_risk import sec_filing_events, unknown
+from .event_risk import (
+    TW_SHAREHOLDER_ANNOUNCE_URL, TW_SHAREHOLDER_MEETING_URL, sec_filing_events, unknown,
+)
 
 def json_get(url, user_agent=None, client=None):
     headers = {"User-Agent": user_agent or "MarketResearch/0.1 public-research"}
@@ -186,6 +188,22 @@ def twse_fundamentals(symbol, get=json_get, *, financial_get=None, asof=None):
         except Exception as exc:
             output["warnings"].append(f"TWSE dividends source unavailable: {type(exc).__name__}")
 
+        event_source_errors = {}
+        if "dividends" not in twse_bundle:
+            event_source_errors["dividends"] = "unavailable"
+        for key, url in (
+            ("shareholder_announce", TW_SHAREHOLDER_ANNOUNCE_URL),
+            ("shareholder_meeting", TW_SHAREHOLDER_MEETING_URL),
+        ):
+            try:
+                agm_rows = ext_get(url)
+                if isinstance(agm_rows, list):
+                    twse_bundle[key] = agm_rows
+                else:
+                    event_source_errors[key] = "invalid_shape"
+            except Exception as exc:
+                event_source_errors[key] = type(exc).__name__
+
         finmind_bundle = {}
         for key, ds in (
             ("income", "TaiwanStockFinancialStatements"),
@@ -200,6 +218,25 @@ def twse_fundamentals(symbol, get=json_get, *, financial_get=None, asof=None):
                     finmind_bundle[key] = resp["data"]
             except Exception as exc:
                 output["warnings"].append(f"FinMind {key} unavailable: {type(exc).__name__}")
+
+        try:
+            news_start = f"{max(2023, cutoff_date.year)}-01-01"
+            news_url = f"{FINMIND_URL}?dataset=TaiwanStockNews&data_id={ticker}&start_date={news_start}"
+            news_resp = ext_get(news_url)
+            if isinstance(news_resp, dict) and news_resp.get("status") == 200 and isinstance(news_resp.get("data"), list):
+                finmind_bundle["news"] = news_resp["data"]
+            else:
+                event_source_errors["finmind_news"] = "invalid_shape"
+        except Exception as exc:
+            event_source_errors["finmind_news"] = type(exc).__name__
+
+        output["event_calendar_raw"] = {
+            "shareholder_announce": twse_bundle.get("shareholder_announce"),
+            "shareholder_meeting": twse_bundle.get("shareholder_meeting"),
+            "dividends": twse_bundle.get("dividends"),
+            "finmind_news": finmind_bundle.get("news"),
+            "source_errors": event_source_errors,
+        }
 
         if finmind_bundle.get("income") and finmind_bundle.get("balance") and finmind_bundle.get("cashflow"):
             history = normalize_tw_financial_history(

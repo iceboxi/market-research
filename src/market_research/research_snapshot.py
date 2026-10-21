@@ -212,6 +212,25 @@ def validate_snapshot(value):
     return value
 
 
+def _compact_financial_research(fr):
+    """Strip ephemeral per-run timestamps and third-party news links before Git retention."""
+    cleaned = json.loads(encoded(fr))
+    disc = cleaned.get("disclosure_and_news")
+    if isinstance(disc, dict):
+        disc.pop("evaluated_at_utc", None)
+        disc["news_references"] = []  # Never persist third-party news headlines/links in research-state
+        for item in disc.get("official_disclosures") or []:
+            if isinstance(item, dict):
+                item.pop("first_seen_at", None)
+    cal = cleaned.get("calendar_schedule")
+    if isinstance(cal, dict):
+        cal.pop("evaluated_at_utc", None)
+        for ev in cal.get("events") or []:
+            if isinstance(ev, dict):
+                ev.pop("first_seen_at", None)
+    return cleaned
+
+
 def prepare_snapshot(report, run):
     if report.get("schema_version") != 4:
         raise SnapshotError("Expected a v4 company report")
@@ -272,6 +291,6 @@ def prepare_snapshot(report, run):
             snapshot["model_identity"] = report["model_identity"]
         if (permitted and isinstance(report.get("financial_research"), dict) and
                 report["financial_research"].get("status") == "available"):
-            snapshot["financial_research"] = json.loads(encoded(report["financial_research"]))
+            snapshot["financial_research"] = _compact_financial_research(report["financial_research"])
     snapshot["id"] = fingerprint(snapshot)
     return validate_snapshot(json.loads(encoded(snapshot)))

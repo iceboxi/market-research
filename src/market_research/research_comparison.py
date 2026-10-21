@@ -102,6 +102,30 @@ def compare_snapshots(previous, current, last_known_good=None):
                 elif (q.get("revenue") != old_q[lbl].get("revenue") or
                       q.get("net_income") != old_q[lbl].get("net_income")):
                     change("revision", "financial_research", "reported_value_changed", lbl)
+            old_cal = old_fr.get("calendar_schedule") or {}
+            new_cal = new_fr.get("calendar_schedule") or {}
+            old_cal_events = {
+                e["schedule_id"]: e
+                for e in (old_cal.get("events") or [])
+                if isinstance(e, dict) and "schedule_id" in e
+            }
+            for ev in new_cal.get("events") or []:
+                if not isinstance(ev, dict) or "schedule_id" not in ev or ev.get("retained_from_previous"):
+                    continue
+                sid = ev["schedule_id"]
+                old_ev = old_cal_events.get(sid)
+                if old_ev is None:
+                    if ev.get("confirmation_status") not in ("unknown", None):
+                        change("new_period", "calendar_schedule", "new_retained_period", sid)
+                else:
+                    if ev.get("confirmation_status") == "cancelled" and old_ev.get("confirmation_status") != "cancelled":
+                        change("revision", "calendar_schedule", "schedule_cancelled", sid)
+                    elif (ev.get("scheduled_date") != old_ev.get("scheduled_date") and
+                          ev.get("scheduled_date") is not None):
+                        if old_ev.get("confirmation_status") == "unknown":
+                            change("new_period", "calendar_schedule", "new_retained_period", sid)
+                        else:
+                            change("revision", "calendar_schedule", "schedule_date_changed", sid)
     limitations = set(current["comparison_limits"])
     if not current.get("model_identity") or previous and not previous.get("model_identity"):
         limitations.add("model_identity_not_retained")
@@ -117,6 +141,7 @@ def render_comparison(comparison, snapshots):
               "model_change": "模型／設定變更", "incomparable": "無法比較"}
     components = {"issuer": "公司身分", "monthly_revenue": "月營收", "technical": "行情與技術",
                   "events": "官方事件", "financial_research": "財報與估值研究",
+                  "calendar_schedule": "公司重要行程",
                   "schema": "資料格式", "model": "模型／設定", "time": "評估時間"}
     reasons = {"schema_changed": "資料格式版本改變", "model_or_config_changed": "模型版本或設定改變",
                "model_identity_not_retained": "舊版本未保留模型 identity", "source_or_basis_changed": "來源或口徑不同",
@@ -125,7 +150,8 @@ def render_comparison(comparison, snapshots):
                "source_status_changed": "來源狀態改變", "reported_identity_changed": "公司名稱更正",
                "freshness_changed": "資料時效改變", "readiness_changed": "研究準備度改變",
                "retained_values_missing": "缺少可比前值或目前值，未計成長", "new_retained_period": "新增資料期別",
-               "reported_value_changed": "相同期別保留數值更正", "historical_cutoff_reversed": "較早的歷史 cutoff 不能用新取得值回填"}
+               "reported_value_changed": "相同期別保留數值更正", "schedule_date_changed": "已公告行程日期更正",
+               "schedule_cancelled": "已公告行程取消", "historical_cutoff_reversed": "較早的歷史 cutoff 不能用新取得值回填"}
     lines = ["## 前後變化", "", "、".join(labels[key] for key in comparison["categories"]), ""]
     current = snapshots[comparison["current_snapshot_id"]]
     previous = snapshots.get(comparison["previous_snapshot_id"])
