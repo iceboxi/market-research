@@ -463,8 +463,10 @@ def reconcile_rerun_triggers(store=None, *, canonical_event_ids=None, financial_
                 "target_financial_version": target_fin if fin_changed else None,
             }
             pending_obj = {
-                **req_payload,
                 "request_id": fingerprint(req_payload),
+                "reasons": reasons,
+                "trigger_event_ids": unconsumed_events,
+                "target_financial_version": target_fin if fin_changed else None,
             }
             cp["pending_rerun"] = pending_obj
             outcome.update(
