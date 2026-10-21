@@ -36,3 +36,11 @@ class GitHubResearchSink:
 
     def update(self, number, body):
         return self._request(f"{self.endpoint}/{number}", "PATCH", {"body": body})
+
+    def find_comments(self, number, marker):
+        pages = self._request(f"{self.endpoint}/{number}/comments?per_page=100", paginate=True)
+        return [comment for page in pages for comment in page
+                if marker in (comment.get("body") or "")]
+
+    def create_comment(self, number, body):
+        return self._request(f"{self.endpoint}/{number}/comments", "POST", {"body": body})
