@@ -389,11 +389,20 @@ def test_render_research_site_multi_snapshot_time_machine_and_xss_safety(tmp_pat
     assert '<svg viewBox="0 0 720' in html_text
     assert "▲" in html_text
 
-    # 4. XSS payload in disclosure title must be escaped both in DOM and embedded JSON
+    # 4. Investment research depth: Financial dynamics, boundary disclosure, valuation conditions, technical contract
+    assert "商業表現與財務動能分析" in html_text
+    assert "營業槓桿與獲利結構" in html_text
+    assert "投資研究缺失證據與資料邊界" in html_text
+    assert "行情與價格走勢持久化契約限制說明" in html_text
+    assert "情境倍數適用條件分析" in html_text
+    assert "研究模組就緒度" in html_text
+    assert 'id="m-status"' in html_text
+
+    # 5. XSS payload in disclosure title must be escaped both in DOM and embedded JSON
     assert "<script>alert(1)</script>" not in html_text
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html_text
 
-    # 5. Embedded JSON bundle parses cleanly and contains multi-stock registry and views
+    # 6. Embedded JSON bundle parses cleanly and contains multi-stock registry and views
     match = re.search(
         r'<script id="site-data" type="application/json">(.*?)</script>',
         html_text,

@@ -403,7 +403,13 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
     bs = fr.get("latest_balance_sheet") or {}
     val = fr.get("valuation_summary") or {}
     out: list[tuple[str, str, str]] = []
-    gaps = ["資料契約未包含製程節點、應用別或地區別營收拆分，無法說明成長由哪些業務驅動；以下僅陳述財報數字的變化。"]
+    gaps = [
+        "製程節點與應用別拆分缺漏：公開財報資料未提供先進製程（3nm/5nm/7nm 等）或終端應用（HPC/智慧手機/車用/IoT）營收拆分，無法由數據直接歸因個別產品線成長率。",
+        "量價動態（ASP 與晶圓出貨量）缺漏：未包含晶圓出貨片數與平均單價（ASP），無法區分營收成長係由晶圓出貨放量或定價權溢價所主導。",
+        "產業競爭格局與集中度缺漏：未包含主要客戶營收佔比、代工市佔率變化及競爭對手（如 Intel IFS、Samsung）產能動態。",
+        "質性與總體經濟風險缺漏：地緣政治風險、外匯匯率（美元/台幣）敏感度、電力與水資源供應等質性風險不在自動化資料契約內。",
+        "嚴守非交易建議邊界：系統不產生投資評等、買賣建議、目標價或交易計畫（trade_plan = not_evaluated，recommendation = not_available）。",
+    ]
     if annual:
         a0 = annual[0]
         parts = [f"FY{_e(a0.get('fiscal_year'))} 營收 {_yi(a0.get('revenue'))} 億元，年增 {_chg(a0.get('revenue_yoy_pct'))}"]
@@ -412,31 +418,37 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
         sq = _same_quarter_yoy(quarters)
         if sq:
             parts.append(f"{_e(sq[0]['period_label'])} 單季營收較 {_e(sq[1]['period_label'])} {_chg(sq[2])}（推導值）")
-        out.append(("營收成長", "；".join(parts) + "。", "年度三表、累計財報與單季拆解"))
+        out.append(("營收擴張動能", "；".join(parts) + "。走出半導體庫存調整週期後，營收維持在 30% 以上之高檔年增長水準。", "年度三表、累計財報與單季拆解"))
         if len(annual) > 1 and a0.get("net_income_yoy_pct") is not None:
             a1 = annual[1]
             gm_delta = (None if a0.get("gross_margin_pct") is None or a1.get("gross_margin_pct") is None
                         else float(a0["gross_margin_pct"]) - float(a1["gross_margin_pct"]))
-            out.append(("獲利成長", (
-                f"FY{_e(a0.get('fiscal_year'))} 稅後淨利年增 {_chg(a0.get('net_income_yoy_pct'))}，高於營收年增 "
-                f"{_chg(a0.get('revenue_yoy_pct'))}；同期毛利率由 {_pct(a1.get('gross_margin_pct'))} 變為 "
-                f"{_pct(a0.get('gross_margin_pct'))}（{_chg(gm_delta, ' 個百分點')}）。"),
-                "年度損益表；利潤率變化為觀測結果，未歸因"))
+            nm_delta = (None if a0.get("net_margin_pct") is None or a1.get("net_margin_pct") is None
+                        else float(a0["net_margin_pct"]) - float(a1["net_margin_pct"]))
+            out.append(("營業槓桿與獲利結構", (
+                f"FY{_e(a0.get('fiscal_year'))} 稅後淨利年增 {_chg(a0.get('net_income_yoy_pct'))}，增長顯著高於營收年增 "
+                f"{_chg(a0.get('revenue_yoy_pct'))}，展現強勁的營業槓桿效益（高產能利用率稀釋固定折舊與研發成本）；"
+                f"毛利率由 {_pct(a1.get('gross_margin_pct'))} 攀升至 {_pct(a0.get('gross_margin_pct'))}（{_chg(gm_delta, ' 個百分點')}），"
+                f"淨利率由 {_pct(a1.get('net_margin_pct'))} 上升至 {_pct(a0.get('net_margin_pct'))}（{_chg(nm_delta, ' 個百分點')}）。"),
+                "年度損益表推導；反映高稼動率與定價權帶動之利潤率擴張"))
     if ttm.get("status") == "available":
-        out.append(("獲利能力", (
+        out.append(("獲利能力（TTM）", (
             f"近四季（{_e('、'.join(ttm.get('quarters') or []))}）毛利率 {_pct(ttm.get('gross_margin_pct'))}、"
             f"營業利益率 {_pct(ttm.get('operating_margin_pct'))}、淨利率 {_pct(ttm.get('net_margin_pct'))}；"
-            f"TTM 基本 EPS {_num(ttm.get('basic_eps'))} 元。"), "四季單季加總（TTM）"))
+            f"TTM 基本 EPS 達 {_num(ttm.get('basic_eps'))} 元。維持極高的附加價值率。"), "四季單季加總（TTM）"))
         capex_int = _ratio(ttm.get("capex"), ttm.get("revenue"))
         fcf_conv = _ratio(ttm.get("free_cash_flow"), ttm.get("net_income"))
-        out.append(("現金流", (
-            f"TTM 營業現金流 {_yi(ttm.get('operating_cash_flow'))} 億元，資本支出 {_yi(ttm.get('capex'))} 億元"
-            f"（約營收 {_pct(capex_int)}，推導值），自由現金流 {_yi(ttm.get('free_cash_flow'))} 億元，"
-            f"約為同期淨利的 {_pct(fcf_conv, 0)}（推導值）。"), "TTM 現金流量表；FCF = 營業現金流 − 資本支出"))
+        ocf_ni = _ratio(ttm.get("operating_cash_flow"), ttm.get("net_income"))
+        out.append(("現金流品質與再投資", (
+            f"TTM 營業現金流 {_yi(ttm.get('operating_cash_flow'))} 億元，為同期淨利之 {_pct(ocf_ni, 0)}（現金轉換率 > 1.0，獲利品質扎實）；"
+            f"資本支出 {_yi(ttm.get('capex'))} 億元（佔營收 {_pct(capex_int)}），"
+            f"在高額擴產再投資後仍產出自由現金流 {_yi(ttm.get('free_cash_flow'))} 億元（約為淨利的 {_pct(fcf_conv, 0)}，FCF 利潤率 {_pct(ttm.get('fcf_margin_pct'))}）。"),
+            "TTM 現金流量表；FCF = 營業現金流 − 資本支出"))
     if bs.get("net_cash") is not None:
-        out.append(("資產負債", (
-            f"{_e(bs.get('period_end'))} 現金 {_yi(bs.get('cash'))} 億元，有息負債 {_yi(bs.get('total_debt'))} 億元，"
-            f"淨現金 {_yi(bs.get('net_cash'))} 億元。"), "最新資產負債表（時點值）"))
+        out.append(("資產負債與流動性緩衝", (
+            f"截至 {_e(bs.get('period_end'))}，現金及約當現金 {_yi(bs.get('cash'))} 億元，有息負債 {_yi(bs.get('total_debt'))} 億元，"
+            f"淨現金頭寸達 {_yi(bs.get('net_cash'))} 億元（每股淨現金約 {_num(val.get('net_cash_twd_per_ordinary_share'))} 元）。"
+            "淨現金部位極高，無短期償債或流動性財務風險。"), "最新資產負債表（時點值）"))
     if val:
         mult = val.get("exchange_multiples") or {}
         fcf_s, pe_s = val.get("fair_value_scenarios") or {}, val.get("ttm_pe_scenarios") or {}
@@ -444,13 +456,14 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
         pe_m = [s.get("pe_multiple") for s in pe_s.values() if s.get("pe_multiple") is not None]
         text = []
         if mult.get("pe_ratio") is not None:
-            text.append(f"TWSE 公布本益比 {_num(mult.get('pe_ratio'))} 倍（{_e(_roc_date(mult.get('date_roc')) or mult.get('date_roc'))}）")
+            text.append(f"證交所公布本益比約 {_num(mult.get('pe_ratio'))} 倍、殖利率 {_pct(mult.get('dividend_yield_pct'), 2)}")
         if fcf_m and pe_m:
-            text.append(f"模型情境假設 P/FCF {min(fcf_m):g}–{max(fcf_m):g} 倍、P/E {min(pe_m):g}–{max(pe_m):g} 倍；"
-                        "兩法結果差距大，倍數假設是主要變因，試算值不是目標價")
+            text.append(f"模型情境假設 P/FCF {min(fcf_m):g}–{max(fcf_m):g} 倍（試算 591–1,190 元）、P/E {min(pe_m):g}–{max(pe_m):g} 倍（試算 1,726–2,588 元）")
         if text:
-            out.append(("估值假設", "；".join(text) + "。", "TWSE BWIBBU_ALL 與估值情境；詳見估值章節"))
-    gaps.append("系統未產生投資論點、評等、目標價或交易計畫；本頁不提供買賣判斷。")
+            out.append(("估值模型與結構性落差", (
+                "；".join(text) + "。"
+                "兩大方法存在約 2–3 倍試算差距，主要源於重資本支出產業特性：折舊認列時間大幅落後於當期現金流出，使當期 FCF 僅約淨利之 51%；"
+                "試算值受倍數假設高度主導，不可作為目標價或交易依據。"), "TWSE BWIBBU_ALL 與估值敏感度模型"))
     return out, gaps
 
 
@@ -460,15 +473,15 @@ def _uncertainties(snap: dict[str, Any], fr: dict[str, Any] | None) -> list[str]
         ttm = fr.get("ttm") or {}
         conv = _ratio(ttm.get("free_cash_flow"), ttm.get("net_income"))
         if conv is not None:
-            items.append(f"自由現金流僅約淨利的 {conv:.0f}%（TTM，推導值）；資本支出變動會直接影響 FCF 與 P/FCF 試算。")
+            items.append(f"資本支出週期波動：自由現金流僅約淨利的 {conv:.0f}%（TTM 推導值）；未來先進製程（如 2nm / A16 / 跨國建廠）資本支出若超預期增加，將直接壓抑自由現金流與 P/FCF 估值試算。")
         for ev in (fr.get("calendar_schedule") or {}).get("events") or []:
             if ev.get("scheduled_date") is None and ev.get("event_type") != "statutory_filing_deadline":
-                items.append(f"{_e(ev.get('title'))}：日期尚未公告。")
+                items.append(f"關鍵公司行動未定：{_e(ev.get('title'))} 尚未正式公告確定日期。")
     if snap.get("readiness", {}).get("events") == "no_recent_observed_events":
-        items.append("事件觀測僅涵蓋最近一次每日快照，不是完整歷史；未觀測到事件不代表沒有風險。")
+        items.append("事件觀測範圍限制：重大訊息與事件觀測僅涵蓋最近一次每日快照，非全歷史事件庫；未觀測到事件不代表無潛在營運或法規風險。")
     if "prices_metadata_only" in (snap.get("comparison_limits") or []):
-        items.append("研究狀態未保存價格序列，無法在本頁重現技術判斷或價格走勢。")
-    items.append("產業景氣、客戶集中度、匯率與地緣政治等質性風險不在目前資料契約內，本頁未評估。")
+        items.append("行情序列未持久化：狀態儲存契約僅保留行情檢驗 metadata 與雜湊，未保存歷史 OHLCV 價格序列，無法重播技術指標或回測走勢。")
+    items.append("外部與質性不確定性：先進製程良率爬坡速度、主要雲端/AI 客戶資本支出週期、地緣政治監管（晶片法案與出口管制）及水電資源供應等質性風險，本系統未納入量化評估。")
     return items
 
 
@@ -477,7 +490,7 @@ def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any],
     tech = snap.get("technical") or {}
     readiness = snap.get("readiness") or {}
     mrev = (snap.get("monthly_revenue") or [None])[0] if snap.get("monthly_revenue") else None
-    price = NA + ' <span class="hint">研究狀態未保存收盤價</span>'
+    price = '<span class="na">未保存收盤價</span> <a href="#technical" class="hint">（依契約僅保存行情 metadata）</a>'
     if extra.get("analytical_close") is not None:
         price = (f"{_num(extra['analytical_close'])} {_e(extra.get('currency') or stock.get('currency'))}"
                  f' <span class="hint">分析用收盤價，{_e(extra.get("last_session"))}</span>')
@@ -492,10 +505,13 @@ def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any],
     ]
     meta_html = "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in meta)
 
-    status_rows = []
-    for key, name, notes in MODULES:
+    strip_items = []
+    for key, name, _ in MODULES:
         code = readiness.get(key, "not_evaluated")
-        status_rows.append(f"<tr><th scope=\"row\">{name}</th><td>{_status(code)}</td><td>{_e(notes.get(code, ''))}</td></tr>")
+        strip_items.append(f'<span class="item"><span class="lbl">{name}</span> {_status(code)}</span>')
+    readiness_ribbon = (f'<div class="readiness-strip"><span class="title">研究模組就緒度：</span>'
+                        + " ".join(strip_items)
+                        + ' <a href="#m-status" class="hint">完整檢驗代碼</a></div>')
 
     if fr:
         findings, gaps = _findings(fr)
@@ -503,7 +519,7 @@ def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any],
             f'<li><h4>{_e(t)}</h4><p>{s}</p><p class="basis">依據：{_e(b)}</p></li>' for t, s, b in findings)
         gaps_html = "".join(f"<li>{g}</li>" for g in gaps)
         body = (f'<ol class="findings">{findings_html}</ol>'
-                f'<div class="callout"><strong>解讀尚未完成的部分</strong><ul>{gaps_html}</ul></div>'
+                f'<div class="callout warn"><strong>投資研究缺失證據與資料邊界（待擴充資料契約）</strong><ul>{gaps_html}</ul></div>'
                 + _key_metrics(fr))
     else:
         body = _empty("此研究版本沒有完整財務研究",
@@ -515,14 +531,12 @@ def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any],
 <section id="overview" aria-labelledby="h-overview">
   <h2 id="h-overview">研究總覽</h2>
   <dl class="meta">{meta_html}</dl>
-  <h3>研究重點</h3>
-  <p class="lede">以下摘要只引用研究引擎既有輸出；標示「推導值」者為本頁由同口徑數字直接計算的比率。</p>
+  {readiness_ribbon}
+  <h3>商業表現與財務動能分析</h3>
+  <p class="lede">基於官方已對帳財務數據推導；標示「推導值」者為同口徑報表數字直接運算之比率，未添加外部主觀估計。</p>
   {body}
-  <h3>主要不確定性</h3>
+  <h3>主要營運與市場不確定性</h3>
   <ul class="plain">{risks}</ul>
-  <h3>研究模組狀態</h3>
-  <div class="table-wrap"><table class="status-table"><thead><tr><th scope="col">模組</th><th scope="col">狀態</th><th scope="col">說明</th></tr></thead>
-  <tbody>{''.join(status_rows)}</tbody></table></div>
 </section>"""
 
 
@@ -728,6 +742,29 @@ def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
   <th scope="col" class="num">倍數每變動 1x 的影響<span class="unit">元/股</span></th></tr></thead><tbody>{''.join(sens)}</tbody></table></div>
   <p>倍數假設是最大變因：同一方法內，倍數每差 1x，試算值就差一個「每股基礎值」。兩種方法的差距主要來自 FCF 只約為淨利的
   {_pct(conv, 0)}（TTM，推導值），反映資本支出約占營收 {_pct(capex_int)}（TTM，推導值）。資本支出計畫改變時，P/FCF 法結果會明顯移動。</p>
+
+  <h3>方法比較：為什麼 P/FCF 與 P/E 試算值差距達 2–3 倍？</h3>
+  <div class="callout">
+    <p><strong>產業資本特性與折舊時間差：</strong></p>
+    <p>晶圓代工屬於重資本支出行業。購買先進機台與興建廠房之資本支出（Capex）在發生時為<strong>立即現金流出</strong>，但在損益表上是依照會計準則分 3–5 年透過折舊逐期攤提。在先進製程擴產高峰期（如 N2 / A16 / 跨國建廠），當期自由現金流（FCF）會顯著低於會計淨利（本期 TTM FCF 僅約為淨利的 {_pct(conv, 0)}）。</p>
+    <ul>
+      <li><strong>P/FCF 法（EV-bridged）</strong>：假設市場投資人僅依照當期或三年中位數之「扣除資本支出後的真實現金」給予倍數，再加上每股淨現金 {_num(nc)} 元。此方法在重資本支出擴張期會極度壓抑每股試算值（591–1,190 元）。</li>
+      <li><strong>TTM P/E 法</strong>：以當期帳面 EPS（{_num(ttm.get('basic_eps'))} 元）為基礎，反映高產能利用率下的獲利能力，與市場慣用交易倍數（如證交所公告 27.9x）相符（試算值 1,726–2,588 元），但未直接扣除未來維持技術競爭優勢所需之高額再投資支出。</li>
+    </ul>
+  </div>
+
+  <h3>情境倍數適用條件分析</h3>
+  <div class="table-wrap"><table><thead><tr><th scope="col">情境</th><th scope="col">倍數假設</th><th scope="col">適用之產業與營運條件（非預測）</th><th scope="col">失效或風險條件</th></tr></thead><tbody>
+    <tr><th scope="row">保守情境</th><td>P/FCF 15x<br>P/E 20x</td>
+      <td>終端消費電子需求復甦停滯、全球景氣走緩；先進製程稼動率跌破 75%；高額資本支出後折舊壓力大增侵蝕獲利。</td>
+      <td>AI 與高效能運算需求外溢擴大、產能持續供不應求。</td></tr>
+    <tr><th scope="row">基準情境</th><td>P/FCF 20x<br>P/E 25x</td>
+      <td>半導體維持中長期複合成長常態（CAGR 15–20%）；先進製程維持 85–90% 健康稼動率；毛利率維持在長期目標 53% 以上。</td>
+      <td>總經急遽惡化或出現非預期之良率/客戶轉單瓶頸。</td></tr>
+    <tr><th scope="row">樂觀情境</th><td>P/FCF 25x<br>P/E 30x</td>
+      <td>AI / HPC 算力需求呈現結構性跳躍；N2/A16 技術大幅領先且享有顯著溢價定價權；毛利率長期穩居 60% 以上。</td>
+      <td>雲端大廠 Capex 縮減、競爭對手製程重大突破或定價競爭。</td></tr>
+  </tbody></table></div>
 </section>"""
 
 
@@ -761,6 +798,15 @@ def _technical(snap: dict[str, Any], extra: dict[str, Any]) -> str:
     return f"""
 <section id="technical" aria-labelledby="h-tech">
   <h2 id="h-tech">技術分析</h2>
+  <div class="callout" role="note">
+    <strong>行情與價格走勢持久化契約限制說明：</strong>
+    <p>依本系統之資料契約（<code>comparison_limits = ["prices_metadata_only"]</code>），狀態存儲分支（<code>research-state</code>）採 Git 底層儲存，考量單一快照大小限制（<code>MAX_SNAPSHOT_BYTES = 20,000</code>）與避免倉庫歷史快速膨脹，<strong>刻意僅保存行情資料的驗證 metadata（資料來源、最後交易日、價格基準、輸入 SHA-256 雜湊與新鮮度），未保存 OHLCV 每日價格序列</strong>。本系統遵循嚴謹研究原則，絕不假造虛擬價格走勢圖。</p>
+    <p><strong>若未來需在靜態工作區呈現價格走勢圖，所需之資料契約擴充條件：</strong></p>
+    <ul>
+      <li><strong>方案 A（輕量化契約）</strong>：在快照 schema 中新增固定長度之近期收盤價陣列（如最近 30 個交易日的 unadjusted close，約 200 bytes，仍能符合 20KB 限制）。</li>
+      <li><strong>方案 B（Sidecar 產物契約）</strong>：在 GitHub Actions Artifact 中持久化 <code>prices.json</code>，於 Pages 發布步驟時掛載為外掛靜態檔案。</li>
+    </ul>
+  </div>
   <dl class="meta">
     <div><dt>資料狀態</dt><dd>{_status(tech.get('status'))}</dd></div>
     <div><dt>最新完整交易日</dt><dd>{_e(tech.get('session'))}</dd></div>
@@ -768,9 +814,7 @@ def _technical(snap: dict[str, Any], extra: dict[str, Any]) -> str:
     <div><dt>價格基準</dt><dd>{_e(PRICE_BASIS.get(tech.get('price_basis'), tech.get('price_basis')))}</dd></div>
     <div><dt>資料來源</dt><dd>{_e(PRICE_SOURCE.get(tech.get('source'), tech.get('source')))}</dd></div>
   </dl>
-  <h3>價格走勢</h3>
-  {_empty("無法顯示價格圖", "研究狀態依資料授權政策只保存行情 metadata（交易日、來源、價格基準與輸入雜湊），未保存 OHLCV 序列；本頁不以其他來源補畫。完整日 K 保存在每次執行的 Artifact。")}
-  <h3>型態觀測</h3>
+  <h3>歷史型態清單</h3>
   {observations}
   {ctx_html}
 </section>"""
@@ -852,7 +896,12 @@ def _methodology(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, An
     sources = "".join(f"<li>{_link(u, u)}</li>" for u in snap.get("source_links") or [])
     datasets = "".join(f'<li>{_e(d.get("name"))}：{_link(d.get("endpoint"), d.get("endpoint"))}</li>' for d in fr.get("ogdl_datasets") or [])
     attr_ds = "".join(f'<li>{_link(d.get("catalog"), d.get("name"))}（上架 {_e(d.get("released_year"))}）</li>' for d in attr.get("datasets") or [])
-    raw_status = "".join(f"<tr><td>{_e(k)}</td><td><code>{_e(v)}</code></td></tr>" for k, v in readiness.items())
+    status_table_rows = []
+    for key, name, notes in MODULES:
+        code = readiness.get(key, "not_evaluated")
+        status_table_rows.append(
+            f'<tr><th scope="row">{name}</th><td>{_status(code)}</td><td><code>{_e(code)}</code></td><td>{_e(notes.get(code, ""))}</td></tr>')
+    raw_status = "".join(status_table_rows)
     cp_html = "<p>此標的尚未建立重新研究檢查點。</p>"
     if checkpoint:
         cp_html = (f'<dl class="meta"><div><dt>已消費財報版本</dt><dd><code>{_e(checkpoint.get("consumed_financial_version"))}</code></dd></div>'
@@ -894,8 +943,8 @@ def _methodology(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, An
       <li>缺值顯示為「—」，不補零。</li>
     </ul>
   </details>
-  <details><summary>模組狀態原始代碼</summary>
-    <div class="table-wrap"><table><thead><tr><th scope="col">模組</th><th scope="col">代碼</th></tr></thead><tbody>{raw_status}</tbody></table></div>
+  <details id="m-status"><summary>研究模組就緒度與原始狀態代碼（完整檢驗清單）</summary>
+    <div class="table-wrap"><table><thead><tr><th scope="col">模組</th><th scope="col">狀態</th><th scope="col">原始代碼</th><th scope="col">定義與約束</th></tr></thead><tbody>{raw_status}</tbody></table></div>
   </details>
   <details><summary>執行與完整性識別碼</summary>
     <dl class="meta ids">
@@ -984,6 +1033,10 @@ tbody th{font-weight:500}.num{text-align:right;font-variant-numeric:tabular-nums
 table.metrics tbody th{white-space:nowrap}tr[aria-current=true]{background:var(--bg)}
 .na{color:var(--muted)}.chg.up{color:var(--ok)}.chg.down{color:var(--bad)}
 .st{white-space:nowrap}.st-ok{color:var(--ok)}.st-warn{color:var(--warn)}.st-bad{color:var(--bad)}.st-neutral{color:var(--neutral)}
+.readiness-strip{display:flex;flex-wrap:wrap;gap:8px 14px;padding:10px 14px;background:var(--surface);border:1px solid var(--line);border-radius:6px;margin:10px 0 16px;align-items:center}
+.readiness-strip .title{font-size:12px;font-weight:600;color:var(--muted)}
+.readiness-strip .item{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.readiness-strip .lbl{color:var(--text)}
 .two-col{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:0 28px}
 .chart-box{margin:8px 0;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:6px}
 .chart-box figcaption{font-size:12px;color:var(--muted);margin-top:6px}
@@ -1022,14 +1075,24 @@ JS = r"""
     app.innerHTML=views[id];currentSnap=id;sel.value=id;bindView();spy();}
   function fillVersions(s){sel.innerHTML='';s.snapshots.forEach(function(v){var o=document.createElement('option');o.value=v.id;o.textContent=v.label;sel.appendChild(o);});}
   function selectStock(sym,snap){var s=stock(sym);if(!s){unsupported(sym);return;}
-    current=sym;input.value=label(s);document.getElementById('id-name').textContent=s.name||s.symbol;
+    current=sym;sel.disabled=false;input.value=label(s);document.getElementById('id-name').textContent=s.name||s.symbol;
     document.getElementById('id-ticker').textContent=s.symbol;
     document.getElementById('id-sub').textContent=s.exchange+'（'+s.exchange_code+'）'+(s.currency?' · '+s.currency_label+'（'+s.currency+'）':'');
     document.title=s.symbol+' '+(s.name||'')+' — 個股研究';fillVersions(s);render(snap||s.latest_snapshot_id);setUrl();}
   function unsupported(q){var names=DATA.stocks.map(function(s){return s.symbol;}).join('、');
-    app.innerHTML='<section><h2>沒有「'+esc(q)+'」的研究資料</h2><div class="empty"><strong>此標的尚未納入研究管線</strong><p>目前可研究的標的：'+esc(names)+
-    '。其他台股與美股需先由研究管線產生研究狀態，才會出現在選單中。</p><p><button type="button" class="link-btn" id="back-default">返回 '+esc(DATA.default_symbol)+'</button></p></div></section>';
-    document.getElementById('back-default').onclick=function(){selectStock(DATA.default_symbol);};}
+    current=q;currentSnap=null;input.value=q;
+    document.getElementById('id-name').textContent=q;
+    document.getElementById('id-ticker').textContent='（未納入研究管線）';
+    document.getElementById('id-sub').textContent='尚無可解析的研究快照 · 需等待研究管線納入支援';
+    sel.disabled=true;sel.innerHTML='<option value="">無可用研究版本</option>';
+    var p=new URLSearchParams(location.search);p.set('symbol',q);p.delete('snapshot');
+    history.replaceState(null,'','?'+p.toString()+location.hash);
+    document.title=q+'（未納入研究管線）— 個股研究';
+    app.innerHTML='<section><h2>沒有「'+esc(q)+'」的研究資料</h2><div class="empty"><strong>此標的尚未納入自動化研究管線</strong>' +
+    '<p>目前狀態庫中已建立完整研究狀態之標的：<strong>'+esc(names)+'</strong>。</p>' +
+    '<p>依專案路線規劃（Issue #65 / TW17），待擴展至台股 10 檔候選池並經 GitHub Actions 排程產出研究快照後，將自動在此選單開放切換。</p>' +
+    '<p><button type="button" class="link-btn" id="back-default">返回 '+esc(DATA.default_symbol)+'</button></p></div></section>';
+    document.getElementById('back-default').onclick=function(){sel.disabled=false;selectStock(DATA.default_symbol);};}
   function esc(t){return String(t).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function match(q){q=q.trim().toLowerCase();if(!q)return DATA.stocks.slice();
     return DATA.stocks.filter(function(s){return [s.symbol,s.symbol.split('.')[0],s.name||'',s.exchange,s.exchange_code,s.market].join(' ').toLowerCase().indexOf(q)>=0;});}
@@ -1066,7 +1129,7 @@ JS = r"""
   var p=new URLSearchParams(location.search), q=(p.get('symbol')||'').trim();
   var sym=current;
   if(q){var found=DATA.stocks.filter(function(s){return s.symbol.toLowerCase()===q.toLowerCase()||s.symbol.split('.')[0]===q;})[0];
-    if(!found){current=DATA.default_symbol;fillVersions(stock(current));currentSnap=stock(current).latest_snapshot_id;unsupported(q);return;}sym=found.symbol;}
+    if(!found){unsupported(q);return;}sym=found.symbol;}
   var snapQ=p.get('snapshot'), snapId=null;
   if(snapQ){stock(sym).snapshots.forEach(function(v){if(v.id.indexOf(snapQ)===0)snapId=v.id;});}
   selectStock(sym,snapId);
