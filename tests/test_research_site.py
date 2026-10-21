@@ -59,6 +59,7 @@ def _sample_report(stamp: str = "2026-10-19T12:00:00+00:00", complete: bool = Tr
                 "financial": {"status": "unavailable"},
                 "valuation": {"status": "not_evaluated"},
                 "trade_plan": {"status": "not_evaluated"},
+                "recommendation": {"status": "not_available"},
             }
         },
     }
@@ -368,31 +369,47 @@ def test_render_research_site_multi_snapshot_time_machine_and_xss_safety(tmp_pat
     assert f'<option value="{s1["id"]}">' in html_text
 
     # 2. Key financial numbers, TTM, dual-model valuation, calendar, and boundary badges
-    assert "4.440 兆 TWD" in html_text
-    assert "86.28 元/股" in html_text
+    assert "44,404.9" in html_text
+    assert "86.28" in html_text
     assert "illustrative_only" in html_text
     assert "not_evaluated" in html_text
     assert "not_available" in html_text
-    assert "更正前日期: 2026-06-02" in html_text
+    assert "原訂 2026-06-02，已更正" in html_text
     assert "ifrs-2026-06-30" in html_text
 
-    # 3. XSS payload in disclosure title must be escaped both in DOM and embedded JSON
+    # 3. Workspace IA: Search combobox, section nav, charts, and non-color semantic indicators
+    assert 'id="stock-input"' in html_text
+    assert 'id="stock-list"' in html_text
+    assert 'href="#overview"' in html_text
+    assert 'href="#fundamentals"' in html_text
+    assert 'href="#valuation"' in html_text
+    assert 'href="#technical"' in html_text
+    assert 'href="#events"' in html_text
+    assert 'href="#methodology"' in html_text
+    assert '<svg viewBox="0 0 720' in html_text
+    assert "▲" in html_text
+
+    # 4. XSS payload in disclosure title must be escaped both in DOM and embedded JSON
     assert "<script>alert(1)</script>" not in html_text
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html_text
 
-    # 4. Embedded JSON bundle parses cleanly and contains both pre-rendered views
+    # 5. Embedded JSON bundle parses cleanly and contains multi-stock registry and views
     match = re.search(
-        r'<script id="research-site-data" type="application/json">(.*?)</script>',
+        r'<script id="site-data" type="application/json">(.*?)</script>',
         html_text,
         re.DOTALL,
     )
     assert match is not None
     embedded = json.loads(match.group(1))
-    assert embedded["snapshot_count"] == 2
-    assert embedded["latest_snapshot_id"] == s2["id"]
-    assert s1["id"] in embedded["views"]
-    assert s2["id"] in embedded["views"]
-    assert "早期研究快照" in embedded["views"][s1["id"]]
+    assert embedded["schema_version"] == 2
+    assert embedded["default_symbol"] == "2330.TW"
+    assert len(embedded["stocks"]) == 1
+    assert len(embedded["stocks"][0]["snapshots"]) == 2
+    assert embedded["stocks"][0]["latest_snapshot_id"] == s2["id"]
+    assert "2330.TW" in embedded["views"]
+    assert s1["id"] in embedded["views"]["2330.TW"]
+    assert s2["id"] in embedded["views"]["2330.TW"]
+    assert "此研究版本沒有完整財務研究" in embedded["views"]["2330.TW"][s1["id"]]
 
 
 def test_render_research_site_standalone_report_mode():
@@ -400,7 +417,9 @@ def test_render_research_site_standalone_report_mode():
     r["started_utc"] = "2026-10-21T12:00:00+00:00"
     r["financial_research"] = _make_full_financial_research()
     payload = build_site_payload(latest_report=r)
-    assert len(payload["snapshots"]) == 1
+    assert len(payload["stocks"]["2330.TW"]["snapshots"]) == 1
     html_text = render_research_site_html(latest_report=r)
     assert "2330.TW" in html_text
     assert "台灣積體電路製造股份有限公司" in html_text
+    assert 'id="stock-input"' in html_text
+    assert 'href="#overview"' in html_text
