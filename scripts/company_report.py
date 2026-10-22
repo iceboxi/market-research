@@ -398,7 +398,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     (out/"report.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
     (out/"report.json").write_text(json.dumps(result,indent=2,ensure_ascii=False,allow_nan=False)+"\n",encoding="utf-8")
     (out/"run_receipt.json").write_text(json.dumps(result["run_receipt"],indent=2,ensure_ascii=False,allow_nan=False)+"\n",encoding="utf-8")
-    if symbol == "2330.TW":
+    if symbol.endswith(".TW"):
         from market_research.research_site import write_research_site
         from market_research.research_snapshot import SnapshotError
         try:

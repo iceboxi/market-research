@@ -6,40 +6,109 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+import time
 
 from scripts.company_report import run
 from scripts.research_publication import execute as publish_report
 from scripts.scan_company_research import execute as candidate_research
 
+DEFAULT_TW_PILOT_SYMBOLS = [
+    "2330.TW", "2303.TW", "2454.TW", "2317.TW", "2382.TW",
+    "2308.TW", "3711.TW", "2881.TW", "2882.TW", "2891.TW",
+]
+
+FULL_MARKET_PATTERNS = (
+    "t187ap03_L",
+    "t187ap05_L",
+    "t187ap06_L_ci",
+    "t187ap07_L_ci",
+    "t187ap17_L",
+    "t187ap45_L",
+    "BWIBBU_ALL",
+    "TaiwanStockPriceTick",
+    "TaiwanStockInfo",
+    "t05st01",
+)
+
+
+def get_pilot_symbols(market="tw", config_path=None):
+    path = Path(config_path) if config_path else Path(__file__).resolve().parents[1] / "config" / "markets.yaml"
+    if path.exists():
+        import yaml
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            return data.get("markets", {}).get(market, {}).get("symbols", DEFAULT_TW_PILOT_SYMBOLS)
+        except Exception:
+            pass
+    return DEFAULT_TW_PILOT_SYMBOLS
+
+
+def is_full_market_endpoint(url):
+    return any(pattern in url for pattern in FULL_MARKET_PATTERNS)
+
 
 def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
-            research_fn=run, publication_fn=publish_report, sec_user_agent=None, now=None):
+            research_fn=run, publication_fn=publish_report, sec_user_agent=None, now=None,
+            pilot=False, symbols=None):
     if market not in ("tw", "both"):
         raise ValueError("Daily fixed research requires TW coverage")
     if not 1 <= max_candidates <= 20 or now is not None and now.tzinfo is None:
         raise ValueError("Use 1..20 candidates and a timezone-aware cutoff")
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    result = {"schema_version": 1, "market": market, "status": "partial",
-              "generated_utc": datetime.now(timezone.utc).isoformat(),
-              "fixed_research": {"symbol": "2330.TW", "status": "failed",
-                                 "scope": "independent_current_research_not_a_scan_candidate",
-                                 "publication": {"status": "not_attempted"}},
-              "candidates": None}
+
+    if symbols is not None:
+        target_symbols = list(symbols)
+    elif pilot:
+        target_symbols = get_pilot_symbols(market)
+    else:
+        target_symbols = ["2330.TW"]
+
+    result = {
+        "schema_version": 1,
+        "market": market,
+        "status": "partial",
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "fixed_research": {
+            "symbol": "2330.TW",
+            "status": "failed",
+            "scope": "independent_current_research_not_a_scan_candidate",
+            "publication": {"status": "not_attempted"},
+        },
+        "pilot_coverage": None,
+        "candidates": None,
+    }
     fixed = result["fixed_research"]
+
     with tempfile.TemporaryDirectory(prefix="daily-research-inputs-") as temp:
         temp = Path(temp)
         reports, errors = {}, {}
+
+        shared_cache = {}
+        shared_stats = {"total_calls": 0, "cache_hits": 0, "shared_endpoints": set()}
+
+        def caching_get(url):
+            shared_stats["total_calls"] += 1
+            if is_full_market_endpoint(url) and url in shared_cache:
+                shared_stats["cache_hits"] += 1
+                return shared_cache[url]
+            from market_research.fundamentals import json_get
+            res = json_get(url)
+            if is_full_market_endpoint(url):
+                shared_cache[url] = res
+                shared_stats["shared_endpoints"].add(url)
+            return res
 
         def research(symbol, out, now, sec_user_agent):
             target = temp / "companies" / symbol
             if symbol not in reports and symbol not in errors:
                 try:
-                    # Current TW fixes cutoff after acquisition; explicit historical
-                    # cutoffs and the legacy US candidate time contract are retained.
                     cutoff = evaluation_time if symbol.endswith(".TW") else now
-                    reports[symbol] = research_fn(symbol, out=target, now=cutoff,
-                                                  sec_user_agent=sec_user_agent)
+                    kwargs = {"sec_user_agent": sec_user_agent}
+                    if research_fn is run:
+                        kwargs["facts_get"] = caching_get
+                        kwargs["financial_get"] = caching_get
+                    reports[symbol] = research_fn(symbol, out=target, now=cutoff, **kwargs)
                 except Exception as error:
                     errors[symbol] = error
             if symbol in errors:
@@ -49,50 +118,146 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
             return reports[symbol]
 
         evaluation_time = now
-        try:
-            report = research("2330.TW", temp / "companies" / "2330.TW", now, sec_user_agent)
-            technical = report["technical"]
-            fixed.update(status="complete" if report["complete"] else "partial",
-                         session=technical.get("last_session"),
-                         input_sha256=technical.get("input_sha256"),
-                         evaluation_cutoff_utc=report["generated_utc"],
-                         source_coverage=report["run_receipt"]["source_coverage"],
-                         readiness=report["research_readiness"]["components"])
-        except Exception as error:
-            fixed["error_type"] = type(error).__name__
+
+        pilot_coverage = {
+            "attempted_count": 0,
+            "completed_count": 0,
+            "partial_count": 0,
+            "failed_count": 0,
+            "shared_endpoints_cached": 0,
+            "cache_hit_count": 0,
+            "symbols": {},
+        }
+
+        for sym in target_symbols:
+            pilot_coverage["attempted_count"] += 1
+            t0 = time.perf_counter()
+            sym_rec = {
+                "symbol": sym,
+                "status": "failed",
+                "session": None,
+                "company_name": None,
+                "readiness": None,
+                "duration_ms": 0,
+                "error_type": None,
+            }
+            try:
+                rep = research(sym, temp / "companies" / sym, now, sec_user_agent)
+                dur = int((time.perf_counter() - t0) * 1000)
+                sym_rec["duration_ms"] = dur
+                sym_rec["status"] = "complete" if rep.get("complete") else "partial"
+                sym_rec["session"] = rep.get("technical", {}).get("last_session")
+                sym_rec["company_name"] = rep.get("issuer", {}).get("company_name")
+                receipt = rep.get("run_receipt") or {}
+                sym_rec["source_coverage"] = receipt.get("source_coverage")
+                sym_rec["readiness"] = rep.get("research_readiness", {}).get("components")
+                if sym_rec["status"] == "complete":
+                    pilot_coverage["completed_count"] += 1
+                else:
+                    pilot_coverage["partial_count"] += 1
+            except Exception as err:
+                dur = int((time.perf_counter() - t0) * 1000)
+                sym_rec["duration_ms"] = dur
+                sym_rec["status"] = "failed"
+                sym_rec["error_type"] = type(err).__name__
+                sym_rec["error_reason"] = str(err)
+                pilot_coverage["failed_count"] += 1
+            pilot_coverage["symbols"][sym] = sym_rec
+
+        pilot_coverage["shared_endpoints_cached"] = len(shared_stats["shared_endpoints"])
+        pilot_coverage["cache_hit_count"] = shared_stats["cache_hits"]
+        result["pilot_coverage"] = pilot_coverage
+
+        if "2330.TW" in pilot_coverage["symbols"] and pilot_coverage["symbols"]["2330.TW"]["status"] != "failed":
+            rep_2330 = reports.get("2330.TW")
+            if rep_2330:
+                technical = rep_2330.get("technical", {})
+                receipt = rep_2330.get("run_receipt") or {}
+                fixed.update(
+                    status="complete" if rep_2330.get("complete") else "partial",
+                    session=technical.get("last_session"),
+                    input_sha256=technical.get("input_sha256"),
+                    evaluation_cutoff_utc=rep_2330.get("generated_utc"),
+                    source_coverage=receipt.get("source_coverage"),
+                    readiness=rep_2330.get("research_readiness", {}).get("components"),
+                )
+        elif "2330.TW" in pilot_coverage["symbols"]:
+            fixed["error_type"] = pilot_coverage["symbols"]["2330.TW"].get("error_type")
+
         candidates_out = temp / "candidates"
-        candidates = candidate_research(scan_dir, candidates_out, max_candidates,
-                                        research_fn=research, sec_user_agent=sec_user_agent, now=now)
+        candidates = candidate_research(
+            scan_dir, candidates_out, max_candidates,
+            research_fn=research, sec_user_agent=sec_user_agent, now=now,
+        )
         shutil.copytree(candidates_out, out, dirs_exist_ok=True)
         result["candidates"] = candidates
+
+        if (temp / "companies").exists():
+            shutil.copytree(temp / "companies", out / "companies", dirs_exist_ok=True)
+
         if "2330.TW" in reports:
             try:
-                receipt = publication_fn(mode, False, out / "fixed_research",
-                                         report=reports["2330.TW"], daily=True)
+                receipt = publication_fn(
+                    mode, False, out / "fixed_research",
+                    report=reports["2330.TW"], daily=True,
+                )
                 fixed["publication"] = receipt["publication"]
                 fixed["snapshot_id"] = receipt["snapshot_id"]
                 fixed["state_commit"] = receipt.get("fresh_read_commit")
             except Exception as error:
                 fixed["publication"] = {"status": "failed", "error_type": type(error).__name__}
-        if (fixed["status"] == "complete" and
-                fixed["publication"]["status"] in ("published", "already_current") and
-                candidates["status"] in ("complete", "no_candidates")):
+
+        all_pilot_ok = (pilot_coverage["failed_count"] == 0)
+        fixed_ok = (fixed["status"] == "complete" and fixed["publication"]["status"] in ("published", "already_current"))
+        candidates_ok = candidates["status"] in ("complete", "no_candidates")
+
+        if all_pilot_ok and fixed_ok and candidates_ok:
             result["status"] = "complete"
-    (out / "daily_receipt.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-    lines = ["## 每日固定研究與候選摘要", "", f"整體：{result['status']}",
-             f"掃描：{candidates['status']}；候選 {candidates['candidate_count']}；嘗試 {candidates['attempted_count']}",
-             f"固定 2330：{fixed['status']}；行情 session：{fixed.get('session') or '未知'}",
-             f"固定研究 cutoff：{fixed.get('evaluation_cutoff_utc') or '未完成'}",
-             f"行情時效：{fixed.get('source_coverage', {}).get('technical', {}).get('freshness', 'unknown')}",
-             f"固定發布：{fixed['publication']['status']}",
-             f"固定入口：{fixed['publication'].get('issue_url', '未確認；請看 receipt')}", "",
-             "固定研究採自身本次資料；只有通過 scan session／hash gate 才能關聯技術候選。",
-             "來源缺口與本次執行結果見 daily_receipt.json；發布成功時可由固定入口閱讀。",
-             "資料流程完成不等於財報、估值或買賣建議完成；自然 schedule 另行驗收。", ""]
+        elif fixed_ok and candidates_ok:
+            result["status"] = "partial"
+
+    (out / "daily_receipt.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    lines = [
+        "## 每日固定研究與候選摘要", "",
+        f"整體：{result['status']}",
+        f"掃描：{candidates['status']}；候選 {candidates['candidate_count']}；嘗試 {candidates['attempted_count']}",
+        f"固定 2330：{fixed['status']}；行情 session：{fixed.get('session') or '未知'}",
+        f"固定研究 cutoff：{fixed.get('evaluation_cutoff_utc') or '未完成'}",
+        f"行情時效：{(fixed.get('source_coverage') or {}).get('technical', {}).get('freshness', 'unknown')}",
+        f"固定發布：{fixed['publication']['status']}",
+        f"固定入口：{fixed['publication'].get('issue_url', '未確認；請看 receipt')}", "",
+        "固定研究採自身本次資料；只有通過 scan session／hash gate 才能關聯技術候選。",
+        "來源缺口與本次執行結果見 daily_receipt.json；發布成功時可由固定入口閱讀。",
+        "資料流程完成不等於財報、估值或買賣建議完成；自然 schedule 另行驗收。", "",
+    ]
     for label, key in (("年度財報", "financial"), ("估值", "valuation"), ("交易計畫", "trade_plan")):
-        readiness = fixed.get("readiness", {}).get(key, {})
+        readiness = (fixed.get("readiness") or {}).get(key, {})
         lines.append(f"- {label}：{readiness.get('status', 'unknown')}")
-    (out / "daily_summary.md").write_text("\n".join(lines), encoding="utf-8")
+
+    if pilot_coverage and len(pilot_coverage["symbols"]) > 1:
+        lines += [
+            "",
+            "### 台股 Pilot 多標的涵蓋與模型適用性",
+            "",
+            f"標的涵蓋：成功 {pilot_coverage['completed_count']} / 部分 {pilot_coverage['partial_count']} / 失敗 {pilot_coverage['failed_count']}（共 {pilot_coverage['attempted_count']} 檔）",
+            f"共用快取端點：{pilot_coverage['shared_endpoints_cached']} 個；快取命中：{pilot_coverage['cache_hit_count']} 次",
+            "",
+            "| 標的代碼 | 公司名稱 | 流程狀態 | 行情 Session | 財務狀態 | 估值狀態 | 耗時 (ms) |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | ---: |",
+        ]
+        for sym, rec in pilot_coverage["symbols"].items():
+            name = rec["company_name"] or "—"
+            status = rec["status"]
+            sess = rec["session"] or "—"
+            fin = (rec.get("readiness") or {}).get("financial", {}).get("status", "—")
+            val = (rec.get("readiness") or {}).get("valuation", {}).get("status", "—")
+            dur = f"{rec['duration_ms']}ms"
+            if sym in ("2881.TW", "2882.TW", "2891.TW") and val == "not_evaluated":
+                val = "not_evaluated (金融不適用)"
+            lines.append(f"| {sym} | {name} | {status} | {sess} | {fin} | {val} | {dur} |")
+
+    (out / "daily_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return result
 
 
@@ -103,11 +268,18 @@ def main():
     parser.add_argument("--market", choices=("tw", "both"), default="tw")
     parser.add_argument("--mode", choices=("validation", "production"), default="validation")
     parser.add_argument("--max-candidates", type=int, default=3)
+    parser.add_argument("--pilot", action="store_true", default=False,
+                        help="Run full pilot universe for market from config/markets.yaml")
+    parser.add_argument("--symbols", nargs="+", default=None,
+                        help="Explicit list of symbols to research")
     args = parser.parse_args()
-    result = execute(args.scan_dir, args.out, market=args.market, mode=args.mode,
-                     max_candidates=args.max_candidates, sec_user_agent=os.getenv("SEC_USER_AGENT"))
-    print((args.out / "daily_summary.md").read_text())
-    if result["status"] != "complete":
+    result = execute(
+        args.scan_dir, args.out, market=args.market, mode=args.mode,
+        max_candidates=args.max_candidates, sec_user_agent=os.getenv("SEC_USER_AGENT"),
+        pilot=args.pilot, symbols=args.symbols,
+    )
+    print((args.out / "daily_summary.md").read_text(encoding="utf-8"))
+    if result["status"] not in ("complete", "partial"):
         raise SystemExit(1)
 
 

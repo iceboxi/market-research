@@ -38,7 +38,7 @@ jobs:
       - run: uv lock --check
       - run: uv sync --extra dev --locked
       - name: Compact schema, real Git and external delivery regressions
-        run: uv run --no-sync pytest tests/test_research_snapshot.py tests/test_research_state.py tests/test_research_publication.py tests/test_research_github.py tests/test_research_runner.py tests/test_research_comparison.py tests/test_research_diff_runner.py tests/test_daily_research.py tests/test_tw13_tw14_rerun_and_notifications.py tests/test_research_site.py
+        run: uv run --no-sync pytest tests/test_research_snapshot.py tests/test_research_state.py tests/test_research_publication.py tests/test_research_github.py tests/test_research_runner.py tests/test_research_comparison.py tests/test_research_diff_runner.py tests/test_daily_research.py tests/test_tw13_tw14_rerun_and_notifications.py tests/test_research_site.py tests/test_tw17_multi_stock.py
       - name: Two fixed-input runner processes on an isolated local bare remote
         run: uv run --no-sync python -m scripts.research_diff_replay --self-test --out publication_validation/controlled_replay
       - name: Actual 2330 snapshot, uncertain reply and fresh-process recovery
