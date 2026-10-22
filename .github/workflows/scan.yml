@@ -75,7 +75,7 @@ jobs:
           if [ "$SCAN_MARKET" = us ]; then
             uv run --no-sync python -m scripts.scan_company_research --scan-dir output --out output/candidate_research --max-candidates 3
           else
-            uv run --no-sync python -m scripts.daily_research --scan-dir output --out output/candidate_research --market "$SCAN_MARKET" --mode "$RESEARCH_PUBLICATION_MODE" --max-candidates 3
+            uv run --no-sync python -m scripts.daily_research --scan-dir output --out output/candidate_research --market "$SCAN_MARKET" --mode "$RESEARCH_PUBLICATION_MODE" --max-candidates 3 --pilot
           fi
       - name: Candidate research summary
         if: always()

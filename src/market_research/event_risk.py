@@ -529,6 +529,19 @@ def build_tw_disclosures_and_news(
     else:
         overall = "unavailable"
 
+    ticker = symbol.removesuffix(".TW")
+    if ticker == "2330":
+        manual_links = [
+            {"label": "MOPS 公開資訊觀測站（2330 重大訊息與公告）", "url": "https://mops.twse.com.tw/mops/web/t05st01"},
+            {"label": "台積公司投資人關係（新聞中心與財務報告）", "url": "https://investor.tsmc.com/chinese"},
+            {"label": "Yahoo 奇摩股市（2330 新聞／公告人工查核頁）", "url": "https://tw.stock.yahoo.com/quote/2330.TW/news"},
+        ]
+    else:
+        manual_links = [
+            {"label": f"MOPS 公開資訊觀測站（{ticker} 重大訊息與公告）", "url": "https://mops.twse.com.tw/mops/web/t05st01"},
+            {"label": f"Yahoo 奇摩股市（{ticker} 新聞／公告人工查核頁）", "url": f"https://tw.stock.yahoo.com/quote/{symbol}/news"},
+        ]
+
     return {
         "schema_version": 1,
         "status": overall,
@@ -537,11 +550,7 @@ def build_tw_disclosures_and_news(
         "official_disclosures": official_disclosures[:10],
         "news_references": news_items,
         "deduplicated_repost_count": duplicates_removed,
-        "manual_verification_links": [
-            {"label": "MOPS 公開資訊觀測站（2330 重大訊息與公告）", "url": "https://mops.twse.com.tw/mops/web/t05st01"},
-            {"label": "台積公司投資人關係（新聞中心與財務報告）", "url": "https://investor.tsmc.com/chinese"},
-            {"label": "Yahoo 奇摩股市（2330 新聞／公告人工查核頁）", "url": "https://tw.stock.yahoo.com/quote/2330.TW/news"},
-        ],
+        "manual_verification_links": manual_links,
         "policy_notes": [
             "官方交易所公告（TWSE/MOPS）與第三方新聞索引（FinMind TaiwanStockNews）嚴格分列，新聞轉載不視為官方申報。",
             "同主題多媒體轉載已依標題正規化去重，僅保留標題、時間與來源連結，不擷取未授權全文、不生成假摘要、不做情緒評分。",
@@ -799,6 +808,18 @@ def build_tw_calendar_schedule(
     status = "available" if all(v == "available" for v in avail) else (
         "partial" if any(v == "available" for v in avail) or retained_from_previous else "unavailable"
     )
+    ticker = symbol.removesuffix(".TW")
+    if ticker == "2330":
+        cal_links = [
+            {"label": "台積公司行事曆與法說會專區（TSMC IR Financial Calendar）", "url": "https://investor.tsmc.com/chinese/quarterly-results"},
+            {"label": "MOPS 召開法人說明會一覽表", "url": "https://mops.twse.com.tw/mops/web/t100sb02_1"},
+            {"label": "Yahoo 奇摩股市（2330 行事曆與股東會頁）", "url": "https://tw.stock.yahoo.com/quote/2330.TW"},
+        ]
+    else:
+        cal_links = [
+            {"label": "MOPS 召開法人說明會一覽表", "url": "https://mops.twse.com.tw/mops/web/t100sb02_1"},
+            {"label": f"Yahoo 奇摩股市（{ticker} 行事曆與股東會頁）", "url": f"https://tw.stock.yahoo.com/quote/{symbol}"},
+        ]
     schedule = {
         "schema_version": 1,
         "status": status,
@@ -807,11 +828,7 @@ def build_tw_calendar_schedule(
         "source_statuses": source_statuses,
         "events": events,
         "retained_from_previous_ids": retained_from_previous,
-        "manual_verification_links": [
-            {"label": "台積公司行事曆與法說會專區（TSMC IR Financial Calendar）", "url": "https://investor.tsmc.com/chinese/quarterly-results"},
-            {"label": "MOPS 召開法人說明會一覽表", "url": "https://mops.twse.com.tw/mops/web/t100sb02_1"},
-            {"label": "Yahoo 奇摩股市（2330 行事曆與股東會頁）", "url": "https://tw.stock.yahoo.com/quote/2330.TW"},
-        ],
+        "manual_verification_links": cal_links,
     }
     if isinstance(previous_schedule, dict):
         schedule["schedule_changes"] = compare_calendar_schedules(previous_schedule, schedule)

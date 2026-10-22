@@ -196,3 +196,97 @@ def test_recent_closes_price_chart_rendering():
     # 2. Empty closes returns empty string
     assert _price_chart([]) == ""
     assert _price_chart(None) == ""
+
+
+def test_daily_research_pilot_batch_execution_and_shared_caching(tmp_path):
+    from scripts.daily_research import execute
+    from test_scan_company_research import artifacts
+    from test_company_report_feedback import NOW
+
+    folder = artifacts(tmp_path)
+    out = tmp_path / "reports"
+
+    requested_prices = []
+
+    def mock_research(symbol, out, now, sec_user_agent):
+        requested_prices.append(symbol)
+        out.mkdir(parents=True, exist_ok=True)
+        rep = report(stamp="2026-10-19T12:00:00+00:00")
+        rep["symbol"] = symbol
+        if symbol == "2881.TW":
+            rep["issuer"]["company_name"] = "富邦金控"
+            rep["research_readiness"]["components"]["valuation"] = {
+                "status": "not_evaluated",
+                "reason": "金融控股業不適用一般產業自由現金流估值",
+            }
+        elif symbol == "2303.TW":
+            rep["issuer"]["company_name"] = "聯華電子"
+        return rep
+
+    result = execute(
+        folder, out, research_fn=mock_research,
+        publication_fn=lambda *a, **k: {
+            "publication": {"status": "published", "issue_url": "https://example/74"},
+            "snapshot_id": "s" * 64,
+        },
+        now=NOW, symbols=["2330.TW", "2303.TW", "2881.TW"],
+    )
+
+    assert result["status"] == "complete"
+    assert requested_prices == ["2330.TW", "2303.TW", "2881.TW"]
+    assert result["pilot_coverage"]["attempted_count"] == 3
+    assert result["pilot_coverage"]["completed_count"] == 3
+    assert result["pilot_coverage"]["failed_count"] == 0
+
+    stocks = result["pilot_coverage"]["symbols"]
+    assert stocks["2330.TW"]["status"] == "complete"
+    assert stocks["2303.TW"]["status"] == "complete"
+    assert stocks["2881.TW"]["status"] == "complete"
+    assert stocks["2881.TW"]["readiness"]["valuation"]["status"] == "not_evaluated"
+
+    # Check daily_summary.md table
+    summary_md = (out / "daily_summary.md").read_text(encoding="utf-8")
+    assert "2330.TW" in summary_md
+    assert "2303.TW" in summary_md
+    assert "2881.TW" in summary_md
+    assert "not_evaluated (金融不適用)" in summary_md
+
+
+def test_daily_research_pilot_fault_isolation(tmp_path):
+    from scripts.daily_research import execute
+    from test_scan_company_research import artifacts
+    from test_company_report_feedback import NOW
+
+    folder = artifacts(tmp_path)
+    out = tmp_path / "reports"
+
+    def mock_research(symbol, out, now, sec_user_agent):
+        if symbol == "2454.TW":
+            raise TimeoutError("TWSE network timeout for 2454.TW")
+        rep = report(stamp="2026-10-19T12:00:00+00:00")
+        rep["symbol"] = symbol
+        return rep
+
+    result = execute(
+        folder, out, research_fn=mock_research,
+        publication_fn=lambda *a, **k: {
+            "publication": {"status": "published", "issue_url": "https://example/74"},
+            "snapshot_id": "s" * 64,
+        },
+        now=NOW, symbols=["2330.TW", "2454.TW", "2303.TW"],
+    )
+
+    assert result["pilot_coverage"]["attempted_count"] == 3
+    assert result["pilot_coverage"]["completed_count"] == 2
+    assert result["pilot_coverage"]["failed_count"] == 1
+
+    stocks = result["pilot_coverage"]["symbols"]
+    assert stocks["2330.TW"]["status"] == "complete"
+    assert stocks["2454.TW"]["status"] == "failed"
+    assert stocks["2454.TW"]["error_type"] == "TimeoutError"
+    assert stocks["2303.TW"]["status"] == "complete"
+
+    summary_md = (out / "daily_summary.md").read_text(encoding="utf-8")
+    assert "失敗 1" in summary_md
+    assert "2454.TW" in summary_md
+
