@@ -1,7 +1,7 @@
 {
   "consumed_event_ids": [],
   "consumed_financial_version": "ifrs-2026-06-30",
-  "last_completed_snapshot_id": "23e38d00d8009b70b0b8278999002a66cbb4774848d99304694168bdd800a070",
+  "last_completed_snapshot_id": "c6545c30858e6a184f6e8b8fcdfca0d98906e3ce66752f6b1ee48d838732be5d",
   "pending_rerun": null,
   "schema_version": 1,
   "symbol": "2330.TW"
