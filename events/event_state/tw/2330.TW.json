@@ -1,7 +1,7 @@
 {
   "coverage": "recent_daily_snapshot_only_not_a_full_history",
   "market": "tw",
-  "observed_at_utc": "2026-10-23T17:10:18.796124+00:00",
+  "observed_at_utc": "2026-10-24T07:26:28.262438+00:00",
   "schema_version": 1,
   "seen_ids": [],
   "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
