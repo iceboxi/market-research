@@ -1,0 +1,35 @@
+{
+  "errors": 10,
+  "event": "schedule",
+  "expected_warnings": 0,
+  "health": "critical",
+  "input_hashes": [],
+  "market": "tw",
+  "mismatches": 0,
+  "observed_at_utc": "2026-10-26T17:34:03.762865+00:00",
+  "reasons": [
+    "scan_failed_or_partial"
+  ],
+  "requested": 10,
+  "run_id": "40369616730",
+  "run_url": "https://github.com/iceboxi/market-research/actions/runs/40369616730",
+  "scan_outcome": "failure",
+  "scanned": 0,
+  "schema_version": 1,
+  "session_dates": {},
+  "signals": 0,
+  "source_sha": "c57871883ee093a5ba1ac3ab23e37a41272b2143",
+  "strategies": [
+    {
+      "id": "sakata_three_soldiers",
+      "params": {
+        "max_upper_shadow_to_range": 0.25,
+        "min_body_to_range": 0.5,
+        "prior_decline_min_pct": 2.0,
+        "prior_trend_bars": 5
+      },
+      "version": "0.1.0"
+    }
+  ],
+  "unexpected_warnings": 0
+}
