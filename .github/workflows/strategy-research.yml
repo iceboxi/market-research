@@ -1,6 +1,7 @@
 name: Isolated strategy research
 on:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - 'scripts/strategy_research.py'
       - 'src/market_research/evening_star.py'

@@ -1,6 +1,7 @@
 name: On-demand company research
 on:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - 'src/market_research/fundamentals.py'
       - 'src/market_research/financial_history.py'

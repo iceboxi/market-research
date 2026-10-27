@@ -2,6 +2,7 @@ name: TW financial source adoption
 on:
   workflow_dispatch:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - 'scripts/tw_source_probe.py'
       - 'tests/test_tw_source_probe.py'

@@ -1,6 +1,7 @@
 name: Research publication acceptance
 on:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - 'src/market_research/research_snapshot.py'
       - 'src/market_research/research_comparison.py'

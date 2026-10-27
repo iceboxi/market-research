@@ -1,6 +1,7 @@
 name: Final Sakata research acceptance
 on:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - '.github/workflows/final-acceptance.yml'
   workflow_dispatch:

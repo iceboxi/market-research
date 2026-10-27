@@ -1,6 +1,7 @@
 name: Exploratory Sakata backtest
 on:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - 'src/market_research/backtest.py'
       - 'src/market_research/provider.py'

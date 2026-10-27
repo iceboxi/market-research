@@ -1,6 +1,7 @@
 name: Historical holdout quality evaluation
 on:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - 'scripts/holdout_evaluation.py'
       - 'tests/test_holdout_evaluation.py'
