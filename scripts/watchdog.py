@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from scripts import monitor
 
-SLOTS = {"tw": (11, 30, frozenset(range(5))),
+SLOTS = {"tw": (7, 40, frozenset(range(5))),
          "us": (0, 45, frozenset(range(1, 6)))}
 GRACE = timedelta(hours=2)
 MAX_LATENESS = timedelta(hours=5)

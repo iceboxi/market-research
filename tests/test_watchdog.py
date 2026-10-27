@@ -16,10 +16,10 @@ def scheduled(date, status="completed", conclusion="success"):
 
 def test_taiwan_and_us_cron_are_independent_over_weekends():
     t = when("2026-10-20")
-    assert watchdog.latest_due_slot("tw", t) == when("2026-10-19", 11, 30)
+    assert watchdog.latest_due_slot("tw", t) == when("2026-10-19", 7, 40)
     assert watchdog.latest_due_slot("us", t) == when("2026-10-20", 0, 45)
     sat = when("2026-10-17")
-    assert watchdog.latest_due_slot("tw", sat) == when("2026-10-16", 11, 30)
+    assert watchdog.latest_due_slot("tw", sat) == when("2026-10-16", 7, 40)
     assert watchdog.latest_due_slot("us", sat) == when("2026-10-17", 0, 45)
 
 
@@ -57,20 +57,20 @@ def test_queued_run_is_distinct_from_missing_or_running_job():
 
 
 def test_missing_schedule_feedback_has_freshness_next_slot_and_last_success():
-    now = when("2026-10-19", 16, 30)
-    prior = scheduled(when("2026-10-16", 11, 35))
-    prior["run_started_at"] = "2026-10-16T11:36:00Z"
-    us = scheduled(when("2026-10-17", 1, 0))
+    now = when("2026-10-29", 12, 30)
+    prior = scheduled(when("2026-10-28", 7, 45))
+    prior["run_started_at"] = "2026-10-28T07:46:00Z"
+    us = scheduled(when("2026-10-29", 1, 0))
     record = watchdog.record_for("tw", [prior, us], "owner/repo", now)
 
     assert record["reasons"] == ["scheduled_run_missing"]
     feedback = record["schedule_feedback"]
-    assert feedback["observed_at_utc"] == "2026-10-19T16:30:00+00:00"
+    assert feedback["observed_at_utc"] == "2026-10-29T12:30:00+00:00"
     assert feedback["phase"] == "not_created"
     assert feedback["freshness"] == "overdue"
     assert feedback["grace_seconds"] == 7200
-    assert feedback["grace_expires_utc"] == "2026-10-19T13:30:00+00:00"
-    assert feedback["next_scheduled_utc"] == "2026-10-20T11:30:00+00:00"
+    assert feedback["grace_expires_utc"] == "2026-10-29T09:40:00+00:00"
+    assert feedback["next_scheduled_utc"] == "2026-10-30T07:40:00+00:00"
     assert feedback["last_successful_scheduled_run"]["created_at"] == prior["created_at"]
     assert feedback["last_successful_scheduled_run"]["run_started_at"] == prior["run_started_at"]
     assert feedback["matched_run"] is None
@@ -107,20 +107,20 @@ def test_feedback_keeps_actual_execution_phase_and_times(status, conclusion, pha
 
 
 def test_future_and_push_runs_do_not_satisfy_schedule_feedback():
-    future = scheduled(when("2026-10-20", 11, 35))
-    push = scheduled(when("2026-10-19", 11, 35))
+    future = scheduled(when("2026-10-30", 7, 45))
+    push = scheduled(when("2026-10-29", 7, 45))
     push["event"] = "push"
-    record = watchdog.record_for("tw", [future, push], "owner/repo", when("2026-10-19", 16, 30))
+    record = watchdog.record_for("tw", [future, push], "owner/repo", when("2026-10-29", 12, 30))
     assert record["reasons"] == ["scheduled_run_missing"]
     assert record["schedule_feedback"]["last_successful_scheduled_run"] is None
 
 
 @pytest.mark.parametrize("market,expected", [
-    ("tw", "2026-10-19T11:30:00+00:00"),
-    ("us", "2026-10-20T00:45:00+00:00"),
+    ("tw", "2026-11-02T07:40:00+00:00"),
+    ("us", "2026-11-03T00:45:00+00:00"),
 ])
 def test_next_slot_follows_market_cron_over_weekend(market, expected):
-    record = watchdog.record_for(market, [], "owner/repo", when("2026-10-17", 17, 0))
+    record = watchdog.record_for(market, [], "owner/repo", when("2026-10-31", 17, 0))
     assert record["schedule_feedback"]["next_scheduled_utc"] == expected
 
 
@@ -138,7 +138,7 @@ def test_issue_namespace_is_separate(monkeypatch):
             stdout = "[]"
         return Completed()
     monkeypatch.setattr(monitor, "command", fake)
-    record = watchdog.record_for("tw", [], "owner/repo", when("2026-10-20"))
+    record = watchdog.record_for("tw", [], "owner/repo", when("2026-10-30"))
     monitor.alert(record, "owner/repo")
     creation = next(c for c in calls if c[:3] == ("gh", "issue", "create"))
     assert "[market-watchdog]" in creation[creation.index("--title") + 1]
@@ -153,11 +153,19 @@ def test_before_installation_does_not_create_false_incident(monkeypatch):
         assert record["reasons"] == ["first_scheduled_slot_not_due"]
 
 def test_first_live_due_slot_is_monitored():
-    at = when("2026-10-20")
-    for market in ("tw", "us"):
+    for market, at in (("tw", when("2026-10-28", 9, 40)), ("us", when("2026-10-20"))):
         record = watchdog.record_for(market, [], "owner/repo", at)
         assert record["health"] == "critical"
         assert "scheduled_run_missing" in record["reasons"]
+
+
+def test_slots_before_moved_taiwan_cron_do_not_alarm():
+    # The TW cron moved from 11:30 to 07:40 UTC; 07:40 slots before the first
+    # live one never existed, so a run created under the old cron cannot match.
+    old_cron_run = scheduled(when("2026-10-27", 16, 0))
+    record = watchdog.record_for("tw", [old_cron_run], "owner/repo", when("2026-10-28", 9, 39))
+    assert record["health"] == "warming_up"
+    assert record["reasons"] == ["first_scheduled_slot_not_due"]
 
 
 def test_github_scheduled_run_schema_and_query(monkeypatch):
@@ -183,7 +191,7 @@ def test_probe_writes_readable_feedback_without_issue_mutations(monkeypatch, tmp
     class Clock(datetime):
         @classmethod
         def now(cls, tz=None):
-            return when("2026-10-19", 16, 30)
+            return when("2026-10-29", 12, 30)
 
     calls = []
     def api(*args, **kwargs):
@@ -204,11 +212,11 @@ def test_probe_writes_readable_feedback_without_issue_mutations(monkeypatch, tmp
     receipt = json.loads((tmp_path / "feedback/schedule_feedback.json").read_text())
     report = (tmp_path / "feedback/schedule_feedback.md").read_text()
     assert receipt["schema_version"] == 1
-    assert receipt["observed_at_utc"] == "2026-10-19T16:30:00+00:00"
+    assert receipt["observed_at_utc"] == "2026-10-29T12:30:00+00:00"
     assert receipt["markets"]["tw"]["schedule_feedback"]["phase"] == "not_created"
     assert receipt["mutations"] == "not_attempted"
-    assert "2026-10-20T11:30:00+00:00" in report
-    assert "2026-10-20T19:30:00+08:00" in report
+    assert "2026-10-30T07:40:00+00:00" in report
+    assert "2026-10-30T15:40:00+08:00" in report
     assert "grace" in report
     assert "not_evaluated" in report
     assert summary.read_text() == report
