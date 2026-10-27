@@ -1,6 +1,7 @@
 name: Generate dependency lock
 on:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - 'pyproject.toml'
       - '.github/workflows/lock.yml'

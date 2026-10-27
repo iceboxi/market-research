@@ -1,6 +1,7 @@
 name: State-store live acceptance
 on:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - 'scripts/state_store.py'
       - 'scripts/monitor.py'

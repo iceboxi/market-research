@@ -1,6 +1,7 @@
 name: Research readiness gate
 on:
   push:
+    branches: ['**']  # tag pushes skip path filters; see docs/WORKFLOW_BRANCH_AUDIT.md E
     paths:
       - 'scripts/research_gate.py'
       - 'config/research_policy.yaml'

@@ -108,5 +108,32 @@
 - `ops-live-acceptance.yml` 因此 dispatch 了 main 上的 TW 掃描（run 40512107051；另一個 40512112438 已取消）。
 - `ops-validation.yml` 在 main 寫入 synthetic `history/2026/10/20261027-run-40512092053.json`，並建立又關閉了 #102、#103。
 - 本次清理移除該 synthetic 檔，並把 `ops-validation.yml` 的 push 限定在 branch。修改這個檔案本身也會觸發它，所以已透過 Actions 將它設為 `disabled_manually`（與 `scripts/state_store_acceptance.py` 的 cutover 前置條件一致）；需要 smoke test 時，先 `gh workflow enable ops-validation.yml`。
-- 其他只用 `push.paths` 的 workflow 在推 tag 時仍會執行，推 tag 前要先確認。
+- 後續所有帶 `push` 的 workflow 都加上 `branches: ['**']`，推 tag 不再觸發任何 push workflow（見 F）。
 
+## F. 現行 workflow 清單（2026-10-27，19 個）
+
+所有 `push` trigger 都限定 `branches: ['**']`，tag push 不會觸發。
+
+| YAML | 觸發 | 用途 | 備註 |
+| --- | --- | --- | --- |
+| `scan.yml` | schedule、dispatch、push | **[User]** 每日盤後掃描、固定研究、TW 發布後部署 Pages | TW 15:40／US 08:45（臺灣）名目排程 |
+| `company-research.yml` | dispatch、push | **[User]** 指定個股研究 | |
+| `event-watch.yml` | schedule、dispatch | **[User]** 官方事件觀察，寫 `research-state/events` | |
+| `research-publication.yml` | dispatch、push | push／validation：發布驗收；dispatch production：手動發布 2330 並部署 Pages | production 只限 main dispatch |
+| `watchdog.yml` | schedule、dispatch | **[Ops]** 排程缺席／失敗監督，寫 incident Issue | 名目 10:15（臺灣） |
+| `test.yml` | PR、push、dispatch | **[CI]** Unit tests | |
+| `state-store-acceptance.yml` | push、dispatch | **[CI/Ops]** state store 驗收；dispatch 可做一次性 operations cutover | |
+| `remote-acceptance.yml` | dispatch | **[CI]** dispatch 關聯驗收 | 搭配 child |
+| `synthetic-acceptance-child.yml` | dispatch | **[CI]** 被 remote acceptance 觸發 | |
+| `ops-validation.yml` | push（branch） | **[Ops]** 寫入權限 smoke test | `disabled_manually` |
+| `lock.yml` | push、dispatch | **[Build]** 檢查／產生 `uv.lock` | main 上可能 commit |
+| `tw-source-adoption.yml` | dispatch、push | **[Data]** 台股來源探測 | |
+| `sec-live-acceptance.yml` | dispatch | **[Data]** SEC 財報 live 驗收 | 美股 gate |
+| `prospective-bootstrap.yml` | dispatch | **[Migration]** prospective state 遷移 | #19 未完成 |
+| `strategy-research.yml` | dispatch、push | **[Research]** 單一型態研究 | |
+| `final-acceptance.yml` | dispatch、push | **[Research]** 4 型態 × 2 市場批次重跑 | |
+| `backtest.yml` | dispatch、push | **[Research]** 探索性回測 | |
+| `holdout.yml` | dispatch、push | **[Research]** 樣本外評估 | |
+| `research-gate.yml` | dispatch、push | **[Research]** 研究准入 gate | |
+
+Actions 列表中的 `tw-ifrs-discovery-temp.yml` 不在 main，是舊分支留下的項目；它的 run 可能是 #34 的證據，因此保留。
