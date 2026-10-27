@@ -20,15 +20,10 @@
 
 **研究限制：** 目前股票範圍是 pilot，估值有研究示意用途。事件已觀察 ≠ 利多／利空；ATR、支撐壓力 ≠ 可執行停損目標；系統尚未提供完整可信的交易建議，亦未自動下單。
 
-## 正式事件監控尚需一次性遷移
+## 正式事件 state 遷移（已完成）
 
-[Issue #9：官方事件 state](https://github.com/iceboxi/market-research/issues/9) 是正式上線 gate。
+[Issue #9：官方事件 state](https://github.com/iceboxi/market-research/issues/9) 已於 2026-10-19 驗收關閉：[Bootstrap Run #39205820593](https://github.com/iceboxi/market-research/actions/runs/39205820593) 成功，之後兩次真實 TWSE 觀察通過。一次性的 `Official event state bootstrap` workflow 已於 2026-10-27 移除；若日後經核准需要重新 bootstrap，從 git 歷史還原，不在日常入口保留。
 
-- 前次 [Bootstrap Run #39196950385](https://github.com/iceboxi/market-research/actions/runs/39196950385) **失敗**：舊事件目錄為空，導致 `git add events` 找不到路徑。
-- 修復已透過 [PR #27](https://github.com/iceboxi/market-research/pull/27) 合併。修復後的 Unit／State-store acceptance 綠燈 **不代表正式 Bootstrap 已成功**。
-- **事件監控仍需保持停用**，由具 GitHub Actions 權限者在 [Official event state bootstrap](https://github.com/iceboxi/market-research/actions/workflows/event-state-bootstrap.yml) 建立**新的** `main` Run，勾選 `confirm_migration=true`；**不要 Re-run 舊失敗 Run**。
-- 必須檢查 `bootstrap_receipt.json` 和 `research-state/.state-store.json` 的 `namespaces.events`；如果 `record_count=0`，這是合法的空基線，可能還沒有可見的 `events/` 目錄。
-- Bootstrap 成功後重新啟用事件監控，**循序**手動執行兩次真實 TWSE 觀察，比對 `restore_receipt.json`、`watch_receipt.json`、`state_receipt.json`。如果來源失敗，不可把「沒有事件」宣稱為驗收通過。
 - 自然排程仍由 [Issue #14](https://github.com/iceboxi/market-research/issues/14) 獨立驗收。
 
 詳細 migration runbook：[EVENT_STATE_MIGRATION.md](EVENT_STATE_MIGRATION.md)。**一般使用者不應自行重新初始化、修改或刪除 `research-state`。**

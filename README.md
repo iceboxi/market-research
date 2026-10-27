@@ -145,7 +145,7 @@ For a read-only engineering check, run `python3 -m scripts.watchdog --repo icebo
 
 ## Operational acceptance and first live schedule
 
-The `Operations live acceptance` workflow probes GitHub scheduled-run metadata in read-only mode (`python3 -m scripts.watchdog --repo OWNER/REPO --probe`) and triggers a real `workflow_dispatch` TW scan. The dispatched scan exercises long-term metadata archiving and issue sync; its run/Artifact must be inspected separately. No test Issue is created by the probe. The independent watchdog does not alarm for slots preceding `config/operations.json`'s first live slot. Metadata-only `history/` commits do not trigger unnecessary unit-test workflows.
+The read-only schedule probe (`python3 -m scripts.watchdog --repo OWNER/REPO --probe`, with `gh` auth) writes schedule feedback without creating Issues. The one-time `Operations live acceptance` workflow that wrapped it was removed on 2026-10-27 after its acceptance; dispatch `EOD market scan` directly when a manual TW run is needed, and inspect its run/Artifact separately. The independent watchdog does not alarm for slots preceding `config/operations.json`'s first live slot. Metadata-only `history/` commits do not trigger unnecessary unit-test workflows.
 
 
 ## Strategy-independent isolated research
