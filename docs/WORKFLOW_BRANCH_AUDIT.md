@@ -104,3 +104,8 @@
   - `archive/feat/chat-event-state-store-m01`（PR #15 合併後的 3 個 commit；#16 與後續版本已取代，唯一未進 main 的是 PR-only `event-watch-source-probe.yml`）
   - `archive/feat/codex-event-state-reliability`（#9 superseded WIP）
 
+**刪除前推送 archive tag 的副作用**：GitHub 對 tag push 不套用 `paths` 過濾，所以只有 `push.paths` 的 workflow 都被觸發了。
+- `ops-live-acceptance.yml` 因此 dispatch 了 main 上的 TW 掃描（run 40512107051；另一個 40512112438 已取消）。
+- `ops-validation.yml` 在 main 寫入 synthetic `history/2026/10/20261027-run-40512092053.json`，並建立又關閉了 #102、#103。
+- 本次清理移除該 synthetic 檔，並把 `ops-validation.yml` 的 push 限定在 branch。其他只用 `push.paths` 的 workflow 在推 tag 時仍會執行，推 tag 前要先確認。
+

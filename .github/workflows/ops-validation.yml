@@ -1,6 +1,9 @@
 name: Operations permission smoke test
 on:
   push:
+    # Branches only: path filters are not evaluated for tag pushes, and this
+    # smoke test writes synthetic history to main and opens/closes Issues.
+    branches: ['**']
     paths:
       - '.github/workflows/ops-validation.yml'
 permissions:
