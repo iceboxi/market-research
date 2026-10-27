@@ -47,10 +47,17 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
     results, snapshots, records = [], [], []
     for m in selected:
         today = now.astimezone(ZoneInfo(markets[m]["timezone"])).date()
+        # Live providers may confirm ad-hoc exchange closures; replay and
+        # fixture providers keep the published calendar unchanged.
+        closed = (tuple(provider.unscheduled_closures(m, now))
+                  if strict_freshness and hasattr(provider, "unscheduled_closures") else ())
+        if closed:
+            manifest.setdefault("unscheduled_closures", {})[m] = [d.isoformat() for d in closed]
         for symbol in markets[m]["symbols"]:
             try:
                 daily = load_daily_bars(provider, m, symbol, period, now,
-                                        markets[m]["timezone"], strict_freshness)
+                                        markets[m]["timezone"], strict_freshness,
+                                        closed_sessions=closed)
                 df = daily.frame
                 checked = daily.metadata
                 quality["warnings"].extend(daily.warnings)
@@ -102,6 +109,8 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
                f"Symbols: {manifest['scanned_symbols']} | Errors: {manifest['error_count']}",
                f"Matches: {len(signals)}", "", "## Matches"]
     summary.extend(f"- {r['symbol']}: {r['strategy_id']} {r['metrics']}" for r in signals)
+    for m, days in manifest.get("unscheduled_closures", {}).items():
+        summary.append(f"Unscheduled exchange closures ({m}, official market record): {', '.join(days)}")
     if quality["warnings"]:
         summary.append("## Data warnings")
         summary.extend(f"- {w['symbol']} {w['reason']} on {w['excluded_date']}" for w in quality["warnings"])
