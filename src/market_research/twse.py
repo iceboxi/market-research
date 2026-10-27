@@ -4,16 +4,25 @@ The STOCK_DAY endpoint reports one listed symbol per calendar month.
 This adapter never forward-fills missing official trading records.
 """
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import time
 from contextlib import nullcontext
 from zoneinfo import ZoneInfo
 
+import exchange_calendars as xcals
 import httpx
 import pandas as pd
 
+from .market_calendar import expected_complete_session
+
 TWSE_URL = "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
+TWSE_MARKET_URL = "https://www.twse.com.tw/exchangeReport/FMTQIK"
 REQUIRED = ("日期", "成交股數", "開盤價", "最高價", "最低價", "收盤價")
+# STOCK_DAY already had the same-day session by 15:15 Taipei (close + 1h45m);
+# a session absent from the market-wide record is trusted as closed only
+# well after that, so a slow publication is never mistaken for a closure.
+CLOSURE_CONFIRMATION_LAG = timedelta(hours=6)
+CLOSURE_LOOKBACK_SESSIONS = 5
 
 
 def parse_twse_roc_date(value: str) -> date:
@@ -56,6 +65,49 @@ def _month_starts(from_date: date, to_date: date):
         yield date(n // 12, n % 12 + 1, 1)
 
 
+def twse_traded_dates(month: date, get=None) -> set[date]:
+    """Market-wide TWSE trading days of one month (FMTQIK)."""
+    params = {"response": "json", "date": month.strftime("%Y%m01")}
+    if get is None:
+        response = httpx.get(TWSE_MARKET_URL, params=params, timeout=20, follow_redirects=True,
+                             headers={"User-Agent": "market-research/0.1 (research-only)"})
+    else:
+        response = get(TWSE_MARKET_URL, params=params, timeout=20)
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("stat") != "OK":
+        raise ValueError(f"TWSE FMTQIK {month:%Y-%m}: {payload.get('stat', 'unknown status')}")
+    column = payload["fields"].index("日期")
+    return {parse_twse_roc_date(row[column]) for row in payload.get("data", [])}
+
+
+def twse_unscheduled_closures(now: datetime, get=None) -> tuple[date, ...]:
+    """Recent XTAI sessions that TWSE's market-wide record shows were not traded.
+
+    exchange_calendars cannot know ad-hoc closures such as typhoon days. Any
+    source problem, a session that may still be unpublished, or a window
+    without a traded anchor returns () so strict freshness keeps the calendar.
+    """
+    calendar = xcals.get_calendar("XTAI")
+    expected = pd.Timestamp(expected_complete_session("tw", now))
+    sessions = list(calendar.sessions_window(expected, -CLOSURE_LOOKBACK_SESSIONS))
+    try:
+        traded = set()
+        for month in sorted({date(s.year, s.month, 1) for s in sessions}):
+            traded |= twse_traded_dates(month, get)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return ()
+    utc_now = pd.Timestamp(now).tz_convert("UTC")
+    closures = []
+    for session in reversed(sessions):
+        if session.date() in traded:
+            return tuple(sorted(closures))
+        if utc_now < calendar.session_close(session) + CLOSURE_CONFIRMATION_LAG:
+            return ()
+        closures.append(session.date())
+    return ()
+
+
 @dataclass
 class TwseDailyProvider:
     """Official unadjusted OHLC and shares traded for TWSE-listed .TW stocks."""
@@ -64,6 +116,9 @@ class TwseDailyProvider:
     request_pause_seconds: float = 0.20
     timeout_retries: int = 2
     source: str = "twse_stock_day_official_raw_ohlcv"
+
+    def unscheduled_closures(self, market: str, now: datetime) -> tuple[date, ...]:
+        return twse_unscheduled_closures(now, get=self.get) if market == "tw" else ()
 
     def load(self, symbol: str, period: str = "1y") -> pd.DataFrame:
         if not symbol.endswith(".TW") or not symbol.split(".")[0].isdigit():

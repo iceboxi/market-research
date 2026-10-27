@@ -83,7 +83,7 @@ This repository currently covers only a handful of example tickers. It is **not*
 
 ## Foundation: freshness and offline replay
 
-`market-scan --strict-freshness` validates the latest completed XTAI/XNYS session, with a 60-minute safety delay after the close. Calendar outages or unexpected official closures still require review. The default remains diagnostic/non-strict until live freshness behavior has passed CI. Local opt-in snapshots can be created with `market-scan --snapshot-output snapshots/` and replayed with `market-scan --replay-dir snapshots/`. Snapshots are gitignored and must not be uploaded to this public repository without redistribution rights. Read `docs/STRATEGY_SPEC.md` before implementing new strategies. This project already has a manual exploratory backtest workflow.
+`market-scan --strict-freshness` validates the latest completed XTAI/XNYS session, with a 60-minute safety delay after the close. For TW live scans, a recent XTAI session that TWSE's market-wide FMTQIK record still lacks 6 hours after the close (e.g. a typhoon closure) is treated as an unscheduled closure and recorded as `session.unscheduled_closures`; any FMTQIK failure keeps the calendar rule. Other calendar outages or unexpected closures still require review. The default remains diagnostic/non-strict until live freshness behavior has passed CI. Local opt-in snapshots can be created with `market-scan --snapshot-output snapshots/` and replayed with `market-scan --replay-dir snapshots/`. Snapshots are gitignored and must not be uploaded to this public repository without redistribution rights. Read `docs/STRATEGY_SPEC.md` before implementing new strategies. This project already has a manual exploratory backtest workflow.
 
 
 ## Shared market-data contract

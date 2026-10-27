@@ -35,7 +35,7 @@ class DailyBars:
 
 def load_daily_bars(provider, market: str, symbol: str, period: str,
                     now: datetime, timezone: str,
-                    strict_freshness: bool = False) -> DailyBars:
+                    strict_freshness: bool = False, closed_sessions=()) -> DailyBars:
     if now.tzinfo is None:
         raise ValueError("now must have timezone")
     if market not in PRICE_BASIS:
@@ -44,7 +44,7 @@ def load_daily_bars(provider, market: str, symbol: str, period: str,
     if frame.empty:
         raise ValueError(f"{symbol}: empty daily history")
     frame = frame.copy()
-    expected = expected_complete_session(market, now)
+    expected = expected_complete_session(market, now, closed_sessions)
     warnings = []
     last = pd.Timestamp(frame.index[-1]).date()
     # The same market-session rule applies to both daily screening and research
@@ -64,7 +64,8 @@ def load_daily_bars(provider, market: str, symbol: str, period: str,
     local_date = now.astimezone(ZoneInfo(timezone)).date()
     checked = validate_daily(frame, symbol, market_today=local_date)
     if strict_freshness:
-        checked["session"] = require_complete_session(market, frame.index[-1], now)
+        checked["session"] = require_complete_session(market, frame.index[-1], now,
+                                                      closed_sessions)
     elif pd.Timestamp(frame.index[-1]).date() < expected:
         warnings.append({
             "market": market, "symbol": symbol,
