@@ -48,7 +48,7 @@
 
 [EOD schedule watchdog](https://github.com/iceboxi/market-research/actions/workflows/watchdog.yml) 的 Summary 會列出觀測時間、判定中的 slot、grace、下一次預期排程（UTC 與臺灣時間），以及同時間 window 內最後成功的自然 job。`not_created` 表示回傳範圍內沒有對應 run，`queued` 是已建立但等待執行，`in_progress` 是尚未完成，`execution_failed` 是已結束但失敗。這些分類與資料來源健康分開；仍須查看 scan Artifact，確認實際市場、資料日期與 coverage。
 
-台股名目排程為臺灣平日 19:30；watchdog 名目排程為每日 12:15。兩者都可能延遲。2 小時 grace 只決定何時可判定 slot 過期，**不會安排在 grace 到期那刻執行檢查**。最近名目 slot 尚在 grace 內時，摘要會另外標示；下一次預期時間也不等於 GitHub 保證的開始時間。
+台股名目排程為臺灣平日 15:40；watchdog 名目排程為每日 10:15，排在台股 slot 之前，讓它判定前一個已結束的台股 slot，而不是當天尚未建立的 run。兩者都可能延遲。2 小時 grace 只決定何時可判定 slot 過期，**不會安排在 grace 到期那刻執行檢查**。最近名目 slot 尚在 grace 內時，摘要會另外標示；下一次預期時間也不等於 GitHub 保證的開始時間。
 
 若長時間沒有新 Summary，請工程人員用唯讀入口 `python3 -m scripts.watchdog --repo iceboxi/market-research --probe --out schedule_output` 取得當下 JSON／Markdown feedback，核對 workflow 是否 active、default branch、cron 與真正的 `event=schedule` runs。未找到 run 時保留根因未確認，不能以手動或 push 綠燈替代自然驗收，也不要重做 baseline。此 probe 不寫 state 或 incident Issue；資料僅涵蓋 API 回傳範圍，實際市場仍需 Artifact 證實。
 

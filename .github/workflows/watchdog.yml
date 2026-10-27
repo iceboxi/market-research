@@ -1,7 +1,9 @@
 name: EOD schedule watchdog
 on:
   schedule:
-    - cron: '15 4 * * *'
+    # Before the 07:40 UTC TW slot + 2h grace even with hours of GitHub delay, so it
+    # judges the previous finished TW slot rather than today's not-yet-created run.
+    - cron: '15 2 * * *'
   workflow_dispatch:
 permissions:
   actions: read
