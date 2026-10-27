@@ -9,6 +9,10 @@ No full financials, price histories or disclosure bodies are committed.
 
 ## Production bootstrap
 
+> Completed under Issue #9 on 2026-10-19 ([run 39205820593](https://github.com/iceboxi/market-research/actions/runs/39205820593)).
+> The one-time `event-state-bootstrap.yml` workflow was removed on 2026-10-27;
+> restore it from git history only if a re-bootstrap is explicitly approved.
+
 Explicit one-time migration from the tracked legacy main `event_state` prefix:
 disable the existing **Official disclosure watch** workflow and wait for any
 in-flight jobs to finish **before starting the production migration**.

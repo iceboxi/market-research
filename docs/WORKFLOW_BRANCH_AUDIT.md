@@ -79,11 +79,34 @@
 
 - [x] README 增加最常使用的 3 個 Workflow 入口（本次 PR）。
 - [x] Actions 操作指南、19 Workflow 技術分類與 21 分支初步盤點（本次 PR）。
-- [ ] #9 首次空事件狀態 Bootstrap 成功、兩次 TWSE 觀察及 receipt 證據。
+- [x] #9 首次空事件狀態 Bootstrap 成功、兩次 TWSE 觀察及 receipt 證據。
 - [ ] #14 真正 `event=schedule` 的 TW／US 期別驗收。
 - [ ] #19 Prospective 正式 migration gate 完成。
-- [ ] 逐一比對 Branch 額外 Commit 並提出確認後的清理計畫。
+- [x] 逐一比對 Branch 額外 Commit 並提出確認後的清理計畫（見 E）。
 - [ ] 規劃名稱收斂、實測必要的 PR status checks / reusable workflows；不得因 UI 整潔省略必要安全 gate。
-- [ ] 再由使用者同意後，以 GitHub 原生刪除 merged/closed branches，長期考慮 Settings → Pull Requests → Automatically delete head branches（永續 state branches 需例外）。
+- [x] 使用者同意後刪除 merged/closed branches（見 E）；Settings → Pull Requests → Automatically delete head branches 尚未變更。
 
 因為這是 **docs-only** 變更，只需最新 PR SHA 的 Unit/tests Required Check；不把與文件無關的 EOD 或 live-source 排程成功當成此 PR 驗收依據。
+
+## E. 2026-10-27 清理紀錄
+
+使用者要求清理可刪除的分支與無用 workflow。
+
+**Workflow（21 → 19）**：移除已完成且不再是 gate 的一次性入口。
+- `event-state-bootstrap.yml`：#9 已驗收關閉（run 39205820593）。
+- `ops-live-acceptance.yml`：2026-10-17 一次性運作驗收；read-only probe 仍可用 `python3 -m scripts.watchdog --probe`，手動 TW run 直接 dispatch `scan.yml`。
+
+保留：`final-acceptance.yml`（`docs/strategies/ACCEPTANCE.md` 的批次重跑入口）、`ops-validation.yml`（保留但停用；`scripts/state_store_acceptance.py` 的 operations cutover 會檢查它已停用）、`remote-acceptance.yml`＋`synthetic-acceptance-child.yml`（`scripts/acceptance_gate.py` 與 `docs/REMOTE_ACCEPTANCE_O04.md`）、`prospective-bootstrap.yml`（#19 未完成）、`sec-live-acceptance.yml`（美股 gate）。
+
+**Remote branch（55 → 3）**：保留 `main`、`research-state`、`research-state-validation`。
+- 刪除 50 條：PR 已 merged／closed，且 branch head 等於 PR head（內容保存在 main 或 `refs/pull/N/head`）。
+- 刪除前轉為 tag 保存（有未合併 commit、已被取代）：
+  - `archive/feat/chat-event-state-store-m01`（PR #15 合併後的 3 個 commit；#16 與後續版本已取代，唯一未進 main 的是 PR-only `event-watch-source-probe.yml`）
+  - `archive/feat/codex-event-state-reliability`（#9 superseded WIP）
+
+**刪除前推送 archive tag 的副作用**：GitHub 對 tag push 不套用 `paths` 過濾，所以只有 `push.paths` 的 workflow 都被觸發了。
+- `ops-live-acceptance.yml` 因此 dispatch 了 main 上的 TW 掃描（run 40512107051；另一個 40512112438 已取消）。
+- `ops-validation.yml` 在 main 寫入 synthetic `history/2026/10/20261027-run-40512092053.json`，並建立又關閉了 #102、#103。
+- 本次清理移除該 synthetic 檔，並把 `ops-validation.yml` 的 push 限定在 branch。修改這個檔案本身也會觸發它，所以已透過 Actions 將它設為 `disabled_manually`（與 `scripts/state_store_acceptance.py` 的 cutover 前置條件一致）；需要 smoke test 時，先 `gh workflow enable ops-validation.yml`。
+- 其他只用 `push.paths` 的 workflow 在推 tag 時仍會執行，推 tag 前要先確認。
+
