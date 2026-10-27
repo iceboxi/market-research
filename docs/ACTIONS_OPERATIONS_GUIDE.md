@@ -7,7 +7,7 @@
 
 | 需求 | Workflow | 如何執行 | 哪裡看結果 |
 | --- | --- | --- | --- |
-| 台股／美股盤後掃描 | [EOD market scan](https://github.com/iceboxi/market-research/actions/workflows/scan.yml) | 自動排程；要人工測試就 Run workflow，選擇 `main` 與 TW/US/both | Run Summary 和 `market-scan-...` Artifact；TW/both 的 `candidate-research-...` 含[每日固定2330與候選摘要](TW_DAILY_RESEARCH.md)，零候選也發布固定報告 |
+| 台股／美股盤後掃描 | [EOD market scan](https://github.com/iceboxi/market-research/actions/workflows/scan.yml) | 自動排程；要人工測試就 Run workflow，選擇 `main` 與 TW/US/both | Run Summary 和 `market-scan-...` Artifact；TW/both 的 `candidate-research-...` 含[每日固定2330與候選摘要](TW_DAILY_RESEARCH.md)，零候選也發布固定報告；main 的 TW/both 排程或手動執行在固定報告發布成功後，同步部署[研究網站](https://iceboxi.github.io/market-research/) |
 | 指定公司個股研究 | [On-demand company research](https://github.com/iceboxi/market-research/actions/workflows/company-research.yml) | Run workflow → `main` → 輸入 `2330.TW` 或 `AAPL` | `company-report-...` Artifact，含 `report.json`、`report.md` |
 | 追蹤官方事件變化 | [Official disclosure watch](https://github.com/iceboxi/market-research/actions/workflows/event-watch.yml) | 正式 state migration 完成後由排程自動執行；必要時由工程人員人工 dispatch | `official-event-watch-...` Artifact，包括來源覆蓋、狀態恢復、保存與差異 receipt |
 
