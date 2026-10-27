@@ -1,0 +1,98 @@
+{
+  "errors": 0,
+  "event": "workflow_dispatch",
+  "expected_warnings": 0,
+  "health": "healthy",
+  "input_hashes": [
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "3843d250fcded8cf001994bbdc4b4d90ae6a958684655cb3f898469dd50dcb54",
+      "symbol": "2330.TW"
+    },
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "80e16b92b03a69eb50f7fe1949c9f74f7e91d4c1cc6edefb6557505d26041f13",
+      "symbol": "2303.TW"
+    },
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "482f97c59e19e55f221dd057351d3e1c5d859407659ebe714964d20e0fb62a5f",
+      "symbol": "2454.TW"
+    },
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "4ac86e6a8e4e19129d0296aa7de991c97460d26b82a75ba981005fdc19ce385a",
+      "symbol": "2317.TW"
+    },
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "d30b66a3a59fb6d45d7482541b8c5ccff32b9796478d71939955ab90b5a3d43a",
+      "symbol": "2382.TW"
+    },
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "cb2ec1aff50521946820cf3b0f2ca84954a17216413d4397c2688194d00d3e54",
+      "symbol": "2308.TW"
+    },
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "7352859b9e60426c64ca01e6a6996ad0071896293eb849312364d4c184b43b27",
+      "symbol": "3711.TW"
+    },
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "384c032f144628f992eb9a97c0e4baa9b132fb56165a17f670b59c6e1bfac2ca",
+      "symbol": "2881.TW"
+    },
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "527c8a873ced6e077b1d19d13ae5eab4fa92b0d70fac997fd913f4296d769de6",
+      "symbol": "2882.TW"
+    },
+    {
+      "date": "2026-10-27",
+      "market": "tw",
+      "sha256": "5580fd0c5cb97ecab525f4eb689a929c7f4adf19f51c8f4a400f5e23eed94c7d",
+      "symbol": "2891.TW"
+    }
+  ],
+  "market": "tw",
+  "mismatches": 0,
+  "observed_at_utc": "2026-10-27T12:53:18.267693+00:00",
+  "reasons": [],
+  "requested": 10,
+  "run_id": "40507138063",
+  "run_url": "https://github.com/iceboxi/market-research/actions/runs/40507138063",
+  "scan_outcome": "success",
+  "scanned": 10,
+  "schema_version": 1,
+  "session_dates": {
+    "tw": [
+      "2026-10-27"
+    ]
+  },
+  "signals": 0,
+  "source_sha": "c57871883ee093a5ba1ac3ab23e37a41272b2143",
+  "strategies": [
+    {
+      "id": "sakata_three_soldiers",
+      "params": {
+        "max_upper_shadow_to_range": 0.25,
+        "min_body_to_range": 0.5,
+        "prior_decline_min_pct": 2.0,
+        "prior_trend_bars": 5
+      },
+      "version": "0.1.0"
+    }
+  ],
+  "unexpected_warnings": 0
+}
