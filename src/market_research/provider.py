@@ -79,5 +79,10 @@ class RoutedDailyProvider:
     def provider_for(self, symbol: str) -> DataProvider:
         return self.taiwan if symbol.endswith(".TW") else self.united_states
 
+    def unscheduled_closures(self, market: str, now) -> tuple:
+        provider = self.taiwan if market == "tw" else self.united_states
+        check = getattr(provider, "unscheduled_closures", None)
+        return tuple(check(market, now)) if check else ()
+
     def load(self, symbol: str, period: str = "1y") -> pd.DataFrame:
         return self.provider_for(symbol).load(symbol, period)
