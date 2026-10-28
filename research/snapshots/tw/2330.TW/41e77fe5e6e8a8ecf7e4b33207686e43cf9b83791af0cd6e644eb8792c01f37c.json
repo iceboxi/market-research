@@ -1,0 +1,204 @@
+{
+  "attribution": {
+    "datasets": [
+      {
+        "catalog": "https://data.gov.tw/dataset/18419",
+        "dataset_version": "not_specified",
+        "name": "上市公司基本資料",
+        "released_year": 2015
+      },
+      {
+        "catalog": "https://data.gov.tw/dataset/18420",
+        "dataset_version": "not_specified",
+        "name": "上市公司每月營業收入彙總表",
+        "released_year": 2015
+      }
+    ],
+    "license": "https://data.gov.tw/license",
+    "license_version": "1.0",
+    "provider": "金融監督管理委員會證券期貨局（證交所資料）"
+  },
+  "availability": "first_seen_only_historical_not_verified",
+  "comparison_limits": [
+    "artifact_inputs_not_retained",
+    "events_metadata_only",
+    "prices_metadata_only"
+  ],
+  "evaluation_cutoff_utc": "2026-10-28T14:30:52.178298+00:00",
+  "events": {
+    "coverage": "recent_daily_snapshot_only_not_a_full_history",
+    "snapshot_date": "2026-10-28",
+    "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+    "status": "available"
+  },
+  "execution": {
+    "legacy_complete": false,
+    "status": "partial"
+  },
+  "id": "41e77fe5e6e8a8ecf7e4b33207686e43cf9b83791af0cd6e644eb8792c01f37c",
+  "issuer": {
+    "company_name": null,
+    "policy": "twse_profile_ogdl_v1",
+    "reported_at": null,
+    "source": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+  },
+  "market": "tw",
+  "model_identity": "5ee6423be84afda6909c62eeff2a6550f0a0e07c44608b7b22b7c7ff5a19839a",
+  "monthly_revenue": [],
+  "observed_at_utc": "2026-10-28T14:31:36.221156+00:00",
+  "readiness": {
+    "events": "no_recent_observed_events",
+    "financial": "unavailable",
+    "instrument": "unknown",
+    "recommendation": "not_available",
+    "source_evidence": "no_fact_evidence",
+    "technical": "available",
+    "trade_plan": "not_evaluated",
+    "valuation": "not_evaluated",
+    "valuation_provenance": "not_verified"
+  },
+  "run": {
+    "code_sha": "a6edbd741608d122c56407467286bb8c8e3a96a1",
+    "repository": "iceboxi/market-research",
+    "run_attempt": 1,
+    "run_id": "40706446471",
+    "run_url": "https://github.com/iceboxi/market-research/actions/runs/40706446471"
+  },
+  "schema_version": 2,
+  "source_links": [
+    "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
+    "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
+  ],
+  "started_at_utc": "2026-10-28T14:30:47.304713+00:00",
+  "symbol": "2330.TW",
+  "technical": {
+    "freshness": "current",
+    "input_sha256": "aa82cf69cb5d0c585cfcc252bf63862af5a2aa758b35c0c1ad0b6e1eb097595b",
+    "price_basis": "twse_official_unadjusted",
+    "recent_closes": [
+      {
+        "close": 2450.0,
+        "date": "2026-09-10"
+      },
+      {
+        "close": 2410.0,
+        "date": "2026-09-11"
+      },
+      {
+        "close": 2380.0,
+        "date": "2026-09-14"
+      },
+      {
+        "close": 2385.0,
+        "date": "2026-09-15"
+      },
+      {
+        "close": 2380.0,
+        "date": "2026-09-16"
+      },
+      {
+        "close": 2425.0,
+        "date": "2026-09-17"
+      },
+      {
+        "close": 2460.0,
+        "date": "2026-09-18"
+      },
+      {
+        "close": 2480.0,
+        "date": "2026-09-21"
+      },
+      {
+        "close": 2460.0,
+        "date": "2026-09-22"
+      },
+      {
+        "close": 2500.0,
+        "date": "2026-09-23"
+      },
+      {
+        "close": 2475.0,
+        "date": "2026-09-24"
+      },
+      {
+        "close": 2475.0,
+        "date": "2026-09-29"
+      },
+      {
+        "close": 2480.0,
+        "date": "2026-09-30"
+      },
+      {
+        "close": 2510.0,
+        "date": "2026-10-01"
+      },
+      {
+        "close": 2500.0,
+        "date": "2026-10-02"
+      },
+      {
+        "close": 2575.0,
+        "date": "2026-10-05"
+      },
+      {
+        "close": 2585.0,
+        "date": "2026-10-06"
+      },
+      {
+        "close": 2585.0,
+        "date": "2026-10-07"
+      },
+      {
+        "close": 2550.0,
+        "date": "2026-10-08"
+      },
+      {
+        "close": 2540.0,
+        "date": "2026-10-12"
+      },
+      {
+        "close": 2490.0,
+        "date": "2026-10-13"
+      },
+      {
+        "close": 2490.0,
+        "date": "2026-10-14"
+      },
+      {
+        "close": 2440.0,
+        "date": "2026-10-15"
+      },
+      {
+        "close": 2420.0,
+        "date": "2026-10-16"
+      },
+      {
+        "close": 2420.0,
+        "date": "2026-10-19"
+      },
+      {
+        "close": 2405.0,
+        "date": "2026-10-20"
+      },
+      {
+        "close": 2420.0,
+        "date": "2026-10-21"
+      },
+      {
+        "close": 2385.0,
+        "date": "2026-10-22"
+      },
+      {
+        "close": 2400.0,
+        "date": "2026-10-27"
+      },
+      {
+        "close": 2425.0,
+        "date": "2026-10-28"
+      }
+    ],
+    "session": "2026-10-28",
+    "source": "twse_stock_day_official_raw_ohlcv",
+    "status": "available"
+  }
+}
