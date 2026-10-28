@@ -29,10 +29,12 @@ RSI is retained as disabled reference code, not used by the scheduled scanner.
 
 ## Market coverage and request cost
 
-The pilot universe now includes **10 TWSE-listed Taiwanese stocks and 12 US
-stocks**, not the full markets. Default scheduled period is **6mo**:
+The TW watchlist ([#111](https://github.com/iceboxi/market-research/issues/111))
+is **3 TWSE stocks (2330, 2317, 2454) plus 2 ETFs (0050, 00631L)**; ETF codes
+start with `00` and are monitored for price only, without issuer research.
+The US list keeps 12 stocks. Default scheduled period is **6mo**:
 TWSE STOCK_DAY requires one official monthly request per ticker, so this
-downloads **7 months x 10 = 70 requests** instead of 13 x 10 = 130.
+downloads **7 months x 5 = 35 requests** instead of 13 x 5 = 65.
 The adjustable period can still be changed back to 1y for research. The
 TWSE client reuses HTTP connections per symbol and throttles requests.
 For whole-market scans we should switch to a bulk daily data pipeline rather

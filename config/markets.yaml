@@ -1,19 +1,15 @@
-# Curated pilot universe, not the complete exchange.
-# TW tickers must be listed on TWSE (not TPEx).
+# Curated watchlist, not the complete exchange (#111).
+# TW tickers must be listed on TWSE (not TPEx). Codes starting with 00 are
+# ETFs/ETNs and are monitored for price only.
 markets:
   tw:
     timezone: Asia/Taipei
     symbols:
       - 2330.TW
-      - 2303.TW
-      - 2454.TW
       - 2317.TW
-      - 2382.TW
-      - 2308.TW
-      - 3711.TW
-      - 2881.TW
-      - 2882.TW
-      - 2891.TW
+      - 2454.TW
+      - 0050.TW
+      - 00631L.TW
   us:
     timezone: America/New_York
     symbols:
