@@ -9,9 +9,11 @@ system planning proposal includes the [technical design](docs/design/research-sy
 
 Public-source research proof of concept for **Taiwan and US end-of-day stocks**. It is not a trading or order execution system.
 
-Python package with authoritative TWSE daily historical OHLCV for listed Taiwan stocks and Yahoo/yfinance for US symbols, defensive quality checks, and interchangeable screening strategies. The default is a Sakata-inspired bullish three soldiers pattern; legacy RSI and MA examples are disabled.
+Python package with authoritative TWSE daily historical OHLCV for listed Taiwan stocks and Yahoo/yfinance for US symbols, defensive quality checks, and interchangeable screening strategies. Since #117 no pattern strategy is enabled: the scheduled scan is price-only and the watchlist system (#111) uses valuation review zones instead. Sakata, RSI and MA definitions remain for research workflows.
 
-## Sakata three soldiers (pilot, not validated trading advice)
+## Sakata three soldiers (research only, disabled in production)
+
+Disabled in the scheduled scan since #117 (holdout evidence insufficient); kept for research workflows.
 
 This is a precise *research interpretation*, not an implementation of all
 five Sakata methods or a proven buy/sell system. The active condition requires:
@@ -136,7 +138,7 @@ for cutover, read/restore, integrity, receipts and validation gates.
 
 ## Watchdog onboarding gate
 
-`EOD schedule watchdog` checks the actual scheduled GitHub Actions events, not push/manual run success. First eligible monitored slots are explicit in `config/operations.json` (TW 2026-10-28 07:40 UTC, the first slot after the TW cron moved from 11:30 UTC; US 2026-10-20 00:45 UTC), preventing false missing-run alerts for cron slots that preceded deployment. Before the first due slot the watchdog reports `warming_up` without creating Issues. Its own cron is a best-effort GitHub schedule; a separate external heartbeat would be needed to detect GitHub-wide scheduler failure.
+`EOD schedule watchdog` checks the actual scheduled GitHub Actions events, not push/manual run success. First eligible monitored slots are explicit in `config/operations.json` (TW 2026-10-28 07:40 UTC, the first slot after the TW cron moved from 11:30 UTC; the US cron was removed in #117, so only TW is monitored), preventing false missing-run alerts for cron slots that preceded deployment. Before the first due slot the watchdog reports `warming_up` without creating Issues. Its own cron is a best-effort GitHub schedule; a separate external heartbeat would be needed to detect GitHub-wide scheduler failure.
 
 The Summary now shows the observation time, actual execution phase (`not_created`, `queued`, `in_progress`, `execution_failed`, `completed`), evaluated slot/grace, next nominal UTC/Taiwan slot and the last successful scheduled job within that market's time window. `created_at` and `run_started_at` are workflow-run metadata, not proof of runner/job start; inspect jobs/steps for that evidence. Runtime market and source health still need the scan Artifact. The existing 2-hour grace is an eligibility threshold; watchdog itself runs daily at `02:15 UTC` (`10:15 Asia/Taipei`), subject to delays, so it does not check exactly when grace expires. A scheduled run counts for a slot only if it was created within 8 hours of the nominal slot (observed natural delays: 4–6.2 h); a run not yet created when watchdog executes is still reported missing. The US and TW windows overlap 07:25–08:45 UTC, where `created_at` alone cannot identify the market. Missing/late-run root causes remain unverified without supporting evidence.
 

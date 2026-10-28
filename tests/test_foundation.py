@@ -67,6 +67,26 @@ def test_opt_in_scan_replay(tmp_path):
     )
 
 
+def test_scan_without_enabled_strategies_is_price_only(tmp_path):
+    # #117: production config has no pattern strategy; prices and health still run.
+    from market_research.runner import run_scan
+    class Fake:
+        source = "fixture"
+        def load(self, symbol, period="1y"): return sample()
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "markets.yaml").write_text(
+        "markets:\n  tw:\n    timezone: Asia/Taipei\n    symbols:\n      - 2330.TW\n      - 0050.TW\n")
+    (config / "strategies.yaml").write_text(
+        "strategies:\n  - id: sakata_three_soldiers\n    enabled: false\n    params: {}\n")
+    result = run_scan("tw", config_dir=config, out=tmp_path / "out", provider=Fake(),
+                      now=datetime(2026, 11, 17, tzinfo=timezone.utc))
+    manifest = json.loads((tmp_path / "out" / "manifest.json").read_text())
+    assert result["scanned_symbols"] == 2 and result["error_count"] == 0
+    assert manifest["strategies"] == [] and manifest["matching_signals"] == 0
+    assert json.loads((tmp_path / "out" / "screening_results.json").read_text()) == []
+
+
 def test_shared_daily_contract_same_source_for_scan_and_backtest():
     from market_research.market_data import load_daily_bars
     class Provider:

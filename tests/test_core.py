@@ -189,14 +189,12 @@ def test_sakata_rejects_invalid_params_and_short_history():
         s.scan("us", "AAPL", three_soldiers_frame(), {"min_body_to_range": 0.0})
 
 
-def test_default_strategy_is_sakata_not_rsi():
+def test_production_scan_enables_no_pattern_strategy():
     from pathlib import Path
     import yaml
     config = yaml.safe_load((Path(__file__).resolve().parents[1] /
                              "config/strategies.yaml").read_text())
-    assert [x["id"] for x in config["strategies"] if x["enabled"]] == [
-        "sakata_three_soldiers"
-    ]
+    assert [x["id"] for x in config["strategies"] if x["enabled"]] == []  # #117
 
 
 def test_twse_retries_transient_timeout_without_losing_month():

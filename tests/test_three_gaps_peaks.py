@@ -67,7 +67,7 @@ def test_only_red_soldiers_live():
     import yaml
     from pathlib import Path
     cfg=yaml.safe_load((Path(__file__).resolve().parents[1]/"config/strategies.yaml").read_text())
-    assert [x["id"] for x in cfg["strategies"] if x["enabled"]]==["sakata_three_soldiers"]
+    assert [x["id"] for x in cfg["strategies"] if x["enabled"]]==[]  # #117
 
 
 def peaks_fixture(head=False):

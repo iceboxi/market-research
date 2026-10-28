@@ -71,7 +71,7 @@ def test_flat_crow_no_signal_flat_trend_bar_allowed():
 def test_config_stays_disabled_and_generic_research_is_observation_only():
     settings = yaml.safe_load((ROOT / "config/strategies.yaml").read_text())["strategies"]
     enabled = [x["id"] for x in settings if x["enabled"]]
-    assert enabled == ["sakata_three_soldiers"]
+    assert enabled == []  # #117: scans are price-only
     entry = next(x for x in settings if x["id"] == "sakata_black_three_crows")
     assert entry["enabled"] is False
     assert strategy_research.select_variant("sakata_black_three_crows")["direction"] == "bearish"

@@ -41,8 +41,7 @@ def test_only_existing_three_soldiers_is_implemented_and_enabled():
     assert set(implemented) == set(STRATEGIES) - {"rsi_volume", "ma_breakout"}
     cfg = yaml.safe_load((ROOT / "config/strategies.yaml").read_text())
     enabled = [v["id"] for v in cfg["strategies"] if v["enabled"]]
-    assert enabled == ["sakata_three_soldiers"]
-    assert set(enabled).issubset(set(implemented))
+    assert enabled == []  # #117: production scan is price-only
     assert get_strategy("sakata_three_soldiers").version == "0.1.0"
 
 def test_candidate_specs_never_enable_by_merely_adding_catalog_entry():

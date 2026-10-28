@@ -83,7 +83,7 @@ def test_morning_star_backtest_uses_next_session_open():
 def test_not_enabled_by_default():
     enabled = [x["id"] for x in yaml.safe_load(
         (ROOT / "config/strategies.yaml").read_text())["strategies"] if x["enabled"]]
-    assert enabled == ["sakata_three_soldiers"]
+    assert enabled == []  # #117: scans are price-only
 
 
 def test_flat_daily_bar_is_valid_but_not_a_morning_star():
