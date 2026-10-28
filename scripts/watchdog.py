@@ -11,7 +11,9 @@ from scripts import monitor
 SLOTS = {"tw": (7, 40, frozenset(range(5))),
          "us": (0, 45, frozenset(range(1, 6)))}
 GRACE = timedelta(hours=2)
-MAX_LATENESS = timedelta(hours=5)
+# Natural schedule runs were created 4-6.2h after their cron slot (#51);
+# windows now overlap 07:25-08:45 UTC, where created_at cannot tell markets apart.
+MAX_LATENESS = timedelta(hours=8)
 
 
 def utc_time(value):

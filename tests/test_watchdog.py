@@ -49,6 +49,23 @@ def test_prior_slot_not_accepted_for_new_day():
         "scheduled_run_missing")
 
 
+def test_runs_delayed_up_to_eight_hours_still_match_their_slot():
+    # Natural US run 40642805380: 00:45 slot, created 06:15:57 (5h31m late).
+    us = scheduled(datetime(2026, 10, 28, 6, 15, 57, tzinfo=timezone.utc))
+    assert watchdog.evaluate("us", [us], when("2026-10-28", 8, 23))[:2] == (
+        "healthy", "scheduled_run_success")
+    watchdog_run = when("2026-10-29", 8, 23)
+    edge = scheduled(when("2026-10-28", 15, 40))
+    assert watchdog.evaluate("tw", [edge], watchdog_run)[:2] == (
+        "healthy", "scheduled_run_success")
+    late = scheduled(when("2026-10-28", 15, 41))
+    assert watchdog.evaluate("tw", [late], watchdog_run)[1] == "scheduled_run_missing"
+
+    feedback = watchdog.record_for("tw", [edge], "owner/repo", watchdog_run)["schedule_feedback"]
+    assert feedback["run_window_seconds"] == 8 * 3600
+    assert feedback["last_successful_scheduled_run"]["created_at"] == edge["created_at"]
+
+
 def test_queued_run_is_distinct_from_missing_or_running_job():
     now = when("2026-10-20")
     queued = scheduled(when("2026-10-20", 0, 47), status="queued", conclusion=None)
