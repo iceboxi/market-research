@@ -78,6 +78,16 @@ Install Python 3.12 and uv, then run:
 
 Symbols are in config/markets.yaml; toggle strategies in config/strategies.yaml.
 
+Satellite stocks get a valuation review zone ([#114](https://github.com/iceboxi/market-research/issues/114)):
+the 20th/50th/80th percentiles of the stock's own daily P/E over the five years
+up to the cutoff (FinMind `TaiwanStockPER`, positive P/E only) times trailing
+four-quarter basic EPS give low / mid / high review prices, and the latest close
+is placed `below_low`, `fair` or `above_high`. Missing or non-positive EPS, EPS
+older than 200 days, or fewer than 720 P/E samples give `not_evaluated`.
+`config/watchlist.yaml` lists the satellites (a subset of the scanned TW stocks,
+never ETFs) with an optional thesis and percentile or fixed-multiple override.
+The zone is a prompt to review, not a fair value, target or trade price.
+
 ## Limits
 
 TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.

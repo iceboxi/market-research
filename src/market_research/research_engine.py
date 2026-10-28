@@ -12,10 +12,11 @@ from .source_evidence import (
     instrument_eligibility, build_source_evidence, validate_valuation_inputs,
 )
 from .valuation import evaluate_valuation
+from .valuation_zone import evaluate_valuation_zone
 
 # Bump when this module's research/model contract changes; strategy models have
 # their own existing versions. Formatting-only commits are not model changes.
-RESEARCH_CONTRACT_VERSION = 1
+RESEARCH_CONTRACT_VERSION = 2  # 2: watchlist valuation review zone (#114)
 
 
 def _component(status, reason=None):
@@ -58,7 +59,8 @@ def component_readiness(eligibility, evidence, source_gate, financial,
     }
 
 
-def compute_research(issuer, technical, event_feed, symbol, market, now):
+def compute_research(issuer, technical, event_feed, symbol, market, now, *,
+                     satellite=None, per_history=None):
     """Return computed sections of company report v4 without external I/O.
 
     The caller ensures official snapshots were acquired consistently with the
@@ -94,6 +96,16 @@ def compute_research(issuer, technical, event_feed, symbol, market, now):
             "why": "Research eligibility or source provenance gate incomplete",
         }
     financial = compare_financials(issuer, annual_cutoff)
+    # Review zone for watchlist satellites; the cutoff is the Taipei calendar date.
+    analytical = technical.get("status") in ("available", "partial")
+    valuation_zone = evaluate_valuation_zone(
+        symbol, now.astimezone(ZoneInfo("Asia/Taipei")).date(),
+        satellite if market == "tw" else None, per_history,
+        (issuer.get("financial_history") or {}).get("ttm"),
+        {"close": technical.get("analytical_close") if analytical else None,
+         "session": technical.get("last_session") if analytical else None,
+         "source": technical.get("source")},
+    )
     readiness = research_status(financial, valuation, technical)
     readiness["instrument_status"] = eligibility["status"]
     readiness["source_evidence_status"] = evidence["status"]
@@ -108,6 +120,7 @@ def compute_research(issuer, technical, event_feed, symbol, market, now):
         "source_evidence": evidence,
         "valuation_source_gate": source_gate,
         "valuation": valuation,
+        "valuation_zone": valuation_zone,
         "financial_comparison": financial,
         "research_readiness": readiness,
         "event_risk": event_risk,

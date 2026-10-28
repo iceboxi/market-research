@@ -38,6 +38,7 @@ FINMIND_TWSE_INDUSTRY = {
 }
 
 from .financial_history import normalize_sec_history, normalize_tw_financial_history
+from .valuation_zone import PER_DATASET, per_window_start
 from .event_risk import (
     TW_SHAREHOLDER_ANNOUNCE_URL, TW_SHAREHOLDER_MEETING_URL, sec_filing_events, unknown,
 )
@@ -270,6 +271,18 @@ def twse_fundamentals(symbol, get=json_get, *, financial_get=None, asof=None):
                     finmind_bundle[key] = resp["data"]
             except Exception as exc:
                 output["warnings"].append(f"FinMind {key} unavailable: {type(exc).__name__}")
+
+        # Five years of daily P/E for the watchlist review zone (#114).
+        per_url = (f"{FINMIND_URL}?dataset={PER_DATASET}&data_id={ticker}"
+                   f"&start_date={per_window_start(cutoff_date).isoformat()}")
+        try:
+            per_resp = ext_get(per_url)
+            if not (isinstance(per_resp, dict) and per_resp.get("status") == 200 and
+                    isinstance(per_resp.get("data"), list)):
+                raise ValueError("invalid_shape")
+            output["per_history_raw"] = {"source": per_url, "rows": per_resp["data"]}
+        except Exception as exc:
+            output["warnings"].append(f"FinMind {PER_DATASET} unavailable: {type(exc).__name__}")
 
         try:
             news_start = f"{max(2023, cutoff_date.year)}-01-01"

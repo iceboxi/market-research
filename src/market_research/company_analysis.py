@@ -262,6 +262,7 @@ def build_financial_research_summary(result):
         "ex_dividend_history": (financial.get("ex_dividend_history") or [])[:6],
         "disclosure_and_news": issuer.get("disclosure_and_news"),
         "calendar_schedule": issuer.get("calendar_schedule"),
+        "valuation_zone": result.get("valuation_zone"),
         "valuation_summary": val_summary,
         "ogdl_datasets": [
             {"name": "上市公司綜合損益表(一般業)", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"},

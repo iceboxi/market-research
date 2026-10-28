@@ -787,12 +787,47 @@ def _fundamentals(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
 </section>"""
 
 
+def _valuation_zone(fr: dict[str, Any] | None) -> str:
+    """Historical P/E review zone (#114); a prompt to look again, not a price target."""
+    zone = (fr or {}).get("valuation_zone")
+    if not zone:
+        return ""
+    head = '<h3>估值檢視區（歷史本益比）</h3>'
+    note = (f'<div class="callout warn" role="note"><strong>{_e(zone.get("disclaimer"))}。</strong>'
+            '價位 = 本益比區間 × 近四季 EPS；價格進出區間只代表值得重新檢視，不是合理價、目標價或進出場價格。</div>')
+    if zone.get("status") != "available":
+        return head + note + _empty("此次未計算檢視區", f"not_evaluated：{_e(zone.get('reason'))}")
+    labels = {"below_low": "低於偏低價", "fair": "合理區間", "above_high": "高於偏高價"}
+    prices, band = zone["review_prices_twd"], zone["pe_band"]
+    price, eps, hist = zone["price"], zone["eps"] or {}, zone.get("per_history") or {}
+    quarters = eps.get("quarters") or []
+    if zone.get("method") == "configured_pe_multiples_x_ttm_eps":
+        method = "設定的固定本益比倍數（config/watchlist.yaml）"
+    else:
+        method = "近 5 年每日本益比 " + "／".join(f"P{q}" for q in zone.get("percentiles") or [])
+    cells = "".join(f'<td class="num">{_num(prices[k])}<br><span class="unit">{_num(band[k])}x</span></td>'
+                    for k in ("low", "mid", "high"))
+    sample = (f'{_e(hist.get("samples"))} 筆（{_e(hist.get("first_date"))}～{_e(hist.get("last_date"))}），'
+              f'最新 {_num(hist.get("latest_per"))}x · {_link(hist.get("source"), "FinMind TaiwanStockPER")}'
+              if hist else NA)
+    return f"""{head}{note}
+  <div class="table-wrap"><table><thead><tr><th scope="col">收盤（{_e(price.get('session'))}）</th>
+  <th scope="col" class="num">偏低價<span class="unit">元/股</span></th><th scope="col" class="num">合理價<span class="unit">元/股</span></th>
+  <th scope="col" class="num">偏高價<span class="unit">元/股</span></th><th scope="col">目前區間</th></tr></thead>
+  <tbody><tr><td class="num">{_num(price.get('close'))}</td>{cells}<td>{_e(labels.get(zone.get('zone')))}</td></tr></tbody></table></div>
+  <dl class="meta">
+    <div><dt>方法</dt><dd>{_e(method)} × 近四季基本 EPS</dd></div>
+    <div><dt>近四季 EPS</dt><dd>{_num(eps.get('ttm_basic_eps'))} 元（{_e(quarters[0] if quarters else None)}–{_e(quarters[-1] if quarters else None)}，截至 {_e(eps.get('period_end'))}）</dd></div>
+    <div><dt>本益比樣本</dt><dd>{sample}</dd></div>
+  </dl>"""
+
+
 def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
     val = (fr or {}).get("valuation_summary") or {}
     readiness = snap.get("readiness") or {}
     if not val:
         return f"""
-<section id="valuation" aria-labelledby="h-val"><h2 id="h-val">估值</h2>
+<section id="valuation" aria-labelledby="h-val"><h2 id="h-val">估值</h2>{_valuation_zone(fr)}
 {_empty("此研究版本沒有估值情境", f"估值狀態：{_status(readiness.get('valuation', 'not_evaluated'))}。")}</section>"""
     mult = val.get("exchange_multiples") or {}
     fcf_s, pe_s = val.get("fair_value_scenarios") or {}, val.get("ttm_pe_scenarios") or {}
@@ -825,7 +860,7 @@ def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
     denom = val.get("denominator") or {}
     return f"""
 <section id="valuation" aria-labelledby="h-val">
-  <h2 id="h-val">估值</h2>
+  <h2 id="h-val">估值</h2>{_valuation_zone(fr)}
   <div class="callout warn" role="note"><strong>示意試算，不是目標價。</strong>
   以下情境以假設倍數乘上已對帳的財務數字，用來觀察假設的敏感度；不是合理價、目標價或買賣價格。
   交易計畫狀態：{_status(readiness.get('trade_plan', 'not_evaluated'))}；投資建議：{_status(readiness.get('recommendation', 'not_available'))}。</div>
