@@ -5,6 +5,7 @@ This adapter never forward-fills missing official trading records.
 """
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+import re
 import time
 from contextlib import nullcontext
 from zoneinfo import ZoneInfo
@@ -121,7 +122,8 @@ class TwseDailyProvider:
         return twse_unscheduled_closures(now, get=self.get) if market == "tw" else ()
 
     def load(self, symbol: str, period: str = "1y") -> pd.DataFrame:
-        if not symbol.endswith(".TW") or not symbol.split(".")[0].isdigit():
+        # Stocks are numeric; ETFs/ETNs may end in a letter, e.g. 00631L.
+        if not re.fullmatch(r"[0-9]{4,6}[A-Z]?\.TW", symbol):
             raise ValueError(f"TWSE provider supports listed .TW ticker, got {symbol}")
         # Exact 1-year lookback includes a warm-up month for 14/20-day signals.
         lookbacks = {"3mo": 4, "6mo": 7, "1y": 13, "2y": 25}
