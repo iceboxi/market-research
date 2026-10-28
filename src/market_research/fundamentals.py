@@ -43,6 +43,11 @@ from .event_risk import (
     TW_SHAREHOLDER_ANNOUNCE_URL, TW_SHAREHOLDER_MEETING_URL, sec_filing_events, unknown,
 )
 
+def finmind_per_url(ticker, start):
+    """FinMind daily P/E query; the public snapshot rebuilds it from the window start."""
+    return f"{FINMIND_URL}?dataset={PER_DATASET}&data_id={ticker}&start_date={start}"
+
+
 def json_get(url, user_agent=None, client=None):
     headers = {"User-Agent": user_agent or "MarketResearch/0.1 public-research"}
     if client is not None:
@@ -273,8 +278,7 @@ def twse_fundamentals(symbol, get=json_get, *, financial_get=None, asof=None):
                 output["warnings"].append(f"FinMind {key} unavailable: {type(exc).__name__}")
 
         # Five years of daily P/E for the watchlist review zone (#114).
-        per_url = (f"{FINMIND_URL}?dataset={PER_DATASET}&data_id={ticker}"
-                   f"&start_date={per_window_start(cutoff_date).isoformat()}")
+        per_url = finmind_per_url(ticker, per_window_start(cutoff_date).isoformat())
         try:
             per_resp = ext_get(per_url)
             if not (isinstance(per_resp, dict) and per_resp.get("status") == 200 and

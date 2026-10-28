@@ -206,6 +206,21 @@ def evaluate_valuation_zone(symbol, cutoff, settings, per_history, ttm, price):
     return result
 
 
+
+def compact_zone(zone):
+    """Numbers-only zone for the 20,000-byte public snapshot.
+
+    Text that is constant (assumptions, disclaimer) or rebuilt from the symbol and
+    window start (FinMind query URL) stays in report.json and the Artifact only.
+    """
+    compact = {k: v for k, v in zone.items() if k not in ("assumptions", "disclaimer", "cutoff")}
+    for key, drop in (("per_history", ("source", "dataset")), ("price", ("source",)),
+                      ("eps", ("derivation", "period_start"))):
+        if isinstance(compact.get(key), dict):
+            compact[key] = {k: v for k, v in compact[key].items() if k not in drop}
+    return compact
+
+
 ZONE_LABELS = {"below_low": "低於偏低價", "fair": "合理區間", "above_high": "高於偏高價"}
 
 

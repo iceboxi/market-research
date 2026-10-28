@@ -148,3 +148,38 @@ def test_pages_valuation_section_shows_the_review_zone():
     assert "1,200.00" in html and "1,500.00" in html and "1,800.00" in html
     assert "低於偏低價" in html
     assert "TaiwanStockPER" in html
+
+
+def full_zone():
+    return evaluate_valuation_zone(
+        "2330.TW", CUTOFF, {"thesis": None, "valuation_zone": {"percentiles": (20, 50, 80)}},
+        {"source": PER_URL, "rows": per_rows(uniform(), end=CUTOFF)},
+        {"status": "available", "basic_eps": 86.28, "period_start": "2025-07-01",
+         "period_end": "2026-06-30", "quarters": ["2025Q3", "2025Q4", "2026Q1", "2026Q2"],
+         "eps_derivation": "sum_of_four_quarters_within_0.5pct_share_drift"},
+        {"close": 2425.0, "session": "2026-10-19", "source": "twse_stock_day_official_raw_ohlcv"})
+
+
+def test_public_snapshot_keeps_a_compact_zone_within_the_size_budget():
+    # research-state 2330 snapshots were ~18,820 of 20,000 canonical bytes before #114;
+    # the full zone (~1.2 kB) overflowed the budget in PR CI.
+    from market_research.research_snapshot import _compact_financial_research, encoded
+    fr = _make_full_financial_research()
+    fr["valuation_zone"] = full_zone()
+    compact = _compact_financial_research(fr)["valuation_zone"]
+    assert len(encoded(compact)) <= 600
+    for verbose in ("assumptions", "disclaimer", "cutoff"):
+        assert verbose not in compact
+    assert "source" not in compact["per_history"] and "source" not in compact["price"]
+    assert compact["review_prices_twd"] == full_zone()["review_prices_twd"]
+    assert compact["per_history"]["window_start"] == "2021-10-19"
+
+
+def test_pages_renders_the_compact_snapshot_zone_with_rebuilt_source():
+    report = _sample_report()
+    report["financial_research"] = _make_full_financial_research()
+    report["financial_research"]["valuation_zone"] = full_zone()
+    html = render_research_site_html(latest_report=report)
+    assert "檢視區，非買賣建議" in html
+    assert PER_URL.replace("&", "&amp;") in html
+    assert "1,294.20" in html
