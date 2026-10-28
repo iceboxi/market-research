@@ -10,6 +10,8 @@ from scripts import monitor
 
 SLOTS = {"tw": (7, 40, frozenset(range(5))),
          "us": (0, 45, frozenset(range(1, 6)))}
+# US cron removed in #117; its slot stays defined for manual probes.
+MONITORED_MARKETS = ("tw",)
 GRACE = timedelta(hours=2)
 # Natural schedule runs were created 4-6.2h after their cron slot (#51);
 # windows now overlap 07:25-08:45 UTC, where created_at cannot tell markets apart.
@@ -176,7 +178,7 @@ def main():
     records = {}
     lines = ["# Scheduled Market Scan Watchdog", "",
              "觀測時間 (UTC)：" + now.isoformat(), ""]
-    for market in ("tw", "us"):
+    for market in MONITORED_MARKETS:
         rec = record_for(market, runs, args.repo, now)
         records[market] = rec
         critical |= rec["health"] == "critical"

@@ -67,6 +67,26 @@ def test_opt_in_scan_replay(tmp_path):
     )
 
 
+def test_scan_without_enabled_strategies_is_price_only(tmp_path):
+    # #117: production config has no pattern strategy; prices and health still run.
+    from market_research.runner import run_scan
+    class Fake:
+        source = "fixture"
+        def load(self, symbol, period="1y"): return sample()
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "markets.yaml").write_text(
+        "markets:\n  tw:\n    timezone: Asia/Taipei\n    symbols:\n      - 2330.TW\n      - 0050.TW\n")
+    (config / "strategies.yaml").write_text(
+        "strategies:\n  - id: sakata_three_soldiers\n    enabled: false\n    params: {}\n")
+    result = run_scan("tw", config_dir=config, out=tmp_path / "out", provider=Fake(),
+                      now=datetime(2026, 11, 17, tzinfo=timezone.utc))
+    manifest = json.loads((tmp_path / "out" / "manifest.json").read_text())
+    assert result["scanned_symbols"] == 2 and result["error_count"] == 0
+    assert manifest["strategies"] == [] and manifest["matching_signals"] == 0
+    assert json.loads((tmp_path / "out" / "screening_results.json").read_text()) == []
+
+
 def test_shared_daily_contract_same_source_for_scan_and_backtest():
     from market_research.market_data import load_daily_bars
     class Provider:
@@ -102,6 +122,30 @@ def test_backtest_uses_same_verified_replay_and_data_hash(tmp_path):
     scan_quality = json.loads((tmp_path / "scan" / "data_quality.json").read_text())
     backtest_inputs = json.loads((tmp_path / "backtest" / "inputs.json").read_text())
     assert scan_quality["symbols"][0]["input_sha256"] == backtest_inputs[0]["input_sha256"]
+
+
+def test_backtest_names_its_research_strategy_when_production_enables_none(tmp_path):
+    # #117: production scan enables nothing; the exploratory backtest names its strategy.
+    from market_research.backtest import run_backtest
+    class Provider:
+        source = "fixture"
+        def load(self, symbol, period="1y"): return sample()
+    cfg = tmp_path / "config"
+    cfg.mkdir()
+    (cfg / "markets.yaml").write_text(
+        "markets:\n  tw:\n    timezone: Asia/Taipei\n    symbols:\n      - 2330.TW\n")
+    (cfg / "strategies.yaml").write_text(
+        "strategies:\n  - id: sakata_three_soldiers\n    enabled: false\n    params: {}\n")
+    (cfg / "backtest.yaml").write_text("backtest:\n  trials: 5\n")
+    now = datetime(2026, 11, 17, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="No enabled strategies"):
+        run_backtest("tw", "1y", tmp_path / "none", cfg, provider=Provider(), now=now)
+    with pytest.raises(ValueError, match="Unknown strategy"):
+        run_backtest("tw", "1y", tmp_path / "bad", cfg, provider=Provider(), now=now,
+                     strategy_ids=["sakata_missing"])
+    manifest = run_backtest("tw", "1y", tmp_path / "named", cfg, provider=Provider(),
+                            now=now, strategy_ids=["sakata_three_soldiers"])
+    assert manifest["error_count"] == 0
 
 
 def test_snapshot_replay_preserves_full_precision_ohlcv_hash(tmp_path):

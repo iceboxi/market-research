@@ -71,5 +71,9 @@ def test_production_strategy_not_eligible(tmp_path):
     root=__import__("pathlib").Path(__file__).resolve().parents[1]
     for file in ("markets.yaml","strategies.yaml"):
         shutil.copyfile(root/"config"/file,cfg/file)
+    # Production enables nothing since #117; the guard still refuses an enabled one.
+    path=cfg/"strategies.yaml"
+    path.write_text(path.read_text().replace(
+        "- id: sakata_three_soldiers\n    enabled: false","- id: sakata_three_soldiers\n    enabled: true",1))
     with pytest.raises(ValueError,match="disabled"):
         evaluate_market("tw",["sakata_three_soldiers"],"1y",tmp_path/"out",cfg)

@@ -1,7 +1,9 @@
-# Sakata-inspired pilot replaces RSI as active scan strategy.
+# No production pattern strategy (#117): the holdout found insufficient evidence
+# and the watchlist system (#111) uses valuation zones instead. Scans remain
+# price-only; definitions stay for research workflows.
 strategies:
   - id: sakata_three_soldiers
-    enabled: true
+    enabled: false
     params:
       prior_trend_bars: 5
       prior_decline_min_pct: 2.0

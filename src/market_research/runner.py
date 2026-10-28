@@ -30,8 +30,8 @@ def run_scan(market="both", period="1y", out=Path("output"), config_dir=Path("co
     markets = yaml.safe_load((config_dir / "markets.yaml").read_text())["markets"]
     strategies = [s for s in yaml.safe_load((config_dir / "strategies.yaml").read_text())["strategies"] if s["enabled"]]
     selected = list(markets) if market == "both" else [market]
-    if any(m not in markets for m in selected) or not strategies:
-        raise ValueError("Unknown market or no strategies")
+    if any(m not in markets for m in selected):
+        raise ValueError("Unknown market")
     if replay_dir and provider:
         raise ValueError('Cannot supply provider and replay directory together')
     provider = ReplayProvider(replay_dir) if replay_dir else (provider or RoutedDailyProvider())

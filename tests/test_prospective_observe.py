@@ -61,6 +61,10 @@ def test_prospective_collect_valid_receipt_and_hash_mismatch(monkeypatch,tmp_pat
     cfg.mkdir()
     shutil.copyfile(root/"config/strategies.yaml",cfg/"strategies.yaml")
     shutil.copyfile(root/"config/markets.yaml",cfg/"markets.yaml")
+    # Frozen journal state: three soldiers was the production strategy before #117.
+    path=cfg/"strategies.yaml"
+    path.write_text(path.read_text().replace(
+        "- id: sakata_three_soldiers\n    enabled: false","- id: sakata_three_soldiers\n    enabled: true",1))
     monkeypatch.setattr(obs,"expected_complete_session",lambda market,now: date(2026,10,19))
     monkeypatch.setattr(obs,"fingerprint",lambda: "abcd"*16)
     def mock_scan(market,period,out,config_dir,provider,now,strict_freshness):

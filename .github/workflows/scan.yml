@@ -24,14 +24,14 @@ on:
     # TW 15:40 Asia/Taipei: TWSE STOCK_DAY already had the same-day session at 15:15
     # (push run 39214871920); GitHub schedule delay adds hours on top of this slot.
     - cron: '40 7 * * 1-5'
-    - cron: '45 0 * * 2-6'
+    # US cron removed in #117; dispatch market=us still runs it manually.
 permissions:
   contents: write
   issues: write
 jobs:
   scan:
     concurrency:
-      group: ${{ ((github.event_name == 'workflow_dispatch' && inputs.market != 'us') || (github.event_name == 'schedule' && github.event.schedule != '45 0 * * 2-6')) && (github.ref == 'refs/heads/main' && 'research-publication-production' || 'research-state-validation') || format('scan-{0}-{1}', github.run_id, github.run_attempt) }}
+      group: ${{ ((github.event_name == 'workflow_dispatch' && inputs.market != 'us') || github.event_name == 'schedule') && (github.ref == 'refs/heads/main' && 'research-publication-production' || 'research-state-validation') || format('scan-{0}-{1}', github.run_id, github.run_attempt) }}
       cancel-in-progress: false
       queue: max
     runs-on: ubuntu-latest
@@ -39,8 +39,7 @@ jobs:
     outputs:
       pages_ready: ${{ steps.pages_site.outputs.ready }}
     env:
-      PROSPECTIVE_STATE_MODE: ${{ vars.PROSPECTIVE_STATE_MODE || 'legacy' }}
-      SCAN_MARKET: ${{ github.event_name == 'schedule' && (github.event.schedule == '45 0 * * 2-6' && 'us' || 'tw') || inputs.market || 'both' }}
+      SCAN_MARKET: ${{ github.event_name == 'schedule' && 'tw' || inputs.market || 'both' }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -135,36 +134,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/monitor.py alert --report output/health_report.json --repo "$GITHUB_REPOSITORY"
-      - name: Verify exclusive prospective writer after migration
-        if: github.event_name == 'schedule' && steps.scan.outcome == 'success'
-        run: uv run --no-sync python -m scripts.prospective_cutover_guard --mode "$PROSPECTIVE_STATE_MODE"
-      - name: Collect prospective research observations
-        if: github.event_name == 'schedule' && steps.scan.outcome == 'success'
-        run: |
-          if [ "$PROSPECTIVE_STATE_MODE" = canonical ]; then
-            uv run --no-sync python -m scripts.prospective_observe --market "$SCAN_MARKET" --health output/health_report.json --out prospective_receipt.json --revision-pinned
-          elif [ "$PROSPECTIVE_STATE_MODE" = legacy ]; then
-            uv run --no-sync python -m scripts.prospective_observe --market "$SCAN_MARKET" --health output/health_report.json --out prospective_receipt.json
-          else
-            echo 'Unsupported prospective state mode. Refusing archive.' >&2
-            exit 1
-          fi
-      - name: Archive immutable prospective observation receipt (legacy)
-        if: github.event_name == 'schedule' && steps.scan.outcome == 'success' && env.PROSPECTIVE_STATE_MODE == 'legacy'
-        run: python3 scripts/prospective_archive.py --receipt prospective_receipt.json
-      - name: Archive immutable prospective observation receipt (canonical)
-        if: github.event_name == 'schedule' && steps.scan.outcome == 'success' && env.PROSPECTIVE_STATE_MODE == 'canonical'
-        run: uv run --no-sync python -m scripts.prospective_state_archive --receipt prospective_receipt.json --out prospective_state_receipt.json
-      - name: Upload prospective metadata receipt
-        if: always() && github.event_name == 'schedule'
-        uses: actions/upload-artifact@v4
-        with:
-          name: prospective-${{ env.SCAN_MARKET }}-${{ github.run_id }}
-          path: |
-            prospective_receipt.json
-            prospective_state_receipt.json
-          if-no-files-found: ignore
-          retention-days: 14
   pages:
     needs: scan
     if: always() && needs.scan.outputs.pages_ready == 'true'
