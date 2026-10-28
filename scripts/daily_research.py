@@ -12,10 +12,7 @@ from scripts.company_report import run
 from scripts.research_publication import execute as publish_report
 from scripts.scan_company_research import execute as candidate_research
 
-DEFAULT_TW_PILOT_SYMBOLS = [
-    "2330.TW", "2303.TW", "2454.TW", "2317.TW", "2382.TW",
-    "2308.TW", "3711.TW", "2881.TW", "2882.TW", "2891.TW",
-]
+DEFAULT_TW_PILOT_SYMBOLS = ["2330.TW", "2317.TW", "2454.TW", "0050.TW", "00631L.TW"]
 
 FULL_MARKET_PATTERNS = (
     "t187ap03_L",
@@ -41,6 +38,11 @@ def get_pilot_symbols(market="tw", config_path=None):
         except Exception:
             pass
     return DEFAULT_TW_PILOT_SYMBOLS
+
+
+def is_etf(symbol):
+    """TWSE ETF/ETN codes start with 00; they have no issuer research."""
+    return symbol.split(".")[0].startswith("00")
 
 
 def is_full_market_endpoint(url):
@@ -124,6 +126,7 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
             "completed_count": 0,
             "partial_count": 0,
             "failed_count": 0,
+            "price_only_count": 0,
             "shared_endpoints_cached": 0,
             "cache_hit_count": 0,
             "symbols": {},
@@ -141,6 +144,11 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
                 "duration_ms": 0,
                 "error_type": None,
             }
+            if is_etf(sym):
+                sym_rec["status"] = "price_only"
+                pilot_coverage["price_only_count"] += 1
+                pilot_coverage["symbols"][sym] = sym_rec
+                continue
             try:
                 rep = research(sym, temp / "companies" / sym, now, sec_user_agent)
                 dur = int((time.perf_counter() - t0) * 1000)
@@ -240,7 +248,7 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
             "",
             "### 台股 Pilot 多標的涵蓋與模型適用性",
             "",
-            f"標的涵蓋：成功 {pilot_coverage['completed_count']} / 部分 {pilot_coverage['partial_count']} / 失敗 {pilot_coverage['failed_count']}（共 {pilot_coverage['attempted_count']} 檔）",
+            f"標的涵蓋：成功 {pilot_coverage['completed_count']} / 部分 {pilot_coverage['partial_count']} / 失敗 {pilot_coverage['failed_count']} / 僅行情 {pilot_coverage['price_only_count']}（共 {pilot_coverage['attempted_count']} 檔）",
             f"共用快取端點：{pilot_coverage['shared_endpoints_cached']} 個；快取命中：{pilot_coverage['cache_hit_count']} 次",
             "",
             "| 標的代碼 | 公司名稱 | 流程狀態 | 行情 Session | 財務狀態 | 估值狀態 | 耗時 (ms) |",
