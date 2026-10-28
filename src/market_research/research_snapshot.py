@@ -7,7 +7,7 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
-from .fundamentals import TW_PROFILE, TW_REVENUE, tw_report_date
+from .fundamentals import FINMIND_URL, TW_PROFILE, TW_REVENUE, tw_report_date
 
 MAX_SNAPSHOT_BYTES = 20_000
 READINESS = ("instrument", "source_evidence", "valuation_provenance", "financial",
@@ -138,8 +138,9 @@ def validate_snapshot(value):
     issuer = value["issuer"]
     _keys(issuer, "company_name source reported_at policy")
     _text(issuer["company_name"], nullable=True)
-    if (issuer["policy"] not in ("twse_profile_ogdl_v1", "metadata_only") or
+    if (issuer["policy"] not in ("twse_profile_ogdl_v1", "finmind_stock_info_v1", "metadata_only") or
             issuer["policy"] == "twse_profile_ogdl_v1" and issuer["source"] != TW_PROFILE or
+            issuer["policy"] == "finmind_stock_info_v1" and issuer["source"] != FINMIND_URL or
             issuer["policy"] == "metadata_only" and issuer["company_name"] is not None):
         raise SnapshotError("Issuer retention policy mismatch")
     profile_date = _reported_date(issuer["reported_at"])
@@ -275,7 +276,10 @@ def prepare_snapshot(report, run):
     identity["run_url"] = f"https://github.com/{run['repository']}/actions/runs/{run['run_id']}"
     issuer, tech, feed = report["issuer"], report["technical"], report["official_events"]
     profile = issuer["profile"]
-    permitted = profile.get("source") == TW_PROFILE
+    # FinMind identity stands in for t187ap03_L only when TWSE failed (2026-10-29 policy).
+    fallback = (profile.get("fallback_for") == TW_PROFILE and
+                public_url(profile.get("source")) == FINMIND_URL)
+    permitted = profile.get("source") == TW_PROFILE or fallback
     links = {public_url(profile.get("source")), public_url(feed.get("source"))}
     limits = {"prices_metadata_only", "events_metadata_only", "artifact_inputs_not_retained"}
     facts = []
@@ -315,7 +319,8 @@ def prepare_snapshot(report, run):
                                                  "legacy_complete": report["complete"]},
                 "issuer": {"company_name": issuer.get("company_name") if permitted else None,
                            "source": public_url(profile.get("source")), "reported_at": profile.get("reported_at") if permitted else None,
-                           "policy": "twse_profile_ogdl_v1" if permitted else "metadata_only"},
+                           "policy": ("finmind_stock_info_v1" if fallback else "twse_profile_ogdl_v1")
+                                     if permitted else "metadata_only"},
                 "monthly_revenue": facts,
                 "technical": tech_data,
                 "events": {"status": feed["status"], "source": public_url(feed.get("source")),

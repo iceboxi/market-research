@@ -2,6 +2,8 @@
 
 查核：2026-10-20；範圍為 2330 三表來源與公開出口，技術連通性另由 runner 驗證。
 
+> **2026-10-29 使用者決策（優先於下文的出口限制）**：先穩定研究結果，暫不以轉發授權阻擋發布；可採用其他免費來源，但必須保留來源出處與日期。依此，TWSE `t187ap03_L` 失敗時改用 FinMind `TaiwanStockInfo` 取得公司簡稱與產業別，公開快照以 `finmind_stock_info_v1` policy 標示；發行股數等 profile 數值仍只取自 TWSE。下文保留為當時的查證紀錄。
+
 ## FinMind
 
 [三表 API](https://finmind.github.io/tutor/TaiwanMarket/Fundamental/) 的單股查詢在 [Free](https://finmind.github.io/Pricing/) 範圍，限非商業用途，每小時 300 次、註冊 600 次；各方案皆禁止原始資料再散布及鏡像 API，使用須標示 FinMind。[SDK Apache-2.0](https://github.com/FinMind/FinMind/blob/master/LICENSE) 僅是程式授權，不能據此公開 API payload。

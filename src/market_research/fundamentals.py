@@ -22,6 +22,21 @@ SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 SEC_FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 SEC_SUBMISSIONS = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 
+# FinMind TaiwanStockInfo category -> TWSE t187ap03_L 產業別. Derived 2026-10-29 by
+# joining every TWSE listed row with FinMind: 1070/1098 equal, 26 unresolved, 2 differ
+# (其他 vs. an older specific sector), none across sector 17. Umbrella index groups
+# such as 電子工業 are deliberately absent.
+FINMIND_TWSE_INDUSTRY = {
+    "水泥工業": "01", "食品工業": "02", "塑膠工業": "03", "紡織纖維": "04", "電機機械": "05",
+    "電器電纜": "06", "玻璃陶瓷": "08", "造紙工業": "09", "鋼鐵工業": "10", "橡膠工業": "11",
+    "汽車工業": "12", "建材營造": "14", "航運業": "15", "觀光餐旅": "16", "觀光事業": "16",
+    "金融保險": "17", "貿易百貨": "18", "其他": "20", "化學工業": "21", "生技醫療業": "22",
+    "油電燃氣業": "23", "半導體業": "24", "電腦及週邊設備業": "25", "光電業": "26",
+    "通信網路業": "27", "電子零組件業": "28", "電子通路業": "29", "資訊服務業": "30",
+    "其他電子業": "31", "綠能環保": "35", "數位雲端": "36", "運動休閒": "37", "居家生活": "38",
+    "存託憑證": "91",
+}
+
 from .financial_history import normalize_sec_history, normalize_tw_financial_history
 from .event_risk import (
     TW_SHAREHOLDER_ANNOUNCE_URL, TW_SHAREHOLDER_MEETING_URL, sec_filing_events, unknown,
@@ -73,19 +88,52 @@ def tw_report_date(value):
     return date(year, int(value[-4:-2]), int(value[-2:]))
 
 
+def finmind_tw_identity(ticker, get):
+    """Name and TWSE sector from FinMind when t187ap03_L is unavailable; no share data."""
+    url = f"{FINMIND_URL}?dataset=TaiwanStockInfo&data_id={ticker}"
+    body = get(url)
+    if not (isinstance(body, dict) and body.get("status") == 200 and isinstance(body.get("data"), list)):
+        raise ValueError("FinMind TaiwanStockInfo did not return data")
+    rows = [r for r in body["data"] if isinstance(r, dict) and r.get("type") == "twse" and
+            str(r.get("stock_id") or "").strip() == ticker]
+    names = {str(r.get("stock_name") or "").strip() for r in rows} - {""}
+    codes = {FINMIND_TWSE_INDUSTRY[r.get("industry_category")] for r in rows
+             if r.get("industry_category") in FINMIND_TWSE_INDUSTRY}
+    if len(codes) > 1:
+        codes.discard("20")  # FinMind keeps 其他 beside a newer specific sector
+    dates = {str(r.get("date") or "").replace("-", "") for r in rows}
+    if len(names) != 1 or len(codes) != 1 or not all(re.fullmatch(r"[0-9]{8}", d) for d in dates):
+        raise ValueError(f"{ticker}: FinMind identity or TWSE sector not unique")
+    row = {"公司代號": ticker, "公司簡稱": names.pop(), "產業別": codes.pop(), "出表日期": max(dates)}
+    return row, url
+
+
 def twse_fundamentals(symbol, get=json_get, *, financial_get=None, asof=None):
     """TWSE-listed equities only; no assumption that all are generic industry."""
     if not re.fullmatch(r"[0-9]{4,6}\.TW", symbol):
         raise ValueError("Use a valid TWSE listed symbol, e.g. 2330.TW")
     ticker = symbol.removesuffix(".TW")
-    profile = get(TW_PROFILE)
-    if not isinstance(profile, list):
-        raise ValueError("TWSE profile endpoint must return a list")
-    rows = [r for r in profile if isinstance(r, dict) and
-            str(pick(r, "公司代號", "公司代碼") or "").strip() == ticker]
-    if len(rows) != 1:
-        raise ValueError(f"{symbol}: not uniquely found in TWSE listed-company profile")
-    row = rows[0]
+    ext_get = financial_get or (get if get is json_get else None)
+    profile_source = {"source": TW_PROFILE}
+    try:
+        profile = get(TW_PROFILE)
+        if not isinstance(profile, list):
+            raise ValueError("TWSE profile endpoint must return a list")
+        rows = [r for r in profile if isinstance(r, dict) and
+                str(pick(r, "公司代號", "公司代碼") or "").strip() == ticker]
+        if len(rows) != 1:
+            raise ValueError(f"{symbol}: not uniquely found in TWSE listed-company profile")
+        row = rows[0]
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as primary:
+        # Natural run 40706446471: TWSE served an HTML security page here.
+        if ext_get is None:
+            raise
+        try:
+            row, url = finmind_tw_identity(ticker, ext_get)
+        except (httpx.HTTPError, ValueError, TypeError, KeyError, OSError) as fallback:
+            raise primary from fallback
+        profile_source = {"source": url, "fallback_for": TW_PROFILE,
+                          "primary_error": type(primary).__name__}
     output = {
         "symbol": symbol, "market": "tw",
         "company_name": pick(row, "公司名稱", "公司簡稱"),
@@ -94,12 +142,17 @@ def twse_fundamentals(symbol, get=json_get, *, financial_get=None, asof=None):
         "paid_in_capital_twd": number(pick(row, "實收資本額", "實收資本額(元)")),
         "par_value_desc": pick(row, "普通股每股面額"),
         "profile": {
-            "source": TW_PROFILE,
+            "source": profile_source["source"],
             "reported_at": pick(row, "出表日期"),
+            **{k: v for k, v in profile_source.items() if k != "source"},
         },
         "facts": [],
         "warnings": [],
     }
+    if "fallback_for" in profile_source:
+        output["warnings"].append(
+            f"TWSE company profile unavailable: {profile_source['primary_error']}; "
+            "identity from FinMind TaiwanStockInfo")
     # OGDL listed-company profile: an observed issued ordinary-share snapshot.
     # Not the EPS weighted-average (basic/diluted) denominator or historical float.
     shares_label = "已發行普通股數或TDR原股發行股數"
@@ -155,7 +208,6 @@ def twse_fundamentals(symbol, get=json_get, *, financial_get=None, asof=None):
     except (httpx.HTTPError, ValueError, KeyError, OSError) as exc:
         output["warnings"].append("TWSE monthly revenue unavailable: "+type(exc).__name__)
 
-    ext_get = financial_get or (get if get is json_get else None)
     if ext_get is not None and str(output.get("industry_code") or "").strip().zfill(2) != "17":
         cutoff_date = asof if isinstance(asof, date) else date.today()
         twse_bundle = {"profile": row}
