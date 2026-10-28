@@ -50,7 +50,8 @@ jobs:
       - run: uv sync --extra dev --locked
       - run: uv run --no-sync pytest
       - name: Run historical backtest
-        run: uv run --no-sync python -m market_research.backtest --market "$MARKET" --period "$PERIOD" --out backtest_output
+        # Production scan enables no strategy since #117; this research run names it.
+        run: uv run --no-sync python -m market_research.backtest --market "$MARKET" --period "$PERIOD" --strategy sakata_three_soldiers --out backtest_output
       - name: Write job summary
         if: always()
         run: |

@@ -168,12 +168,18 @@ def backtest_symbol(df, market, symbol, strategy, params, cfg):
 
 def run_backtest(market="both", period="1y", out=Path("backtest_output"),
                  config_dir=Path("config"), provider=None, now=None,
-                 replay_dir=None, snapshot_output=None, strict_freshness=False):
+                 replay_dir=None, snapshot_output=None, strict_freshness=False,
+                 strategy_ids=None):
     markets = yaml.safe_load((config_dir / "markets.yaml").read_text())["markets"]
-    strategies = [
-        s for s in yaml.safe_load((config_dir / "strategies.yaml").read_text())["strategies"]
-        if s["enabled"]
-    ]
+    configured = yaml.safe_load((config_dir / "strategies.yaml").read_text())["strategies"]
+    if strategy_ids:
+        # Research runs name their strategy; production enablement is separate (#117).
+        unknown = set(strategy_ids) - {s["id"] for s in configured}
+        if unknown:
+            raise ValueError(f"Unknown strategy: {sorted(unknown)}")
+        strategies = [s for s in configured if s["id"] in strategy_ids]
+    else:
+        strategies = [s for s in configured if s["enabled"]]
     if not strategies:
         raise ValueError("No enabled strategies")
     selection = list(markets) if market == "both" else [market]
@@ -280,10 +286,12 @@ def main():
     parser.add_argument("--replay-dir", type=Path)
     parser.add_argument("--snapshot-output", type=Path)
     parser.add_argument("--strict-freshness", action="store_true")
+    parser.add_argument("--strategy", action="append", dest="strategies",
+                        help="Backtest this configured strategy even if disabled in production")
     args = parser.parse_args()
     outcome = run_backtest(args.market, args.period, args.out,
                            replay_dir=args.replay_dir, snapshot_output=args.snapshot_output,
-                           strict_freshness=args.strict_freshness)
+                           strict_freshness=args.strict_freshness, strategy_ids=args.strategies)
     print(json.dumps({"scanned": outcome["scanned"],
                       "errors": outcome["error_count"],
                       "trades": outcome["trade_count"]}))
