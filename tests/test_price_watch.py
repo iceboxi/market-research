@@ -374,7 +374,7 @@ def test_published_page_gains_the_watchlist_overview(tmp_path):
     result = execute(artifacts(tmp_path), tmp_path / "out", research_fn=Sources().research,
                      publication_fn=publish, now=NOW, price_watch_fn=watch_rows(),
                      symbols=["2330.TW", "0050.TW"], benchmarks=["TAIEX"])
-    assert result["watchlist_site"] == {"status": "rendered"}
+    assert result["watchlist_site"] == {"status": "rendered", "latest_only": [], "skipped": {}}
     html = (tmp_path / "out" / "fixed_research" / "index.html").read_text()
     assert 'id="watchlist"' in html and '<a href="#watchlist">觀察名單</a>' in html
     assert "發行量加權股價指數" in html and "-9.09%" in html

@@ -125,6 +125,14 @@ rebuilt and explained in a comment. `not_evaluated` is never a change: the last
 evaluated value is kept and the body shows the gap. Branch, pull-request and
 validation runs never write it.
 
+The Pages site lists 2330 with its research-state history and, from each daily
+TW run, the other satellites with today's version only (#125): they are rendered
+from that run's reports, not stored in research-state, and a stock whose report
+cannot become a valid snapshot is left out with its reason in the daily receipt.
+The stock picker opens the full list (▾) and filters by code or name. The
+overview, risk and valuation narrative written for TSMC's foundry business shows
+only on 2330; every number in it comes from each stock's own data.
+
 ## Limits
 
 TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.
