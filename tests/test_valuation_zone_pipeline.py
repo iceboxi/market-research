@@ -117,7 +117,7 @@ def test_daily_summary_lists_satellite_zones_and_skips_etfs(tmp_path):
                 "valuation_zone": zone if symbol == "2330.TW" else blocked}
 
     result = execute(artifacts(tmp_path), tmp_path / "out", research_fn=research,
-                     publication_fn=delivered, now=NOW,
+                     publication_fn=delivered, now=NOW, price_watch_fn=lambda symbols, now: [],
                      symbols=["2330.TW", "2317.TW", "0050.TW"])
     symbols = result["pilot_coverage"]["symbols"]
     assert symbols["2330.TW"]["valuation_zone"]["zone"] == "fair"

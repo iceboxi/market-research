@@ -88,6 +88,21 @@ older than 200 days, or fewer than 720 P/E samples give `not_evaluated`.
 never ETFs) with an optional thesis and percentile or fixed-multiple override.
 The zone is a prompt to review, not a fair value, target or trade price.
 
+The ETFs and the TAIEX benchmark (`benchmarks` in `config/markets.yaml`) get a
+price watch ([#113](https://github.com/iceboxi/market-research/issues/113)) in the
+daily TW run: latest close, drawdown from the 52-week high and distance from the
+200-session moving average, from the latest completed session (strict freshness).
+TAIEX comes from TWSE `MI_5MINS_HIST` OHLC, cross-checked against `FMTQIK`
+(close, change, market-wide shares). The price watch loads 13 months, so it
+costs 13 requests per ETF and 26 for TAIEX on top of the scan. Where TWSE
+publishes a reference price different from the previous close (a split such as
+00631L's 1-for-22 on 2026-03-31), earlier bars are rescaled by it; 'X' days
+(ex-dividend) stay unadjusted and are listed. Less than 52 weeks or 200
+sessions, or an unexplained gap on an 'X' day, gives `not_evaluated`. The daily
+summary and the Pages "觀察名單總覽" show these rows with the satellites'
+review zones; they are display only, never signals. The scan, backtests and
+strategy research do not load benchmarks.
+
 ## Limits
 
 TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.

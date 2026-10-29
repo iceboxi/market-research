@@ -11,9 +11,12 @@ import time
 from scripts.company_report import run
 from scripts.research_publication import execute as publish_report
 from scripts.scan_company_research import execute as candidate_research
+from market_research.price_watch import load_price_watch, render_price_watch_summary
+from market_research.research_site import write_research_site
 from market_research.valuation_zone import zone_summary_row
 
 DEFAULT_TW_PILOT_SYMBOLS = ["2330.TW", "2317.TW", "2454.TW", "0050.TW", "00631L.TW"]
+DEFAULT_TW_BENCHMARKS = ["TAIEX"]
 
 FULL_MARKET_PATTERNS = (
     "t187ap03_L",
@@ -41,6 +44,19 @@ def get_pilot_symbols(market="tw", config_path=None):
     return DEFAULT_TW_PILOT_SYMBOLS
 
 
+def get_benchmarks(market="tw", config_path=None):
+    """Index codes priced alongside the watchlist (markets.yaml `benchmarks`)."""
+    path = Path(config_path) if config_path else Path(__file__).resolve().parents[1] / "config" / "markets.yaml"
+    if path.exists():
+        import yaml
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            return data.get("markets", {}).get(market, {}).get("benchmarks", DEFAULT_TW_BENCHMARKS)
+        except Exception:
+            pass
+    return DEFAULT_TW_BENCHMARKS
+
+
 def is_etf(symbol):
     """TWSE ETF/ETN codes start with 00; they have no issuer research."""
     return symbol.split(".")[0].startswith("00")
@@ -52,7 +68,7 @@ def is_full_market_endpoint(url):
 
 def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
             research_fn=run, publication_fn=publish_report, sec_user_agent=None, now=None,
-            pilot=False, symbols=None):
+            pilot=False, symbols=None, price_watch_fn=load_price_watch, benchmarks=None):
     if market not in ("tw", "both"):
         raise ValueError("Daily fixed research requires TW coverage")
     if not 1 <= max_candidates <= 20 or now is not None and now.tzinfo is None:
@@ -175,6 +191,22 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
                 pilot_coverage["failed_count"] += 1
             pilot_coverage["symbols"][sym] = sym_rec
 
+        # Core ETFs and the benchmark are priced, never researched (#113).
+        if benchmarks is None:
+            benchmarks = get_benchmarks("tw") if pilot and symbols is None else []
+        watch_symbols = [sym for sym in target_symbols if is_etf(sym)] + list(benchmarks)
+        watch_rows = []
+        if watch_symbols:
+            try:
+                watch_rows = price_watch_fn(watch_symbols, now)
+            except Exception as err:
+                watch_rows = [{"symbol": sym, "status": "failed", "error_type": type(err).__name__,
+                               "reason": str(err)} for sym in watch_symbols]
+        result["price_watch"] = watch_rows
+        for row in watch_rows:
+            if row["symbol"] in pilot_coverage["symbols"]:
+                pilot_coverage["symbols"][row["symbol"]]["price_watch"] = row["status"]
+
         pilot_coverage["shared_endpoints_cached"] = len(shared_stats["shared_endpoints"])
         pilot_coverage["cache_hit_count"] = shared_stats["cache_hits"]
         result["pilot_coverage"] = pilot_coverage
@@ -206,6 +238,7 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
         if (temp / "companies").exists():
             shutil.copytree(temp / "companies", out / "companies", dirs_exist_ok=True)
 
+        state_branch = None
         if "2330.TW" in reports:
             try:
                 receipt = publication_fn(
@@ -215,14 +248,33 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
                 fixed["publication"] = receipt["publication"]
                 fixed["snapshot_id"] = receipt["snapshot_id"]
                 fixed["state_commit"] = receipt.get("fresh_read_commit")
+                state_branch = receipt.get("state_branch")
             except Exception as error:
                 fixed["publication"] = {"status": "failed", "error_type": type(error).__name__}
 
+        # The published page gains the daily overview; the state stays the publication's own.
+        state_file = out / "fixed_research" / "research_state.json"
+        if (fixed["publication"]["status"] in ("published", "already_current") and state_branch
+                and state_file.exists()):
+            overview = {"price_watch": watch_rows, "valuation_zones": {
+                sym: rec["valuation_zone"] for sym, rec in pilot_coverage["symbols"].items()
+                if rec.get("valuation_zone")}, "names": {
+                sym: rec["company_name"] for sym, rec in pilot_coverage["symbols"].items()
+                if rec.get("company_name")}}
+            try:
+                state = json.loads(state_file.read_text(encoding="utf-8"))
+                write_research_site(out / "fixed_research", state["records"],
+                                    branch=state_branch, watchlist=overview)
+                result["watchlist_site"] = {"status": "rendered"}
+            except Exception as error:
+                result["watchlist_site"] = {"status": "failed", "error_type": type(error).__name__}
+
         all_pilot_ok = (pilot_coverage["failed_count"] == 0)
+        watch_ok = all(row["status"] != "failed" for row in watch_rows)
         fixed_ok = (fixed["status"] == "complete" and fixed["publication"]["status"] in ("published", "already_current"))
         candidates_ok = candidates["status"] in ("complete", "no_candidates")
 
-        if all_pilot_ok and fixed_ok and candidates_ok:
+        if all_pilot_ok and fixed_ok and candidates_ok and watch_ok:
             result["status"] = "complete"
         elif fixed_ok and candidates_ok:
             result["status"] = "partial"
@@ -279,6 +331,7 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
             "| :--- | ---: | ---: | ---: | ---: | :--- | :--- | :--- |",
         ]
         lines += [zone_summary_row(sym, zone) for sym, zone in zones]
+    lines += render_price_watch_summary(result["price_watch"])
 
     (out / "daily_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return result
