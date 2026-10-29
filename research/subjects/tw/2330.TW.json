@@ -1,10 +1,10 @@
 {
   "creation_attempted": true,
   "issue_number": 73,
-  "last_success_id": "4159f65d3cf65d8177ca40048fb3de2dc81b31c3893ab91c220d9895c5dbd351",
-  "latest_observation_id": "4159f65d3cf65d8177ca40048fb3de2dc81b31c3893ab91c220d9895c5dbd351",
+  "last_success_id": "59b2a3afe3cc78ceb820d195439676c02a1bda610daca4388b303cd0d14c4246",
+  "latest_observation_id": "59b2a3afe3cc78ceb820d195439676c02a1bda610daca4388b303cd0d14c4246",
   "pending_notification_id": null,
-  "pending_publication_id": null,
+  "pending_publication_id": "fd6fca363985dcb3c0655bd32d593c11a23741bdbb818933062541fd3d3a0f7d",
   "published_notification_id": "5fbe8c281ac2c13261a0f4001958f508a617e0d9bde6158f4df90712ff8c0ee7",
   "published_publication_id": "ee979722b6fe0b784abccfc189796b6e80c74d4d0cdf2f2cb1e7e1680f3555ca",
   "schema_version": 2,
