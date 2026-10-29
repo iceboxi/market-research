@@ -144,9 +144,16 @@ class GitStateStore:
                 "records": {p[len(namespace) + 1:]: v for p, v in files.items()
                             if p.startswith(namespace + "/")}}
 
-    def commit(self, namespace, merge, *, legacy_prefix=None, initialize=False):
+    def commit(self, namespace, merge, *, legacy_prefix=None, initialize=False, remove=frozenset()):
+        """Fast-forward write of one namespace; records are never dropped implicitly.
+
+        `remove` names the only records that may disappear (a deliberate, reviewed prune).
+        """
         if not re.fullmatch(r"[a-z][a-z0-9_-]*", namespace):
             raise StateError("Invalid namespace")
+        remove = frozenset(remove)
+        if remove and initialize:
+            raise StateError("A namespace cannot be initialized and pruned in one write")
         code_sha = self._git("rev-parse", "HEAD").stdout.strip()
         for attempt in range(1, 4):
             head, manifest, files = self._load()
@@ -172,8 +179,10 @@ class GitStateStore:
             except StateError as error:
                 error.context.update(context)
                 raise
-            if not isinstance(updated, dict) or not records.keys() <= updated.keys():
+            if not isinstance(updated, dict) or not records.keys() - remove <= updated.keys():
                 raise StateError("Merge must preserve all previously owned records")
+            if not remove <= records.keys() or remove & updated.keys():
+                raise StateError("Removals must name owned records and leave them out of the merge")
             for path in updated:
                 safe_path(path)
             if namespace in manifest["namespaces"] and canonical(updated) == canonical(records):
@@ -195,6 +204,8 @@ class GitStateStore:
                 try:
                     writes = {namespace + "/" + p: v for p, v in updated.items()}
                     writes[MANIFEST] = manifest
+                    for path in remove:
+                        (worktree / namespace / path).unlink()
                     for path, value in writes.items():
                         dest = worktree / path
                         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -207,7 +218,7 @@ class GitStateStore:
                     stage_paths = [MANIFEST]
                     if updated:
                         stage_paths.append(namespace)
-                    self._git("add", "--", *stage_paths, cwd=worktree)
+                    self._git("add", "-A", "--", *stage_paths, cwd=worktree)
                     self._git(*BOT, "commit", "-m", "state: update " + namespace, cwd=worktree)
                     saved = self._git("rev-parse", "HEAD", cwd=worktree).stdout.strip()
                     context["candidate_commit"] = saved
