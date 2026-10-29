@@ -1,0 +1,9 @@
+{
+  "coverage": "recent_daily_snapshot_only_not_a_full_history",
+  "market": "tw",
+  "observed_at_utc": "2026-10-29T18:29:41.811438+00:00",
+  "schema_version": 1,
+  "seen_ids": [],
+  "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
+  "symbol": "2454.TW"
+}
