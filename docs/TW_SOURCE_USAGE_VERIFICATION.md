@@ -6,6 +6,8 @@
 
 > **#114 估值檢視區**：同一決策下採用 FinMind `TaiwanStockPER`（近 5 年每日本益比，查詢起點為 cutoff 前 5 年）。報告與 Artifact 保存百分位、本益比區間、樣本數、日期範圍、最新一筆本益比與查詢 URL；公開快照因 20,000 bytes 上限只保存其中的數值（查詢 URL 由代碼與窗口起點重建）。兩者都不保存原始每日序列。
 
+> **#113 核心 ETF 與加權指數**：加權指數日 K 取自 TWSE `MI_5MINS_HIST`（開高低收），並與 TWSE `FMTQIK`（收盤、漲跌點數、市場成交股數）逐月核對；ETF 沿用 TWSE `STOCK_DAY`，以其「漲跌價差」推回 TWSE 參考價，用來還原分割。兩者都是 TWSE 官方公開資料。每日摘要、Artifact 與 Pages 只放收盤、52 週高點、200 日均線、對應百分比與日期，不保存原始日 K。
+
 ## FinMind
 
 [三表 API](https://finmind.github.io/tutor/TaiwanMarket/Fundamental/) 的單股查詢在 [Free](https://finmind.github.io/Pricing/) 範圍，限非商業用途，每小時 300 次、註冊 600 次；各方案皆禁止原始資料再散布及鏡像 API，使用須標示 FinMind。[SDK Apache-2.0](https://github.com/FinMind/FinMind/blob/master/LICENSE) 僅是程式授權，不能據此公開 API payload。

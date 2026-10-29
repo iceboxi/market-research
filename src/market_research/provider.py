@@ -61,22 +61,28 @@ class YahooDailyProvider:
 
 @dataclass
 class RoutedDailyProvider:
-    """Use authoritative TWSE candles for .TW; Yahoo Finance for US.
+    """Use authoritative TWSE candles for .TW and TAIEX; Yahoo Finance for US.
 
     Never mix two sources within a stock's RSI or volume lookback window.
     """
     taiwan: DataProvider | None = None
     united_states: DataProvider | None = None
+    taiwan_index: DataProvider | None = None
     source: str = "routed_daily_twse_for_tw_yahoo_for_us"
 
     def __post_init__(self):
+        from .twse import TwseDailyProvider, TwseIndexProvider
         if self.taiwan is None:
-            from .twse import TwseDailyProvider
             self.taiwan = TwseDailyProvider()
         if self.united_states is None:
             self.united_states = YahooDailyProvider()
+        if self.taiwan_index is None:
+            self.taiwan_index = TwseIndexProvider()
 
     def provider_for(self, symbol: str) -> DataProvider:
+        from .twse import TAIEX
+        if symbol == TAIEX:
+            return self.taiwan_index
         return self.taiwan if symbol.endswith(".TW") else self.united_states
 
     def unscheduled_closures(self, market: str, now) -> tuple:

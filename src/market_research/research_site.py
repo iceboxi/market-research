@@ -29,7 +29,9 @@ from zoneinfo import ZoneInfo
 from market_research.research_comparison import available, compare_snapshots
 from market_research.research_snapshot import prepare_snapshot, utc
 from market_research.fundamentals import finmind_per_url
-from market_research.valuation_zone import DISCLAIMER
+from market_research.price_watch import (DISCLAIMER as PRICE_WATCH_DISCLAIMER, MA_SESSIONS,
+                                         WINDOW_WEEKS, price_watch_notes)
+from market_research.valuation_zone import DISCLAIMER, ZONE_LABELS
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 SUBJECT_RE = re.compile(r"subjects/([a-z]+)/([A-Za-z0-9.\-]+)\.json")
@@ -799,7 +801,6 @@ def _valuation_zone(fr: dict[str, Any] | None, symbol: Any) -> str:
             '價位 = 本益比區間 × 近四季 EPS；價格進出區間只代表值得重新檢視，不是合理價、目標價或進出場價格。</div>')
     if zone.get("status") != "available":
         return head + note + _empty("此次未計算檢視區", f"not_evaluated：{_e(zone.get('reason'))}")
-    labels = {"below_low": "低於偏低價", "fair": "合理區間", "above_high": "高於偏高價"}
     prices, band = zone["review_prices_twd"], zone["pe_band"]
     price, eps, hist = zone["price"], zone["eps"] or {}, zone.get("per_history") or {}
     quarters = eps.get("quarters") or []
@@ -819,12 +820,89 @@ def _valuation_zone(fr: dict[str, Any] | None, symbol: Any) -> str:
   <div class="table-wrap"><table><thead><tr><th scope="col">收盤（{_e(price.get('session'))}）</th>
   <th scope="col" class="num">偏低價<span class="unit">元/股</span></th><th scope="col" class="num">合理價<span class="unit">元/股</span></th>
   <th scope="col" class="num">偏高價<span class="unit">元/股</span></th><th scope="col">目前區間</th></tr></thead>
-  <tbody><tr><td class="num">{_num(price.get('close'))}</td>{cells}<td>{_e(labels.get(zone.get('zone')))}</td></tr></tbody></table></div>
+  <tbody><tr><td class="num">{_num(price.get('close'))}</td>{cells}<td>{_e(ZONE_LABELS.get(zone.get('zone')))}</td></tr></tbody></table></div>
   <dl class="meta">
     <div><dt>方法</dt><dd>{_e(method)} × 近四季基本 EPS</dd></div>
     <div><dt>近四季 EPS</dt><dd>{_num(eps.get('ttm_basic_eps'))} 元（{_e(quarters[0] if quarters else None)}–{_e(quarters[-1] if quarters else None)}，截至 {_e(eps.get('period_end'))}）</dd></div>
     <div><dt>本益比樣本</dt><dd>{sample}</dd></div>
   </dl>"""
+
+
+def _signed(value: Any) -> str:
+    return f"{value:+.2f}%" if isinstance(value, (int, float)) else NA
+
+
+def _watch_measure(measure: dict[str, Any], detail: str) -> str:
+    if measure.get("status") != "available":
+        return '<td class="num">未評估</td>'
+    return f'<td class="num">{_signed(measure["pct"])}<span class="unit">{detail}</span></td>'
+
+
+def _price_watch_row(row: dict[str, Any]) -> str:
+    label = f'{_e(row["symbol"])}<span class="unit">{_e(row.get("name") or "")}</span>'
+    if row.get("status") == "failed":
+        return (f'<tr><th scope="row">{label}</th><td class="num">{NA}</td><td class="num">{NA}</td>'
+                f'<td class="num">{NA}</td><td>取得失敗：{_e(row.get("error_type"))}：{_e(row.get("reason"))}</td></tr>')
+    high, ma = row["drawdown_52w"], row["ma_200"]
+    high_detail = f'高點 {_num(high.get("high"))}（{_e(high.get("high_date"))}）'
+    ma_detail = f'均線 {_num(ma.get("average"))}'
+    return (f'<tr><th scope="row">{label}</th>'
+            f'<td class="num">{_num(row["close"])}<span class="unit">{_e(row["session"])}</span></td>'
+            f'{_watch_measure(high, high_detail)}{_watch_measure(ma, ma_detail)}'
+            f'<td>{_e(price_watch_notes(row))}</td></tr>')
+
+
+def _zone_row(symbol: str, zone: dict[str, Any], name: Any) -> str:
+    label = f'{_e(symbol)}<span class="unit">{_e(name or "")}</span>'
+    price = zone.get("price") or {}
+    close = (f'{_num(price.get("close"))}<span class="unit">{_e(price.get("session"))}</span>'
+             if price else NA)
+    if zone.get("status") != "available":
+        return (f'<tr><th scope="row">{label}</th><td class="num">{close}</td>'
+                f'<td colspan="4">未評估：{_e(zone.get("reason"))}</td></tr>')
+    prices = zone["review_prices_twd"]
+    cells = "".join(f'<td class="num">{_num(prices[k])}</td>' for k in ("low", "mid", "high"))
+    return (f'<tr><th scope="row">{label}</th><td class="num">{close}</td>{cells}'
+            f'<td>{_e(ZONE_LABELS.get(zone.get("zone")))}</td></tr>')
+
+
+def _watchlist_overview(watchlist: dict[str, Any] | None) -> str:
+    """Daily watchlist overview (#113): core ETF / TAIEX positions and satellite zones.
+
+    Supplied only by the daily TW run; a manual publication renders without it.
+    """
+    if not watchlist:
+        return ""
+    rows = watchlist.get("price_watch") or []
+    zones = watchlist.get("valuation_zones") or {}
+    names = watchlist.get("names") or {}
+    if not rows and not zones:
+        return ""
+    parts = ['<section id="watchlist" class="watchlist" aria-labelledby="watchlist-title">'
+             '<h2 id="watchlist-title">觀察名單總覽</h2>']
+    if rows:
+        parts.append(
+            f'<h3>核心 ETF 與加權指數</h3><p class="disclaimer">{_e(PRICE_WATCH_DISCLAIMER)}。'
+            f'距高點 = 收盤 ÷ 近 {WINDOW_WEEKS} 週最高價 − 1；距均線 = 收盤 ÷ 近 {MA_SESSIONS} 個交易日收盤平均 − 1。'
+            'TWSE 官方日 K；分割等依 TWSE 參考價還原，除息未還原。</p>'
+            '<div class="table-wrap"><table><thead><tr><th scope="col">標的</th>'
+            '<th scope="col" class="num">收盤<span class="unit">日期</span></th>'
+            f'<th scope="col" class="num">距 {WINDOW_WEEKS} 週高點</th>'
+            f'<th scope="col" class="num">距 {MA_SESSIONS} 日均線</th><th scope="col">備註</th></tr></thead>'
+            f'<tbody>{"".join(_price_watch_row(r) for r in rows)}</tbody></table></div>')
+    if zones:
+        parts.append(
+            f'<h3>衛星個股估值檢視區</h3><p class="disclaimer">{_e(DISCLAIMER)}。'
+            '價位 = 本益比區間 × 近四季 EPS；方法與樣本見各股估值章節或每日 Artifact。</p>'
+            '<div class="table-wrap"><table><thead><tr><th scope="col">標的</th>'
+            '<th scope="col" class="num">收盤<span class="unit">日期</span></th>'
+            '<th scope="col" class="num">偏低價<span class="unit">元/股</span></th>'
+            '<th scope="col" class="num">合理價<span class="unit">元/股</span></th>'
+            '<th scope="col" class="num">偏高價<span class="unit">元/股</span></th>'
+            '<th scope="col">目前區間</th></tr></thead>'
+            f'<tbody>{"".join(_zone_row(s, z, names.get(s)) for s, z in zones.items())}</tbody></table></div>')
+    parts.append("</section>")
+    return "".join(parts)
 
 
 def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
@@ -1190,6 +1268,7 @@ border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,
 .identity .sub{color:var(--muted);font-size:14px;margin-top:2px}
 .version{display:flex;flex-direction:column;gap:4px;padding:8px 12px;border:1px dashed var(--line);border-radius:6px;background:var(--surface)}
 .version label{font-size:12px;color:var(--muted)}.version select{font:inherit;font-size:14px;padding:4px 6px;max-width:420px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px}
+.watchlist{padding:12px 0 8px}.watchlist h3{margin-top:14px}
 .disclaimer{font-size:13px;color:var(--muted);border-left:3px solid var(--warn);padding:6px 12px;margin:4px 0 8px;background:var(--surface)}
 .banner{margin:10px 0;padding:10px 14px;border:1px solid var(--bad);border-radius:6px;background:var(--surface)}
 main section{padding:28px 0 8px;border-top:1px solid var(--line)}main section:first-child{border-top:0}
@@ -1333,6 +1412,7 @@ def render_research_site_html(
     *,
     branch: str = "research-state",
     latest_report: dict[str, Any] | None = None,
+    watchlist: dict[str, Any] | None = None,
 ) -> str:
     """Render the complete, self-contained research workspace."""
     payload = build_site_payload(records, branch=branch, latest_report=latest_report)
@@ -1363,7 +1443,9 @@ def render_research_site_html(
     data = json.dumps({"schema_version": 2, "default_symbol": default, "branch": branch,
                        "generated_at_utc": payload["generated_at_utc"], "stocks": registry, "views": views},
                       ensure_ascii=False).replace("</", "<\\/")
-    nav = "".join(f'<a href="#{k}">{v}</a>' for k, v in NAV)
+    overview = _watchlist_overview(watchlist)
+    sections = ([("watchlist", "觀察名單")] if overview else []) + NAV
+    nav = "".join(f'<a href="#{k}">{v}</a>' for k, v in sections)
     picker_value = f"{default}  {stock['name'] or ''}  ·  {stock['code']}"
     cur = f" · {stock['currency_label']}（{stock['currency']}）" if stock.get("currency") else ""
     return f"""<!DOCTYPE html>
@@ -1401,6 +1483,7 @@ def render_research_site_html(
     </div>
   </div>
   <p class="disclaimer">研究資料整理，不是投資建議。估值為示意情境、技術觀察僅供研究，皆不構成目標價、進出場或停損價格。缺值以「—」表示，不補零。</p>
+  {overview}
   <div id="error-banner" class="banner" role="alert" hidden></div>
   <noscript><p class="banner">未啟用 JavaScript：顯示最新研究版本；股票搜尋與版本切換需要 JavaScript。</p></noscript>
   <main id="app" tabindex="-1">{views[default][latest_id]}</main>
@@ -1419,10 +1502,12 @@ def write_research_site(
     *,
     branch: str = "research-state",
     latest_report: dict[str, Any] | None = None,
+    watchlist: dict[str, Any] | None = None,
 ) -> Path:
     """Write `index.html` into `out_dir` and return its path."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / "index.html"
-    target.write_text(render_research_site_html(records, branch=branch, latest_report=latest_report), encoding="utf-8")
+    target.write_text(render_research_site_html(records, branch=branch, latest_report=latest_report,
+                                                watchlist=watchlist), encoding="utf-8")
     return target

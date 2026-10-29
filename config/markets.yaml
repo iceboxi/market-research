@@ -10,6 +10,10 @@ markets:
       - 2454.TW
       - 0050.TW
       - 00631L.TW
+    # Indexes priced beside the watchlist (#113): TAIEX = TWSE capitalization-
+    # weighted index. Display only; the scan, backtests and research skip them.
+    benchmarks:
+      - TAIEX
   us:
     timezone: America/New_York
     symbols:
