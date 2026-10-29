@@ -1352,16 +1352,26 @@ def _methodology(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, An
 </section>"""
 
 
+def _beginner_note(stock: dict[str, Any]) -> str:
+    """Older versions skip the 新手 charts (~20 kB each); the latest version carries them."""
+    return ('<section id="beginner" aria-labelledby="h-beginner"><h2 id="h-beginner">新手看這裡</h2>'
+            + _empty("新手章節只顯示最新研究版本",
+                     f'<button type="button" class="link-btn" data-snapshot="{_e(stock["latest_snapshot_id"])}">回到最新版本</button>')
+            + "</section>")
+
+
 def _render_view(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any], branch: str, extra: dict[str, Any]) -> str:
+    from market_research.beginner_view import render_beginner  # imports this module's helpers
     fr = snap.get("financial_research") if (snap.get("financial_research") or {}).get("status") == "available" else None
+    beginner = render_beginner(snap, stock) if snap["id"] == stock.get("latest_snapshot_id") else _beginner_note(stock)
     return (f'<div class="view" data-snapshot-id="{_e(snap["id"])}">'
-            + _overview(snap, comp, stock, extra) + _fundamentals(fr, snap) + _valuation(fr, snap)
+            + beginner + _overview(snap, comp, stock, extra) + _fundamentals(fr, snap) + _valuation(fr, snap)
             + _technical(snap, extra, stock) + _events(fr, snap) + _methodology(snap, comp, stock, branch) + "</div>")
 
 
 # ---------------------------------------------------------------- page
 
-NAV = [("overview", "總覽"), ("fundamentals", "基本面"), ("valuation", "估值"),
+NAV = [("beginner", "新手"), ("overview", "總覽"), ("fundamentals", "基本面"), ("valuation", "估值"),
        ("technical", "技術分析"), ("events", "風險與事件"), ("methodology", "資料與方法")]
 
 CSS = """
@@ -1513,7 +1523,8 @@ JS = r"""
     else if(e.key==='Escape'){close(true);}});
   sel.addEventListener('change',function(){render(sel.value);setUrl();document.getElementById('overview').scrollIntoView();});
   function bindView(){Array.prototype.forEach.call(app.querySelectorAll('[data-snapshot]'),function(b){
-    b.onclick=function(){render(b.getAttribute('data-snapshot'));setUrl();document.getElementById('overview').scrollIntoView();};});}
+    b.onclick=function(){render(b.getAttribute('data-snapshot'));setUrl();document.getElementById('overview').scrollIntoView();};});
+    if(window.bindBeginner)window.bindBeginner(app);}
   var observer=null;
   function spy(){if(!('IntersectionObserver' in window))return;if(observer)observer.disconnect();
     var links=document.querySelectorAll('.secnav a');
@@ -1547,6 +1558,7 @@ def render_research_site_html(
     latest_only: dict[str, Any] | None = None,
 ) -> str:
     """Render the complete, self-contained research workspace."""
+    from market_research.beginner_view import BEGINNER_CSS, BEGINNER_JS
     payload = build_site_payload(records, branch=branch, latest_report=latest_report, latest_only=latest_only)
     if not payload["stocks"]:
         return _empty_page(branch)
@@ -1588,7 +1600,7 @@ def render_research_site_html(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{_e(default)} {_e(stock['name'])} — 個股研究</title>
-<style>{CSS}</style>
+<style>{CSS}{BEGINNER_CSS}</style>
 </head>
 <body>
 <a class="skip" href="#app">跳到研究內容</a>
@@ -1625,6 +1637,7 @@ def render_research_site_html(
   <footer>資料來源：TWSE OpenAPI、政府資料開放平臺、FinMind。狀態分支 <code>{_e(branch)}</code>；頁面產生於 {_tpe(payload['generated_at_utc'])}（台北）。</footer>
 </div>
 <script id="site-data" type="application/json">{data}</script>
+<script>{BEGINNER_JS}</script>
 <script>{JS}</script>
 </body>
 </html>
