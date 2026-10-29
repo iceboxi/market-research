@@ -133,6 +133,14 @@ The stock picker opens the full list (▾) and filters by code or name. The
 overview, risk and valuation narrative written for TSMC's foundry business shows
 only on 2330; every number in it comes from each stock's own data.
 
+Each stock's latest version opens with a 新手 section (#126), ported from the
+reviewed prototype: a five-condition health check from the public statements
+(missing data is 資料不足, never a fail; financial and special industries are not
+checked), where the price sits in the stock's own five-year P/E review zone, five
+questions with charts, and a P/E calculator where the reader picks the multiple.
+Rises are red and falls green, with arrows. Older versions show a one-line note
+instead, which keeps the page about 20 kB per stored version lighter.
+
 ## Limits
 
 TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.
