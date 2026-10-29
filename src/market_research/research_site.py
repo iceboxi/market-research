@@ -38,6 +38,8 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 # The overview, risk and valuation narrative was hand-written for TSMC's foundry business;
 # every other stock gets neutral wording built only from its own data (#125).
 NARRATIVE_SYMBOL = "2330.TW"
+# Each embedded version costs ~55 kB; older ones stay listed in 資料與方法 (#131).
+MAX_EMBEDDED_VERSIONS = 30
 SUBJECT_RE = re.compile(r"subjects/([a-z]+)/([A-Za-z0-9.\-]+)\.json")
 
 MARKETS = {
@@ -267,8 +269,11 @@ def _stock_payload(records: dict[str, Any], market: str, symbol: str) -> dict[st
     meta = MARKETS.get(market, {"exchange": market.upper(), "code": market.upper(), "currency": None, "currency_label": None})
     name = next((s["issuer"].get("company_name") for s in reversed(chronological)
                  if (s.get("issuer") or {}).get("company_name")), None)
+    newest = [s["id"] for s in reversed(chronological)]
+    embedded = set(newest[:MAX_EMBEDDED_VERSIONS]) | {latest}
     return {
         "symbol": symbol, "market": market, "name": name, **meta,
+        "embedded_ids": embedded,
         "subject": subject,
         "checkpoint": records.get(f"checkpoints/{market}/{symbol}.json"),
         "snapshots": list(reversed(chronological)),
@@ -1263,7 +1268,9 @@ def _methodology(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, An
         c = stock["comparisons"].get(s["id"]) or {}
         current = ' aria-current="true"' if s["id"] == snap["id"] else ""
         action = ("目前檢視" if current else
-                  '<button type="button" class="link-btn" data-snapshot="' + _e(s["id"]) + '">檢視此版本</button>')
+                  '<button type="button" class="link-btn" data-snapshot="' + _e(s["id"]) + '">檢視此版本</button>'
+                  if s["id"] in stock.get("embedded_ids", {s["id"]}) else
+                  f'<span class="hint">未內嵌（頁面只保留最近 {MAX_EMBEDDED_VERSIONS} 版）</span>')
         run_s = s.get("run") or {}
         history.append(
             f'<tr{current}><th scope="row">{_tpe(s.get("observed_at_utc"))}</th>'
@@ -1376,9 +1383,11 @@ NAV = [("beginner", "新手"), ("overview", "總覽"), ("fundamentals", "基本�
 
 CSS = """
 :root{--bg:#f5f6f8;--surface:#fff;--text:#1a1d21;--muted:#5d6672;--line:#e1e4e8;--accent:#1f5fbf;
---ok:#1a7f37;--warn:#9a6700;--bad:#b42318;--neutral:#5d6672;--bar:#7fa3d6;--lineA:#3d4650;--lineB:#c0561b;--warn-bg:#fff8e6}
+--ok:#1a7f37;--warn:#9a6700;--bad:#b42318;--neutral:#5d6672;--bar:#7fa3d6;--lineA:#3d4650;--lineB:#c0561b;--warn-bg:#fff8e6;
+--up:#c62828;--down:#1a7f37}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1216;--surface:#161a20;--text:#e6e8eb;--muted:#9aa3ad;--line:#2a3039;
---accent:#79a8ff;--ok:#4cc38a;--warn:#e3b341;--bad:#f47067;--neutral:#9aa3ad;--bar:#3f6aa8;--lineA:#c9d1d9;--lineB:#f0883e;--warn-bg:#2b2410}}
+--accent:#79a8ff;--ok:#4cc38a;--warn:#e3b341;--bad:#f47067;--neutral:#9aa3ad;--bar:#3f6aa8;--lineA:#c9d1d9;--lineB:#f0883e;--warn-bg:#2b2410;
+--up:#ff6b6b;--down:#4cc38a}}
 *{box-sizing:border-box}html{scroll-padding-top:120px}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",sans-serif}
 a{color:var(--accent)}code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
@@ -1427,7 +1436,7 @@ thead th{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;ba
 tbody th{font-weight:500}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .unit,.sub{display:block;font-size:11px;font-weight:400;color:var(--muted)}.basis-cell{font-size:12px;color:var(--muted);min-width:180px}
 table.metrics tbody th{white-space:nowrap}tr[aria-current=true]{background:var(--bg)}
-.na{color:var(--muted)}.chg.up{color:var(--ok)}.chg.down{color:var(--bad)}
+.na{color:var(--muted)}.chg.up{color:var(--up)}.chg.down{color:var(--down)}
 .st{white-space:nowrap}.st-ok{color:var(--ok)}.st-warn{color:var(--warn)}.st-bad{color:var(--bad)}.st-neutral{color:var(--neutral)}
 .readiness-strip{display:flex;flex-wrap:wrap;gap:8px 14px;padding:10px 14px;background:var(--surface);border:1px solid var(--line);border-radius:6px;margin:10px 0 16px;align-items:center}
 .readiness-strip .title{font-size:12px;font-weight:600;color:var(--muted)}
@@ -1569,6 +1578,8 @@ def render_research_site_html(
         options = []
         for idx, snap in enumerate(stock["snapshots"]):
             sid = snap["id"]
+            if sid not in stock["embedded_ids"]:
+                continue
             comp = stock["comparisons"].get(sid) or {}
             own = extra if extra.get("symbol") == symbol and sid == stock["latest_snapshot_id"] else {}
             views[symbol][sid] = _render_view(snap, comp, stock, branch, own)
