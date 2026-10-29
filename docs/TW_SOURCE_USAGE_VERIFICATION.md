@@ -4,6 +4,8 @@
 
 > **2026-10-29 使用者決策（優先於下文的出口限制）**：先穩定研究結果，暫不以轉發授權阻擋發布；可採用其他免費來源，但必須保留來源出處與日期。依此，TWSE `t187ap03_L` 失敗時改用 FinMind `TaiwanStockInfo` 取得公司簡稱與產業別，公開快照以 `finmind_stock_info_v1` policy 標示；發行股數等 profile 數值仍只取自 TWSE。下文保留為當時的查證紀錄。
 
+> **#114 估值檢視區**：同一決策下採用 FinMind `TaiwanStockPER`（近 5 年每日本益比，查詢起點為 cutoff 前 5 年）。報告與 Artifact 保存百分位、本益比區間、樣本數、日期範圍、最新一筆本益比與查詢 URL；公開快照因 20,000 bytes 上限只保存其中的數值（查詢 URL 由代碼與窗口起點重建）。兩者都不保存原始每日序列。
+
 ## FinMind
 
 [三表 API](https://finmind.github.io/tutor/TaiwanMarket/Fundamental/) 的單股查詢在 [Free](https://finmind.github.io/Pricing/) 範圍，限非商業用途，每小時 300 次、註冊 600 次；各方案皆禁止原始資料再散布及鏡像 API，使用須標示 FinMind。[SDK Apache-2.0](https://github.com/FinMind/FinMind/blob/master/LICENSE) 僅是程式授權，不能據此公開 API payload。

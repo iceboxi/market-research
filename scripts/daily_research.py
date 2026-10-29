@@ -11,6 +11,7 @@ import time
 from scripts.company_report import run
 from scripts.research_publication import execute as publish_report
 from scripts.scan_company_research import execute as candidate_research
+from market_research.valuation_zone import zone_summary_row
 
 DEFAULT_TW_PILOT_SYMBOLS = ["2330.TW", "2317.TW", "2454.TW", "0050.TW", "00631L.TW"]
 
@@ -159,6 +160,8 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
                 receipt = rep.get("run_receipt") or {}
                 sym_rec["source_coverage"] = receipt.get("source_coverage")
                 sym_rec["readiness"] = rep.get("research_readiness", {}).get("components")
+                if rep.get("valuation_zone"):
+                    sym_rec["valuation_zone"] = rep["valuation_zone"]
                 if sym_rec["status"] == "complete":
                     pilot_coverage["completed_count"] += 1
                 else:
@@ -264,6 +267,18 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
             if sym in ("2881.TW", "2882.TW", "2891.TW") and val == "not_evaluated":
                 val = "not_evaluated (金融不適用)"
             lines.append(f"| {sym} | {name} | {status} | {sess} | {fin} | {val} | {dur} |")
+
+    zones = [(sym, rec["valuation_zone"]) for sym, rec in (pilot_coverage or {}).get("symbols", {}).items()
+             if rec.get("valuation_zone")]
+    if zones:
+        lines += [
+            "", "### 衛星個股估值檢視區（檢視區，非買賣建議）", "",
+            "價位 = 本益比區間 × 近四季 EPS；本益比區間預設為近 5 年每日本益比（FinMind TaiwanStockPER）"
+            "第 20／50／80 百分位，設定見 config/watchlist.yaml。", "",
+            "| 標的 | 收盤（日期） | 偏低價 | 合理價 | 偏高價 | 目前區間 | 近四季 EPS | 本益比樣本 |",
+            "| :--- | ---: | ---: | ---: | ---: | :--- | :--- | :--- |",
+        ]
+        lines += [zone_summary_row(sym, zone) for sym, zone in zones]
 
     (out / "daily_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return result

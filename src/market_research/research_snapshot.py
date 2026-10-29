@@ -8,6 +8,7 @@ from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 from .fundamentals import FINMIND_URL, TW_PROFILE, TW_REVENUE, tw_report_date
+from .valuation_zone import compact_zone
 
 MAX_SNAPSHOT_BYTES = 20_000
 READINESS = ("instrument", "source_evidence", "valuation_provenance", "financial",
@@ -265,6 +266,8 @@ def _compact_financial_research(fr):
                     compact_ev["superseded_dates"] = list(ev["superseded_dates"])[:3]
                 compact_events.append(compact_ev)
         cal["events"] = compact_events
+    if isinstance(cleaned.get("valuation_zone"), dict):
+        cleaned["valuation_zone"] = compact_zone(cleaned["valuation_zone"])
     return cleaned
 
 
