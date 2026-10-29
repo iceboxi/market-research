@@ -27,7 +27,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from market_research.research_comparison import available, compare_snapshots
-from market_research.research_snapshot import prepare_snapshot, utc
+from market_research.research_snapshot import SnapshotError, prepare_snapshot, utc
 from market_research.fundamentals import finmind_per_url
 from market_research.price_watch import (DISCLAIMER as PRICE_WATCH_DISCLAIMER, MA_SESSIONS,
                                          WINDOW_WEEKS, price_watch_notes)
@@ -35,6 +35,9 @@ from market_research.thesis_check import STATUS_LABELS as THESIS_LABELS
 from market_research.valuation_zone import DISCLAIMER, ZONE_LABELS
 
 TAIPEI = ZoneInfo("Asia/Taipei")
+# The overview, risk and valuation narrative was hand-written for TSMC's foundry business;
+# every other stock gets neutral wording built only from its own data (#125).
+NARRATIVE_SYMBOL = "2330.TW"
 SUBJECT_RE = re.compile(r"subjects/([a-z]+)/([A-Za-z0-9.\-]+)\.json")
 
 MARKETS = {
@@ -98,6 +101,7 @@ MODULES = [
 
 COMPARISON_LABELS = {
     "baseline": "首次基準（無前版可比）",
+    "latest_only": "只保留最新一版（未存歷史）",
     "unchanged": "與前一版本相比無研究變化",
     "new_period": "新增資料期別",
     "revision": "同期間數值更正",
@@ -273,16 +277,40 @@ def _stock_payload(records: dict[str, Any], market: str, symbol: str) -> dict[st
     }
 
 
+def latest_only_records(reports: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, str]]:
+    """Records for stocks shown from today's report only (#125), and why any cannot be shown."""
+    records: dict[str, Any] = {}
+    skipped: dict[str, str] = {}
+    for report in reports:
+        try:
+            records.update(_report_records(report))
+        except (SnapshotError, ValueError, KeyError, TypeError) as error:
+            skipped[str(report.get("symbol"))] = f"{type(error).__name__}: {error}"
+    return records, skipped
+
+
 def build_site_payload(
     records: dict[str, Any] | None = None,
     *,
     branch: str = "research-state",
     latest_report: dict[str, Any] | None = None,
+    latest_only: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Assemble the read-only site bundle. Only symbols with resolvable snapshots are listed."""
+    """Assemble the read-only site bundle. Only symbols with resolvable snapshots are listed.
+
+    `latest_only` (from `latest_only_records`) adds stocks that research-state does not keep;
+    a symbol the state already holds is never mixed with them.
+    """
     records = dict(records or {})
     if not records and latest_report is not None and latest_report.get("market") == "tw":
         records = _report_records(latest_report)
+    stored = {m.group(2) for m in map(SUBJECT_RE.fullmatch, records) if m}
+    extra_symbols = set()
+    for path, value in (latest_only or {}).items():
+        symbol = (value or {}).get("symbol") if isinstance(value, dict) else None
+        if symbol and symbol not in stored:
+            records[path] = value
+            extra_symbols.add(symbol)
     keys = set()
     for path in records:
         m = SUBJECT_RE.fullmatch(path)
@@ -295,13 +323,18 @@ def build_site_payload(
     stocks = {}
     for market, symbol in sorted(keys):
         stock = _stock_payload(records, market, symbol)
+        if stock and symbol in extra_symbols:
+            stock["latest_only"] = True
+            for comp in stock["comparisons"].values():
+                comp["status"] = "latest_only"
         if stock:
             stocks[symbol] = stock
     default = "2330.TW" if "2330.TW" in stocks else (next(iter(stocks)) if stocks else None)
     extra = {}
     if isinstance(latest_report, dict):
         tech = latest_report.get("technical") or {}
-        extra = {"analytical_close": tech.get("analytical_close"), "currency": tech.get("currency"),
+        extra = {"symbol": latest_report.get("symbol"),
+                 "analytical_close": tech.get("analytical_close"), "currency": tech.get("currency"),
                  "last_session": tech.get("last_session"), "observations": tech.get("observations") or [],
                  "price_context": tech.get("price_context")}
     return {"schema_version": 2, "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -483,8 +516,9 @@ def _same_quarter_yoy(quarters: list[dict[str, Any]]) -> tuple[dict, dict, float
     return latest, prior, (float(latest["revenue"]) / float(prior["revenue"]) - 1) * 100
 
 
-def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]]:
+def _findings(fr: dict[str, Any], symbol: Any = None) -> tuple[list[tuple[str, str, str]], list[str]]:
     """Return (findings, interpretation gaps). Each finding: (topic, statement html, basis)."""
+    foundry = symbol == NARRATIVE_SYMBOL
     annual, quarters = _annual(fr), _quarters(fr)
     ttm = fr.get("ttm") or {}
     ytd = fr.get("latest_cumulative_interim") or {}
@@ -495,6 +529,12 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
         "製程節點與應用別拆分缺漏：公開財報資料未提供先進製程（3nm/5nm/7nm 等）或終端應用（HPC/智慧手機/車用/IoT）營收拆分，無法由數據直接歸因個別產品線成長率。",
         "量價動態（ASP 與晶圓出貨量）缺漏：未包含晶圓出貨片數與平均單價（ASP），無法區分營收成長係由晶圓出貨放量或定價權溢價所主導。",
         "產業競爭格局與集中度缺漏：未包含主要客戶營收佔比、代工市佔率變化及競爭對手（如 Intel IFS、Samsung）產能動態。",
+    ] if foundry else [
+        "產品與應用別拆分缺漏：公開財報資料未提供產品線或終端應用的營收拆分，無法由數據直接歸因個別產品線成長率。",
+        "量價動態缺漏：未包含出貨量與平均單價，無法區分營收成長來自出貨量或價格。",
+        "產業競爭格局與集中度缺漏：未包含主要客戶營收佔比、市佔率變化及競爭對手動態。",
+    ]
+    gaps += [
         "質性與總體經濟風險缺漏：地緣政治風險、外匯匯率（美元/台幣）敏感度、電力與水資源供應等質性風險不在自動化資料契約內。",
         "嚴守非交易建議邊界：系統不產生投資評等、買賣建議、目標價或交易計畫（trade_plan = not_evaluated，recommendation = not_available）。",
     ]
@@ -508,7 +548,9 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
             parts.append(f"{_e(sq[0]['period_label'])} 單季營收較 {_e(sq[1]['period_label'])} {_chg(sq[2])}（推導值）")
         out.append((
             "營收擴張動能",
-            "；".join(parts) + "。申報數據顯示年度與累計營收維持雙位數高速增長；惟終端產品應用、先進製程佔比與下游庫存去化進度等驅動細節，非公開財務報表所揭露，屬於外部假設。",
+            "；".join(parts) + "。" + _revenue_trend(a0.get("revenue_yoy_pct"), ytd.get("revenue_yoy_pct"))
+            + ("；惟終端產品應用、先進製程佔比與下游庫存去化進度等驅動細節，非公開財務報表所揭露，屬於外部假設。" if foundry
+               else "；惟產品組合、終端需求與下游庫存等驅動細節，非公開財務報表所揭露，屬於外部假設。"),
             "年度三表、累計財報與單季拆解（法定申報數值直接推導；未納入未經證實之庫存週期假設）"
         ))
         if len(annual) > 1 and a0.get("net_income_yoy_pct") is not None:
@@ -557,7 +599,9 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
             (
                 f"截至 {_e(bs.get('period_end'))}，現金及約當現金 {_yi(bs.get('cash'))} 億元，有息負債（公司債及長短期借款）合計 {_yi(bs.get('total_debt'))} 億元，"
                 f"帳面淨現金頭寸達 {_yi(bs.get('net_cash'))} 億元（每股淨現金約 {_num(val.get('net_cash_twd_per_ordinary_share'))} 元）。"
-                "帳面流動資金大於帳面有息負債，具備顯著現金緩衝；惟長短期借款到期排程、跨國建廠承諾款與未入帳資本合約等表外義務仍須參閱完整財報附註，非保證零流動性風險。"
+                "帳面流動資金大於帳面有息負債，具備顯著現金緩衝；惟長短期借款到期排程、"
+                + ("跨國建廠承諾款" if foundry else "資本支出承諾") +
+                "與未入帳資本合約等表外義務仍須參閱完整財報附註，非保證零流動性風險。"
             ),
             "最新資產負債表時點值（現金與長短期有息負債對比；未含表外資本合約與到期排程分析）"
         ))
@@ -569,14 +613,23 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
         text = []
         if mult.get("pe_ratio") is not None:
             text.append(f"證交所公布本益比約 {_num(mult.get('pe_ratio'))} 倍、殖利率 {_pct(mult.get('dividend_yield_pct'), 2)}")
+        fcf_v = [s.get(k) for s in fcf_s.values() for k in ("indicative_twd_per_share", "indicative_ttm_fcf_twd_per_share")
+                 if isinstance(s.get(k), (int, float))]
+        pe_v = [s.get("indicative_twd_per_share") for s in pe_s.values()
+                if isinstance(s.get("indicative_twd_per_share"), (int, float))]
         if fcf_m and pe_m:
-            text.append(f"敏感度模型假設 P/FCF {min(fcf_m):g}–{max(fcf_m):g} 倍（試算 591–1,190 元）、P/E {min(pe_m):g}–{max(pe_m):g} 倍（試算 1,726–2,588 元）")
+            text.append(f"敏感度模型假設 P/FCF {min(fcf_m):g}–{max(fcf_m):g} 倍（試算 {_span(fcf_v)} 元）、"
+                        f"P/E {min(pe_m):g}–{max(pe_m):g} 倍（試算 {_span(pe_v)} 元）")
+        conv = _ratio(ttm.get("free_cash_flow"), ttm.get("net_income"))
+        gap = (sum(pe_v) / len(pe_v)) / (sum(fcf_v) / len(fcf_v)) if pe_v and fcf_v and sum(fcf_v) > 0 else None
+        spread = (f"兩大方法試算值平均相差約 {gap:.1f} 倍，主要源於" if gap and gap >= 1.2 else "兩大方法試算值的差異來自")
+        cash = f"，使當期 FCF 約為淨利之 {conv:.0f}%" if conv is not None else ""
         if text:
             out.append((
                 "估值模型與結構性落差",
                 (
                     "；".join(text) + "。"
-                    "兩大方法存在約 2–3 倍試算差距，主要源於重資本支出產業特性：折舊認列時間大幅落後於當期現金流出，使當期 FCF 僅約淨利之 51%；"
+                    + spread + f"資本支出與折舊的時間差：折舊認列時間落後於當期現金流出{cash}；"
                     "各項試算值受外生倍數假設高度主導，僅供敏感度觀察，絕非合理價、目標價或買賣建議。"
                 ),
                 "TWSE BWIBBU_ALL 與估值敏感度模型（情境試算非營運預測，不作交易依據）"
@@ -584,13 +637,29 @@ def _findings(fr: dict[str, Any]) -> tuple[list[tuple[str, str, str]], list[str]
     return out, gaps
 
 
+def _revenue_trend(annual_yoy: Any, ytd_yoy: Any) -> str:
+    """Growth wording from the reported changes only, never assumed."""
+    rates = [float(v) for v in (annual_yoy, ytd_yoy) if isinstance(v, (int, float))]
+    if not rates:
+        return "申報數據未提供可比較的年增率"
+    if all(r >= 10 for r in rates):
+        return "申報數據顯示年度與累計營收維持雙位數高速增長"
+    if all(r >= 0 for r in rates):
+        return "申報數據顯示年度與累計營收維持成長"
+    if all(r < 0 for r in rates):
+        return "申報數據顯示年度與累計營收較去年減少"
+    return "申報數據顯示年度與累計營收的增減方向不一致"
+
+
 def _uncertainties(snap: dict[str, Any], fr: dict[str, Any] | None) -> list[str]:
+    foundry = snap.get("symbol") == NARRATIVE_SYMBOL
     items = []
     if fr:
         ttm = fr.get("ttm") or {}
         conv = _ratio(ttm.get("free_cash_flow"), ttm.get("net_income"))
         if conv is not None:
-            items.append(f"資本支出週期波動：自由現金流僅約淨利的 {conv:.0f}%（TTM 推導值）；未來先進製程（如 2nm / A16 / 跨國建廠）資本支出若超預期增加，將直接壓抑自由現金流與 P/FCF 估值試算。")
+            plan = "未來先進製程（如 2nm / A16 / 跨國建廠）資本支出" if foundry else "未來資本支出"
+            items.append(f"資本支出週期波動：自由現金流僅約淨利的 {conv:.0f}%（TTM 推導值）；{plan}若超預期增加，將直接壓抑自由現金流與 P/FCF 估值試算。")
         for ev in (fr.get("calendar_schedule") or {}).get("events") or []:
             if ev.get("scheduled_date") is None and ev.get("event_type") != "statutory_filing_deadline":
                 items.append(f"關鍵公司行動未定：{_e(ev.get('title'))} 尚未正式公告確定日期。")
@@ -598,7 +667,9 @@ def _uncertainties(snap: dict[str, Any], fr: dict[str, Any] | None) -> list[str]
         items.append("事件觀測範圍限制：重大訊息與事件觀測僅涵蓋最近一次每日快照，非全歷史事件庫；未觀測到事件不代表無潛在營運或法規風險。")
     if "prices_metadata_only" in (snap.get("comparison_limits") or []):
         items.append("行情序列未持久化：狀態儲存契約僅保留行情檢驗 metadata 與雜湊，未保存歷史 OHLCV 價格序列，無法重播技術指標或回測走勢。")
-    items.append("外部與質性不確定性：先進製程良率爬坡速度、主要雲端/AI 客戶資本支出週期、地緣政治監管（晶片法案與出口管制）及水電資源供應等質性風險，本系統未納入量化評估。")
+    items.append("外部與質性不確定性：先進製程良率爬坡速度、主要雲端/AI 客戶資本支出週期、地緣政治監管（晶片法案與出口管制）及水電資源供應等質性風險，本系統未納入量化評估。"
+                 if foundry else
+                 "外部與質性不確定性：產業景氣、主要客戶需求、地緣政治與法規變化等質性風險，本系統未納入量化評估。")
     return items
 
 
@@ -608,6 +679,10 @@ def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any],
     readiness = snap.get("readiness") or {}
     mrev = (snap.get("monthly_revenue") or [None])[0] if snap.get("monthly_revenue") else None
     price = '<span class="na">未保存收盤價</span> <a href="#technical" class="hint">（依契約僅保存行情 metadata）</a>'
+    closes = [c for c in tech.get("recent_closes") or [] if c.get("close") is not None and c.get("date")]
+    if closes:
+        price = (f"{_num(closes[-1]['close'])} {_e(stock.get('currency'))}"
+                 f' <span class="hint">TWSE 收盤價，{_e(closes[-1]["date"])}</span>')
     if extra.get("analytical_close") is not None:
         price = (f"{_num(extra['analytical_close'])} {_e(extra.get('currency') or stock.get('currency'))}"
                  f' <span class="hint">分析用收盤價，{_e(extra.get("last_session"))}</span>')
@@ -617,7 +692,8 @@ def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any],
         ("最新完整交易日", _e(tech.get("session"))),
         ("最新月營收", f"{_e(_roc_month(mrev.get('period')))}" if mrev else NA),
         ("收盤價", price),
-        ("與前一版本", _e(COMPARISON_LABELS.get(comp.get("status"), "有研究變化")) if comp.get("status") in ("baseline", "unchanged")
+        ("與前一版本", _e(COMPARISON_LABELS.get(comp.get("status"), "有研究變化"))
+         if comp.get("status") in ("baseline", "unchanged", "latest_only")
          else "有研究變化 <a href=\"#m-compare\">查看明細</a>"),
     ]
     meta_html = "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in meta)
@@ -631,7 +707,7 @@ def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any],
                         + ' <a href="#m-status" class="hint">完整檢驗代碼</a></div>')
 
     if fr:
-        findings, gaps = _findings(fr)
+        findings, gaps = _findings(fr, snap.get("symbol"))
         findings_html = "".join(
             f'<li><h4>{_e(t)}</h4><p>{s}</p><p class="basis">依據：{_e(b)}</p></li>' for t, s, b in findings)
         gaps_html = "".join(f"<li>{g}</li>" for g in gaps)
@@ -657,7 +733,7 @@ def _overview(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, Any],
       <li><strong>直接觀測事實（Reported Facts）</strong>：法定申報之財報數額（如各期營收、淨利、現金頭寸、TWSE 公布倍數）。</li>
       <li><strong>報表推導指標（Derived Metrics）</strong>：同口徑數據依明確恆等式推導（如 OCF/淨利比、資本支出/營收、淨現金、YoY 變動）。</li>
       <li><strong>合理推論假說（Plausible Hypotheses）</strong>：對報表動能之合理解釋（如營業槓桿效應可能源於產能規模攤提），但未經申報驗證者一律標明為假說。</li>
-      <li><strong>需外部補充證據之邊界（Evidence Gaps）</strong>：產能利用率、晶圓平均單價（ASP）、定價權、庫存調整週期、債務到期排程等非公開申報資料，不得冒充既證事實。</li>
+      <li><strong>需外部補充證據之邊界（Evidence Gaps）</strong>：產能利用率、{"晶圓平均單價（ASP）" if snap.get("symbol") == NARRATIVE_SYMBOL else "平均單價"}、定價權、庫存調整週期、債務到期排程等非公開申報資料，不得冒充既證事實。</li>
     </ul>
   </div>
   {body}
@@ -920,6 +996,25 @@ def _watchlist_overview(watchlist: dict[str, Any] | None) -> str:
     return "".join(parts)
 
 
+FOUNDRY_SCENARIOS = {
+    "conservative": ("終端消費電子需求復甦停滯、全球景氣走緩；先進製程稼動率跌破 75%；高額資本支出後折舊壓力大增侵蝕獲利。",
+                     "AI 與高效能運算需求外溢擴大、產能持續供不應求。"),
+    "base": ("半導體維持中長期複合成長常態（CAGR 15–20%）；先進製程維持 85–90% 健康稼動率；毛利率維持在長期目標 53% 以上。",
+             "總經急遽惡化或出現非預期之良率/客戶轉單瓶頸。"),
+    "optimistic": ("AI / HPC 算力需求呈現結構性跳躍；N2/A16 技術大幅領先且享有顯著溢價定價權；毛利率長期穩居 60% 以上。",
+                   "雲端大廠 Capex 縮減、競爭對手製程重大突破或定價競爭。"),
+}
+GENERIC_SCENARIOS = {
+    "conservative": ("景氣走緩或終端需求下滑，獲利與自由現金流低於近期水準。", "需求回升、獲利優於預期。"),
+    "base": ("營運大致延續近期的成長與獲利水準。", "總經急遽惡化或出現公司特有的營運事件。"),
+    "optimistic": ("需求強勁且具定價能力，獲利與自由現金流高於近期水準。", "需求轉弱、競爭加劇或價格壓力。"),
+}
+
+
+def _span(values: list[float]) -> str:
+    return f"{_num(min(values), 0)}–{_num(max(values), 0)}" if values else "—"
+
+
 def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
     val = (fr or {}).get("valuation_summary") or {}
     readiness = snap.get("readiness") or {}
@@ -956,6 +1051,30 @@ def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
     capex_int = _ratio(ttm.get("capex"), ttm.get("revenue"))
     conv = _ratio(ttm.get("free_cash_flow"), ttm.get("net_income"))
     denom = val.get("denominator") or {}
+    foundry = snap.get("symbol") == NARRATIVE_SYMBOL
+    fcf_values = [v for label, pts in models if label.startswith("P/FCF") for _, v in pts]
+    pe_values = [v for label, pts in models if label.startswith("P/E") for _, v in pts]
+    fcf_range = _span(fcf_values)
+    pe_range = _span(pe_values)
+    base_fcf = (fcf_s.get("base") or {}).get("indicative_twd_per_share")
+    base_pe = (pe_s.get("base") or {}).get("indicative_twd_per_share")
+    gap = base_pe / base_fcf if isinstance(base_pe, (int, float)) and isinstance(base_fcf, (int, float)) and base_fcf > 0 else None
+    method_title = (f"方法比較：為什麼 P/FCF 與 P/E 試算值差距約 {gap:.1f} 倍？" if gap and gap >= 1.2
+                    else "方法比較：P/FCF 與 P/E 試算值的差異")
+    method_intro = (
+        "晶圓代工屬於重資本支出行業。購買先進機台與興建廠房之資本支出（Capex）在發生時為<strong>立即現金流出</strong>，"
+        "但在損益表上是依照會計準則分 3–5 年透過折舊逐期攤提。在先進製程擴產高峰期（如 N2 / A16 / 跨國建廠），"
+        "當期自由現金流（FCF）會顯著低於會計淨利" if foundry else
+        "資本支出（Capex）在發生時為<strong>立即現金流出</strong>，但在損益表上是依照會計準則分年透過折舊逐期攤提；"
+        "擴產或大額投資期間，當期自由現金流（FCF）會低於會計淨利") + f"（本期 TTM FCF 約為淨利的 {_pct(conv, 0)}）。"
+    exchange_pe = mult.get("pe_ratio")
+    pe_basis = (("，反映高產能利用率下的獲利能力" if foundry else "")
+                + (f"，可與證交所公告本益比 {_num(exchange_pe, 1)} 倍對照" if exchange_pe is not None else ""))
+    scenario_text = FOUNDRY_SCENARIOS if foundry else GENERIC_SCENARIOS
+    scenario_rows = "".join(
+        f'<tr><th scope="row">{zh}情境</th><td>P/FCF {_num((fcf_s.get(k) or {}).get("fcf_multiple"), 0)}x<br>'
+        f'P/E {_num((pe_s.get(k) or {}).get("pe_multiple"), 0)}x</td><td>{scenario_text[k][0]}</td><td>{scenario_text[k][1]}</td></tr>'
+        for k, zh in names if k in fcf_s or k in pe_s)
     return f"""
 <section id="valuation" aria-labelledby="h-val">
   <h2 id="h-val">估值</h2>{_valuation_zone(fr, snap.get('symbol'))}
@@ -997,28 +1116,20 @@ def _valuation(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
   <p>倍數假設是最大變因：同一方法內，倍數每差 1x，試算值就差一個「每股基礎值」。兩種方法的差距主要來自 FCF 只約為淨利的
   {_pct(conv, 0)}（TTM，推導值），反映資本支出約占營收 {_pct(capex_int)}（TTM，推導值）。資本支出計畫改變時，P/FCF 法結果會明顯移動。</p>
 
-  <h3>方法比較：為什麼 P/FCF 與 P/E 試算值差距達 2–3 倍？</h3>
+  <h3>{_e(method_title)}</h3>
   <div class="callout">
     <p><strong>產業資本特性與折舊時間差：</strong></p>
-    <p>晶圓代工屬於重資本支出行業。購買先進機台與興建廠房之資本支出（Capex）在發生時為<strong>立即現金流出</strong>，但在損益表上是依照會計準則分 3–5 年透過折舊逐期攤提。在先進製程擴產高峰期（如 N2 / A16 / 跨國建廠），當期自由現金流（FCF）會顯著低於會計淨利（本期 TTM FCF 僅約為淨利的 {_pct(conv, 0)}）。</p>
+    <p>{method_intro}</p>
     <ul>
-      <li><strong>P/FCF 法（EV-bridged）</strong>：假設市場投資人僅依照當期或三年中位數之「扣除資本支出後的真實現金」給予倍數，再加上每股淨現金 {_num(nc)} 元。此方法在重資本支出擴張期會極度壓抑每股試算值（591–1,190 元）。</li>
-      <li><strong>TTM P/E 法</strong>：以當期帳面 EPS（{_num(ttm.get('basic_eps'))} 元）為基礎，反映高產能利用率下的獲利能力，與市場慣用交易倍數（如證交所公告 27.9x）相符（試算值 1,726–2,588 元），但未直接扣除未來維持技術競爭優勢所需之高額再投資支出。</li>
+      <li><strong>P/FCF 法（EV-bridged）</strong>：假設市場投資人僅依照當期或三年中位數之「扣除資本支出後的真實現金」給予倍數，再加上每股淨現金 {_num(nc)} 元。此方法在重資本支出擴張期會壓抑每股試算值（{fcf_range} 元）。</li>
+      <li><strong>TTM P/E 法</strong>：以當期帳面 EPS（{_num(ttm.get('basic_eps'))} 元）為基礎{pe_basis}（試算值 {pe_range} 元），但未直接扣除未來維持競爭優勢所需之再投資支出。</li>
     </ul>
   </div>
 
   <h3>情境倍數適用條件分析（敏感度壓力測試假設，非營運預測）</h3>
   <p class="note">以下情境條件旨在說明不同倍數假設背後所隱含之營運與產業環境，僅用於壓力測試與敏感度觀察；非本系統之預測，亦未經獨立財務預測驗證。</p>
   <div class="table-wrap"><table><thead><tr><th scope="col">情境</th><th scope="col">倍數假設</th><th scope="col">隱含之產業與營運情境（非預測）</th><th scope="col">失效或風險條件</th></tr></thead><tbody>
-    <tr><th scope="row">保守情境</th><td>P/FCF 15x<br>P/E 20x</td>
-      <td>終端消費電子需求復甦停滯、全球景氣走緩；先進製程稼動率跌破 75%；高額資本支出後折舊壓力大增侵蝕獲利。</td>
-      <td>AI 與高效能運算需求外溢擴大、產能持續供不應求。</td></tr>
-    <tr><th scope="row">基準情境</th><td>P/FCF 20x<br>P/E 25x</td>
-      <td>半導體維持中長期複合成長常態（CAGR 15–20%）；先進製程維持 85–90% 健康稼動率；毛利率維持在長期目標 53% 以上。</td>
-      <td>總經急遽惡化或出現非預期之良率/客戶轉單瓶頸。</td></tr>
-    <tr><th scope="row">樂觀情境</th><td>P/FCF 25x<br>P/E 30x</td>
-      <td>AI / HPC 算力需求呈現結構性跳躍；N2/A16 技術大幅領先且享有顯著溢價定價權；毛利率長期穩居 60% 以上。</td>
-      <td>雲端大廠 Capex 縮減、競爭對手製程重大突破或定價競爭。</td></tr>
+    {scenario_rows}
   </tbody></table></div>
 </section>"""
 
@@ -1228,7 +1339,7 @@ def _methodology(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, An
       <div><dt>模型設定識別</dt><dd><code>{_e(snap.get('model_identity'))}</code></dd></div>
       <div><dt>行情輸入雜湊</dt><dd><code>{_e(tech.get('input_sha256'))}</code></dd></div>
       <div><dt>可得時間屬性</dt><dd><code>{_e(snap.get('availability'))}</code></dd></div>
-      <div><dt>狀態分支</dt><dd><code>{_e(branch)}</code></dd></div>
+      <div><dt>狀態分支</dt><dd>{"未寫入；每日排程當次報告，只保留最新一版" if stock.get("latest_only") else f"<code>{_e(branch)}</code>"}</dd></div>
       {f'<div><dt>固定研究報告</dt><dd>{_link(f"https://github.com/{repo}/issues/{issue}", f"Issue #{issue}")}</dd></div>' if issue else ''}
     </dl>
   </details>
@@ -1268,8 +1379,10 @@ a{color:var(--accent)}code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace
 .brand{font-weight:700;font-size:15px;white-space:nowrap}.brand span{font-weight:400;color:var(--muted);margin-left:6px}
 .picker{position:relative;flex:1 1 320px;max-width:460px}
 .picker label{position:absolute;left:-999px}
-.picker input{width:100%;font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text)}
+.picker input{width:100%;font:inherit;padding:7px 40px 7px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text)}
 .picker input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.picker .toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--muted);font-size:16px;line-height:1;padding:6px 8px;cursor:pointer;border-radius:4px}
+.picker .toggle:hover,.picker .toggle:focus-visible{color:var(--text);background:var(--bg)}
 .picker ul{position:absolute;left:0;right:0;top:calc(100% + 4px);margin:0;padding:4px 0;list-style:none;background:var(--surface);
 border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);max-height:320px;overflow:auto}
 .picker li{padding:8px 12px;cursor:pointer;display:flex;gap:10px;align-items:baseline}
@@ -1341,6 +1454,7 @@ JS = r"""
     b.textContent='互動資料載入失敗：股票搜尋與版本切換無法使用，以下為頁面產生時的最新版本靜態內容。';return;}
   var current=DATA.default_symbol, currentSnap=null;
   var input=document.getElementById('stock-input'), list=document.getElementById('stock-list'),
+      toggle=document.getElementById('stock-toggle'),
       live=document.getElementById('stock-live'), sel=document.getElementById('version-select');
   var active=-1, shown=[];
   function stock(sym){for(var i=0;i<DATA.stocks.length;i++){if(DATA.stocks[i].symbol===sym)return DATA.stocks[i];}return null;}
@@ -1367,8 +1481,7 @@ JS = r"""
     history.replaceState(null,'','?'+p.toString()+location.hash);
     document.title=q+'（未納入研究管線）— 個股研究';
     app.innerHTML='<section><h2>沒有「'+esc(q)+'」的研究資料</h2><div class="empty"><strong>此標的尚未納入自動化研究管線</strong>' +
-    '<p>目前狀態庫中已建立完整研究狀態之標的：<strong>'+esc(names)+'</strong>。</p>' +
-    '<p>依專案路線規劃（Issue #65 / TW17），待擴展至台股 10 檔候選池並經 GitHub Actions 排程產出研究快照後，將自動在此選單開放切換。</p>' +
+    '<p>目前有研究資料的標的：<strong>'+esc(names)+'</strong>。觀察名單由 config/markets.yaml 決定，加入後的下一次每日排程會產生研究頁。</p>' +
     '<p><button type="button" class="link-btn" id="back-default">返回 '+esc(DATA.default_symbol)+'</button></p></div></section>';
     document.getElementById('back-default').onclick=function(){sel.disabled=false;selectStock(DATA.default_symbol);};}
   function esc(t){return String(t).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -1376,18 +1489,21 @@ JS = r"""
     return DATA.stocks.filter(function(s){return [s.symbol,s.symbol.split('.')[0],s.name||'',s.exchange,s.exchange_code,s.market].join(' ').toLowerCase().indexOf(q)>=0;});}
   function open(q){shown=match(q);active=shown.length?0:-1;list.innerHTML='';
     if(!shown.length){var li=document.createElement('li');li.className='msg';li.setAttribute('role','option');li.setAttribute('aria-disabled','true');
-      li.textContent='找不到「'+q.trim()+'」。目前只有 '+DATA.stocks.map(function(s){return s.symbol;}).join('、')+' 有研究資料。';list.appendChild(li);
+      li.textContent='找不到「'+q.trim()+'」。目前有研究資料的是 '+DATA.stocks.map(function(s){return s.symbol+' '+(s.name||'');}).join('、')+'。';list.appendChild(li);
       live.textContent='沒有符合的股票';}
     else{shown.forEach(function(s,i){var li=document.createElement('li');li.id='opt-'+i;li.setAttribute('role','option');
-      li.innerHTML='<span class="t">'+esc(s.symbol)+'</span><span>'+esc(s.name||'')+'</span><span class="m">'+esc(s.exchange_code)+(s.symbol===current?' · 目前':'')+'</span>';
+      var n=s.latest_only?'最新一版':s.snapshots.length+' 個版本';
+      li.innerHTML='<span class="t">'+esc(s.symbol)+'</span><span>'+esc(s.name||'')+'</span><span class="m">'+esc(n)+(s.symbol===current?' · 目前':'')+'</span>';
       li.onmousedown=function(e){e.preventDefault();choose(i);};list.appendChild(li);});live.textContent=shown.length+' 個符合的股票';}
-    list.hidden=false;input.setAttribute('aria-expanded','true');mark();}
-  function close(restore){list.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');
+    list.hidden=false;input.setAttribute('aria-expanded','true');toggle.setAttribute('aria-expanded','true');mark();}
+  function close(restore){list.hidden=true;input.setAttribute('aria-expanded','false');toggle.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');
     if(restore){var s=stock(current);if(s)input.value=label(s);}}
   function mark(){Array.prototype.forEach.call(list.children,function(li,i){li.setAttribute('aria-selected',i===active?'true':'false');});
     if(active>=0){input.setAttribute('aria-activedescendant','opt-'+active);var el=document.getElementById('opt-'+active);if(el)el.scrollIntoView({block:'nearest'});}}
   function choose(i){var s=shown[i];if(!s)return;close(false);if(s.symbol!==current)selectStock(s.symbol);else input.value=label(s);input.blur();}
   input.addEventListener('focus',function(){input.select();open('');});
+  toggle.addEventListener('mousedown',function(e){e.preventDefault();});
+  toggle.addEventListener('click',function(){if(list.hidden){input.focus();open('');}else{close(true);input.blur();}});
   input.addEventListener('input',function(){open(input.value);});
   input.addEventListener('blur',function(){close(true);});
   input.addEventListener('keydown',function(e){
@@ -1428,9 +1544,10 @@ def render_research_site_html(
     branch: str = "research-state",
     latest_report: dict[str, Any] | None = None,
     watchlist: dict[str, Any] | None = None,
+    latest_only: dict[str, Any] | None = None,
 ) -> str:
     """Render the complete, self-contained research workspace."""
-    payload = build_site_payload(records, branch=branch, latest_report=latest_report)
+    payload = build_site_payload(records, branch=branch, latest_report=latest_report, latest_only=latest_only)
     if not payload["stocks"]:
         return _empty_page(branch)
     extra = payload["extra_technical"]
@@ -1441,14 +1558,16 @@ def render_research_site_html(
         for idx, snap in enumerate(stock["snapshots"]):
             sid = snap["id"]
             comp = stock["comparisons"].get(sid) or {}
-            views[symbol][sid] = _render_view(snap, comp, stock, branch, extra if sid == stock["latest_snapshot_id"] else {})
+            own = extra if extra.get("symbol") == symbol and sid == stock["latest_snapshot_id"] else {}
+            views[symbol][sid] = _render_view(snap, comp, stock, branch, own)
             tag = "最新" if sid == stock["latest_snapshot_id"] else f"#{len(stock['snapshots']) - idx}"
             fin = "含財務研究" if (snap.get("readiness") or {}).get("financial") == "available" else "無財務研究"
             options.append({"id": sid, "label": f"{_tpe(snap.get('observed_at_utc'))}（{tag}）· {fin} · {COMPARISON_LABELS.get(comp.get('status'), '有研究變化')}"})
         registry.append({"symbol": symbol, "name": stock["name"], "market": stock["market"],
                          "exchange": stock["exchange"], "exchange_code": stock["code"],
                          "currency": stock["currency"], "currency_label": stock["currency_label"],
-                         "latest_snapshot_id": stock["latest_snapshot_id"], "snapshots": options})
+                         "latest_snapshot_id": stock["latest_snapshot_id"], "snapshots": options,
+                         "latest_only": bool(stock.get("latest_only"))})
     default = payload["default_symbol"]
     stock = payload["stocks"][default]
     latest_id = stock["latest_snapshot_id"]
@@ -1480,6 +1599,7 @@ def render_research_site_html(
       <label for="stock-input">搜尋股票（代號、公司名稱或市場）</label>
       <input id="stock-input" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
         aria-controls="stock-list" autocomplete="off" spellcheck="false" value="{_e(picker_value)}" placeholder="搜尋代號或公司名稱">
+      <button type="button" class="toggle" id="stock-toggle" aria-label="展開全部股票" aria-controls="stock-list" aria-expanded="false" tabindex="-1">▾</button>
       <ul id="stock-list" role="listbox" aria-label="可研究的股票" hidden></ul>
       <span id="stock-live" class="skip" aria-live="polite"></span>
     </div>
@@ -1518,11 +1638,12 @@ def write_research_site(
     branch: str = "research-state",
     latest_report: dict[str, Any] | None = None,
     watchlist: dict[str, Any] | None = None,
+    latest_only: dict[str, Any] | None = None,
 ) -> Path:
     """Write `index.html` into `out_dir` and return its path."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / "index.html"
     target.write_text(render_research_site_html(records, branch=branch, latest_report=latest_report,
-                                                watchlist=watchlist), encoding="utf-8")
+                                                watchlist=watchlist, latest_only=latest_only), encoding="utf-8")
     return target

@@ -12,7 +12,7 @@ from scripts.company_report import run
 from scripts.research_publication import execute as publish_report
 from scripts.scan_company_research import execute as candidate_research
 from market_research.price_watch import load_price_watch, render_price_watch_summary
-from market_research.research_site import write_research_site
+from market_research.research_site import latest_only_records, write_research_site
 from market_research.thesis_check import DISCLAIMER as THESIS_DISCLAIMER, thesis_summary_row
 from market_research.valuation_zone import zone_summary_row
 
@@ -266,11 +266,17 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
                 if rec.get("thesis_check")}, "names": {
                 sym: rec["company_name"] for sym, rec in pilot_coverage["symbols"].items()
                 if rec.get("company_name")}}
+            # Other researched stocks appear from today's report only (#125).
+            extra, skipped = latest_only_records([
+                rep for sym, rep in reports.items()
+                if sym != "2330.TW" and sym in target_symbols and not is_etf(sym)])
             try:
                 state = json.loads(state_file.read_text(encoding="utf-8"))
                 write_research_site(out / "fixed_research", state["records"],
-                                    branch=state_branch, watchlist=overview)
-                result["watchlist_site"] = {"status": "rendered"}
+                                    branch=state_branch, watchlist=overview, latest_only=extra)
+                result["watchlist_site"] = {"status": "rendered", "latest_only": sorted(
+                    {v["symbol"] for v in extra.values() if isinstance(v, dict) and v.get("symbol")}),
+                    "skipped": skipped}
             except Exception as error:
                 result["watchlist_site"] = {"status": "failed", "error_type": type(error).__name__}
 
