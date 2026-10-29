@@ -17,7 +17,7 @@ workflow 使用現有 GitHub standard runner、`contents: write` 與 `issues: wr
 
 ## 保存契約
 
-namespace 上限為 2,000 個 records／5,000,000 canonical JSON bytes；snapshot 上限 20,000 bytes。達到上限會明確失敗，不自動刪除歷史。只有 `2330.TW`，新增標的須先擴充與驗證契約。
+namespace 上限為 2,000 個 records／5,000,000 canonical JSON bytes；snapshot 上限 20,000 bytes。達到上限會明確失敗，不自動刪除歷史。刪除只能經人工審核（#127）：`python -m scripts.research_state_prune` 乾跑時列出要刪除的確切 records 與 digest，內容包括第一個含財報版本之前的早期版本、和前一個保留版本相比 unchanged 的重複版本，以及引用它們的 acked 發布與通知；現行發布、通知、latest、last_success 與 checkpoint 引用的版本一律保留。`--apply --expect DIGEST` 只有在 fresh read 重新計算出相同 digest、且刪除後的 state 仍通過驗證時才會執行；`GitStateStore.commit` 只允許刪除 `remove=` 明列的 records。只有 `2330.TW`，新增標的須先擴充與驗證契約。
 
 - `snapshots/tw/2330.TW/<sha256>.json`：schema v2，新增 started_at_utc，與 evaluation cutoff、觀測時間分開；既有 v1 保持可讀，不回填未知開始時間。immutable checksum 覆蓋時間、run identity、執行結果與精簡證據。
 - `subjects/tw/2330.TW.json`：schema v2，latest observation、last-success、pending／published publication、固定 Issue number 與 creation_attempted 的唯一 owner。可讀既有 v1；下次 archive／ACK 升級為 v2。v1 未確認建立結果時視為曾嘗試，不能假設可以再次 POST。
