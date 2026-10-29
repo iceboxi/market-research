@@ -27,7 +27,7 @@ PR 連結實作 Issue；最新 commit 經 CI 與受影響 gate 驗證後才能�
 
 關閉時先 `gh issue comment` 留說明再 `gh issue close`；對已關閉 Issue 使用 `gh issue close --comment` 會遺失留言且仍回傳 0。
 
-若尚待自然 schedule，實作 Issue 可在交付範圍完成後關閉，但必須連結仍開啟的 operational acceptance Issue；後者記錄 due slot、run event、SHA、資料 coverage、持久化與通知證據，不能以 dispatch 取代。
+涉及排程的實作 Issue 在交付範圍完成後即可關閉；合併後於下一次排程確認自動化有執行（run 連結與結果），不另開 operational acceptance Issue，也不收集排程延遲證據（2026-10-29 決策）。
 
 Handoff 留在 Issue / PR：完成與未完成事項、精確 branch/commit、Run URL、Artifact、已知 gate、下一個入口。不要使用 PROJECT_STATUS 作第二份任務狀態。
 

@@ -19,8 +19,8 @@ Issue 狀態用語見 [triage-labels.md](docs/agents/triage-labels.md)。依賴�
 - 採 remote-first：Python 3.12、uv、已提交 uv.lock；GitHub Actions 是最終執行與驗證環境。本地只需適當的輕量檢查。
 - 行為變更包含正常、缺失資料、來源失敗與必要的 no-lookahead regression verification。
 - PR 記錄問題、契約、A/B/C/D 影響、最新 SHA、Run URL、Artifact 結果與限制。符合 repository 規則且最新 commit 檢查通過時，可依使用者授權合併自己負責的 PR。
-- 區分 unit、integration、live-data 與正式 schedule 驗收。PR 合併不等於 schedule gate 完成；仍待排程驗收時保留獨立 operational acceptance Issue。
-- 投資研究保留來源與日期，缺值不補零。估值區間可作為「檢視區」提醒，須標示假設與來源，不是買賣建議；未驗證訊號、ATR 與支撐壓力不能冒充買賣價格。證據不足用 not_evaluated；不啟用自動下單。
+- 區分 unit、integration、live-data 與 schedule 驗證。合併後確認排程自動化有執行即可；排程延遲不另收集證據。
+- 先求研究結果穩定：可採用任何免費資料來源，必須保留來源與日期，缺值不補零。估值區間可作為「檢視區」提醒，須標示假設與來源，不是買賣建議；未驗證訊號、ATR 與支撐壓力不能冒充買賣價格。證據不足用 not_evaluated；不啟用自動下單。
 
 ## Planning
 
