@@ -11,6 +11,7 @@ on:
       - 'scripts/daily_research.py'
       - 'scripts/scan_company_research.py'
       - 'scripts/research_publication.py'
+      - 'scripts/watchlist_alert.py'
       - '.github/workflows/scan.yml'
   workflow_dispatch:
     inputs:
@@ -90,6 +91,18 @@ jobs:
           if [ -f output/candidate_research/candidate_summary.md ]; then
             cat output/candidate_research/candidate_summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Watchlist alert Issue
+        # #116: one Issue; comments only when a satellite's zone or thesis changes.
+        if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && env.SCAN_MARKET != 'us' && steps.candidate_research.outcome != 'skipped'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          uv run --no-sync python -m scripts.watchlist_alert --receipt output/candidate_research/daily_receipt.json \
+            --repo "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --out output/candidate_research
+          jq -r '"觀察名單提醒：\(.status) \(.kind // .reason) comment=\(.comment // "-") issue=#\(.issue_number // "-")"' \
+            output/candidate_research/watchlist_alert_receipt.json >> "$GITHUB_STEP_SUMMARY"
       - name: Upload candidate company reports
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v4

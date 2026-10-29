@@ -115,6 +115,16 @@ satellites are also in `config/event_watchlist.yaml`. The report, daily summary
 and Pages overview show the status and its basis; `review` asks for a re-read
 of the thesis, not a trade.
 
+One open Issue titled 觀察名單提醒 ([#116](https://github.com/iceboxi/market-research/issues/116))
+tracks those two states. Its body is the current table and stores the last
+evaluated state in a hidden marker; each main TW schedule or dispatch run
+comments only when a satellite's zone or thesis status changes (old → new,
+prices or basis, data date, run link), at most once per run. The first run
+creates the Issue with a baseline comment; an unreadable stored state is
+rebuilt and explained in a comment. `not_evaluated` is never a change: the last
+evaluated value is kept and the body shows the gap. Branch, pull-request and
+validation runs never write it.
+
 ## Limits
 
 TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.
