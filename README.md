@@ -103,6 +103,18 @@ summary and the Pages "觀察名單總覽" show these rows with the satellites'
 review zones; they are display only, never signals. The scan, backtests and
 strategy research do not load benchmarks.
 
+Satellites also get a thesis check ([#115](https://github.com/iceboxi/market-research/issues/115)):
+`review` when year-over-year monthly revenue (FinMind `TaiwanStockMonthRevenue`)
+stays below a threshold for consecutive months (default 3 months below 0 %,
+`revenue_check` in `config/watchlist.yaml`), or when TWSE's daily material
+information (`t187ap04_L`) lists an announcement for the stock on the evaluation
+date. A month counts only once public at the cutoff (FinMind `create_time`, else
+the 10th of the following month); a missing month, a lagging source or an
+incomplete announcement snapshot gives `not_evaluated`, never `ok`. All three
+satellites are also in `config/event_watchlist.yaml`. The report, daily summary
+and Pages overview show the status and its basis; `review` asks for a re-read
+of the thesis, not a trade.
+
 ## Limits
 
 TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.

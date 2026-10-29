@@ -22,6 +22,7 @@ from market_research.research_snapshot import fingerprint
 from market_research.price_context import analyze_price_context, render_price_context
 from market_research.event_risk import tw_material_events, render_events
 from market_research.source_evidence import render_evidence
+from market_research.thesis_check import render_thesis_check
 from market_research.valuation_zone import load_watchlist, render_valuation_zone
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -302,12 +303,13 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         event_feed = issuer.get("event_feed") or unknown(
             SEC_SUBMISSIONS.format(cik=int(issuer["cik"])), "SEC filing feed not retrieved"
         )
-    # Raw P/E rows feed the review zone only; the report keeps its summary.
+    # Raw P/E and revenue rows feed the zone and thesis check only; the report keeps summaries.
     per_history = issuer.pop("per_history_raw", None)
+    revenue_history = issuer.pop("revenue_history_raw", None)
     research = compute_research(
         issuer=issuer, technical=technical, event_feed=event_feed,
         symbol=symbol, market=market, now=now,
-        satellite=satellite, per_history=per_history,
+        satellite=satellite, per_history=per_history, revenue_history=revenue_history,
     )
     event_risk = research["event_risk"]
     eligibility = research["instrument_eligibility"]
@@ -327,6 +329,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
         "official_events":event_feed, "event_risk":event_risk,
         "valuation":valuation,
         "valuation_zone":research["valuation_zone"],
+        "thesis_check":research["thesis_check"],
         "decision":"no_buy_or_sell_recommendation",
         "complete":bool(issuer.get("company_name")) and technical["status"]=="available",
         "limitations":["TW latest monthly revenue is not audited annual profit or TTM revenue",
@@ -378,6 +381,7 @@ def run(symbol, out=Path("company_output"), now=None, provider=None,
     lines.extend(render_evidence(eligibility, evidence, source_gate))
     if market == "tw":
         lines.extend(render_valuation_zone(result["valuation_zone"]))
+        lines.extend(render_thesis_check(result["thesis_check"]))
     lines += ["","## Valuation and entry/exit plan",""]
     v = result["valuation"]
     if v["status"] == "illustrative_only" and v.get("currency") == "TWD":

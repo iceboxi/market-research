@@ -12,6 +12,8 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from .thesis_check import DEFAULT_RULE, MAX_CONSECUTIVE_MONTHS
+
 PER_DATASET = "TaiwanStockPER"
 DEFAULT_PERCENTILES = (20, 50, 80)
 WINDOW_YEARS = 5
@@ -49,7 +51,7 @@ def load_watchlist(config_dir):
     """Satellite settings by symbol; a strict subset of the scanned TW stocks.
 
     config/markets.yaml alone decides what is scanned; watchlist.yaml only adds
-    thesis and valuation-zone settings for some of those stocks.
+    thesis, valuation-zone and revenue-check settings for some of those stocks.
     """
     path = Path(config_dir) / "watchlist.yaml"
     if not path.exists():
@@ -66,7 +68,7 @@ def load_watchlist(config_dir):
             raise ValueError(f"watchlist {symbol}: not a scanned tw symbol in markets.yaml")
         if symbol.split(".")[0].startswith("00"):
             raise ValueError(f"watchlist {symbol}: ETF/ETN codes are price-only, not satellites")
-        if not isinstance(entry, dict) or set(entry) - {"thesis", "valuation_zone"}:
+        if not isinstance(entry, dict) or set(entry) - {"thesis", "valuation_zone", "revenue_check"}:
             raise ValueError(f"watchlist {symbol}: unknown keys")
         thesis = entry.get("thesis")
         if thesis is not None and not isinstance(thesis, str):
@@ -87,8 +89,24 @@ def load_watchlist(config_dir):
             if not (0 < percentiles[0] and percentiles[2] < 100):
                 raise ValueError(f"watchlist {symbol}: percentiles must be between 0 and 100")
             setting = {"percentiles": tuple(percentiles)}
-        satellites[symbol] = {"thesis": thesis, "valuation_zone": setting}
+        satellites[symbol] = {"thesis": thesis, "valuation_zone": setting,
+                              "revenue_check": _revenue_rule(entry.get("revenue_check"), symbol)}
     return satellites
+
+
+def _revenue_rule(raw, symbol):
+    rule = dict(DEFAULT_RULE)
+    raw = raw or {}
+    if not isinstance(raw, dict) or set(raw) - set(rule):
+        raise ValueError(f"watchlist {symbol}: unknown revenue_check keys")
+    months = raw.get("consecutive_months", rule["consecutive_months"])
+    if isinstance(months, bool) or not isinstance(months, int) or not 1 <= months <= MAX_CONSECUTIVE_MONTHS:
+        raise ValueError(f"watchlist {symbol}: consecutive_months must be an integer "
+                         f"from 1 to {MAX_CONSECUTIVE_MONTHS}")
+    threshold = raw.get("yoy_below_pct", rule["yoy_below_pct"])
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(threshold):
+        raise ValueError(f"watchlist {symbol}: yoy_below_pct must be a number")
+    return {"consecutive_months": months, "yoy_below_pct": float(threshold)}
 
 
 def _per_series(rows, code, cutoff):

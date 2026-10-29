@@ -1,11 +1,16 @@
-# 衛星個股設定（#111、#114）。掃描標的只由 markets.yaml 決定；這裡的標的必須是
+# 衛星個股設定（#111、#114、#115）。掃描標的只由 markets.yaml 決定；這裡的標的必須是
 # markets.yaml tw 掃描標的的子集，且不可是 ETF／ETN（00 開頭只看行情）。
 #
-# thesis：持有論點文字（W4 論點檢查使用）；尚未填寫時為 null。
+# thesis：持有論點文字，論點檢查時一併顯示；尚未填寫時為 null。
 # valuation_zone（可省略，預設 percentiles: [20, 50, 80]），兩者擇一：
 #   percentiles：近 5 年每日本益比（FinMind TaiwanStockPER）的三個遞增百分位
 #   pe_multiples：固定的三個遞增本益比倍數，取代歷史百分位
 # 價位 = 本益比 × 近四季 EPS。結果是「檢視區」提醒，不是買賣建議。
+# revenue_check（可省略，#115 論點檢查）：
+#   consecutive_months：連續幾個月（1–12，預設 3）
+#   yoy_below_pct：月營收年增率低於此百分比（預設 0）
+#   連續 consecutive_months 個月的年增率都低於 yoy_below_pct 時，論點狀態為「請檢視」；
+#   當日有 TWSE 重大公告也會標為「請檢視」。
 satellites:
   2330.TW:
     thesis: null

@@ -31,6 +31,7 @@ from market_research.research_snapshot import prepare_snapshot, utc
 from market_research.fundamentals import finmind_per_url
 from market_research.price_watch import (DISCLAIMER as PRICE_WATCH_DISCLAIMER, MA_SESSIONS,
                                          WINDOW_WEEKS, price_watch_notes)
+from market_research.thesis_check import STATUS_LABELS as THESIS_LABELS
 from market_research.valuation_zone import DISCLAIMER, ZONE_LABELS
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -852,22 +853,32 @@ def _price_watch_row(row: dict[str, Any]) -> str:
             f'<td>{_e(price_watch_notes(row))}</td></tr>')
 
 
-def _zone_row(symbol: str, zone: dict[str, Any], name: Any) -> str:
+def _thesis_cell(check: dict[str, Any] | None) -> str:
+    if not check or check.get("revenue") is None:
+        return f"<td>{NA}</td>"
+    reason = f'<span class="unit">{_e(check["reason"])}</span>' if check.get("reason") else ""
+    return f'<td>{_e(THESIS_LABELS.get(check["status"], check["status"]))}{reason}</td>'
+
+
+def _zone_row(symbol: str, zone: dict[str, Any] | None, name: Any, check: dict[str, Any] | None) -> str:
     label = f'{_e(symbol)}<span class="unit">{_e(name or "")}</span>'
+    if zone is None:
+        return (f'<tr><th scope="row">{label}</th><td class="num">{NA}</td>'
+                f'<td colspan="4">{NA}</td>{_thesis_cell(check)}</tr>')
     price = zone.get("price") or {}
     close = (f'{_num(price.get("close"))}<span class="unit">{_e(price.get("session"))}</span>'
              if price else NA)
     if zone.get("status") != "available":
         return (f'<tr><th scope="row">{label}</th><td class="num">{close}</td>'
-                f'<td colspan="4">未評估：{_e(zone.get("reason"))}</td></tr>')
+                f'<td colspan="4">未評估：{_e(zone.get("reason"))}</td>{_thesis_cell(check)}</tr>')
     prices = zone["review_prices_twd"]
     cells = "".join(f'<td class="num">{_num(prices[k])}</td>' for k in ("low", "mid", "high"))
     return (f'<tr><th scope="row">{label}</th><td class="num">{close}</td>{cells}'
-            f'<td>{_e(ZONE_LABELS.get(zone.get("zone")))}</td></tr>')
+            f'<td>{_e(ZONE_LABELS.get(zone.get("zone")))}</td>{_thesis_cell(check)}</tr>')
 
 
 def _watchlist_overview(watchlist: dict[str, Any] | None) -> str:
-    """Daily watchlist overview (#113): core ETF / TAIEX positions and satellite zones.
+    """Daily watchlist overview (#113, #115): core ETF / TAIEX positions, satellite zones and thesis checks.
 
     Supplied only by the daily TW run; a manual publication renders without it.
     """
@@ -876,7 +887,9 @@ def _watchlist_overview(watchlist: dict[str, Any] | None) -> str:
     rows = watchlist.get("price_watch") or []
     zones = watchlist.get("valuation_zones") or {}
     names = watchlist.get("names") or {}
-    if not rows and not zones:
+    checks = watchlist.get("thesis_checks") or {}
+    satellites = list(zones) + [s for s in checks if s not in zones]
+    if not rows and not satellites:
         return ""
     parts = ['<section id="watchlist" class="watchlist" aria-labelledby="watchlist-title">'
              '<h2 id="watchlist-title">觀察名單總覽</h2>']
@@ -890,17 +903,19 @@ def _watchlist_overview(watchlist: dict[str, Any] | None) -> str:
             f'<th scope="col" class="num">距 {WINDOW_WEEKS} 週高點</th>'
             f'<th scope="col" class="num">距 {MA_SESSIONS} 日均線</th><th scope="col">備註</th></tr></thead>'
             f'<tbody>{"".join(_price_watch_row(r) for r in rows)}</tbody></table></div>')
-    if zones:
+    if satellites:
         parts.append(
-            f'<h3>衛星個股估值檢視區</h3><p class="disclaimer">{_e(DISCLAIMER)}。'
-            '價位 = 本益比區間 × 近四季 EPS；方法與樣本見各股估值章節或每日 Artifact。</p>'
+            f'<h3>衛星個股估值檢視區與論點檢查</h3><p class="disclaimer">{_e(DISCLAIMER)}。'
+            '價位 = 本益比區間 × 近四季 EPS；論點檢查看月營收年增率與當日重大公告。'
+            '方法與樣本見各股估值章節或每日 Artifact。</p>'
             '<div class="table-wrap"><table><thead><tr><th scope="col">標的</th>'
             '<th scope="col" class="num">收盤<span class="unit">日期</span></th>'
             '<th scope="col" class="num">偏低價<span class="unit">元/股</span></th>'
             '<th scope="col" class="num">合理價<span class="unit">元/股</span></th>'
             '<th scope="col" class="num">偏高價<span class="unit">元/股</span></th>'
-            '<th scope="col">目前區間</th></tr></thead>'
-            f'<tbody>{"".join(_zone_row(s, z, names.get(s)) for s, z in zones.items())}</tbody></table></div>')
+            '<th scope="col">目前區間</th><th scope="col">論點檢查</th></tr></thead>'
+            f'<tbody>{"".join(_zone_row(s, zones.get(s), names.get(s), checks.get(s)) for s in satellites)}'
+            '</tbody></table></div>')
     parts.append("</section>")
     return "".join(parts)
 

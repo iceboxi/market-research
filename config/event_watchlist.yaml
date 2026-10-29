@@ -1,4 +1,9 @@
 symbols:
   - market: tw
     symbol: 2330.TW
+  # Watchlist satellites (#111, #115): material announcements feed the thesis check.
+  - market: tw
+    symbol: 2317.TW
+  - market: tw
+    symbol: 2454.TW
 # Add US issuers after configuring the SEC_USER_AGENT GitHub Actions Secret.

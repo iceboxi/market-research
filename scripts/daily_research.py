@@ -13,6 +13,7 @@ from scripts.research_publication import execute as publish_report
 from scripts.scan_company_research import execute as candidate_research
 from market_research.price_watch import load_price_watch, render_price_watch_summary
 from market_research.research_site import write_research_site
+from market_research.thesis_check import DISCLAIMER as THESIS_DISCLAIMER, thesis_summary_row
 from market_research.valuation_zone import zone_summary_row
 
 DEFAULT_TW_PILOT_SYMBOLS = ["2330.TW", "2317.TW", "2454.TW", "0050.TW", "00631L.TW"]
@@ -178,6 +179,8 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
                 sym_rec["readiness"] = rep.get("research_readiness", {}).get("components")
                 if rep.get("valuation_zone"):
                     sym_rec["valuation_zone"] = rep["valuation_zone"]
+                if rep.get("thesis_check"):
+                    sym_rec["thesis_check"] = rep["thesis_check"]
                 if sym_rec["status"] == "complete":
                     pilot_coverage["completed_count"] += 1
                 else:
@@ -258,7 +261,9 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
                 and state_file.exists()):
             overview = {"price_watch": watch_rows, "valuation_zones": {
                 sym: rec["valuation_zone"] for sym, rec in pilot_coverage["symbols"].items()
-                if rec.get("valuation_zone")}, "names": {
+                if rec.get("valuation_zone")}, "thesis_checks": {
+                sym: rec["thesis_check"] for sym, rec in pilot_coverage["symbols"].items()
+                if rec.get("thesis_check")}, "names": {
                 sym: rec["company_name"] for sym, rec in pilot_coverage["symbols"].items()
                 if rec.get("company_name")}}
             try:
@@ -331,6 +336,18 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
             "| :--- | ---: | ---: | ---: | ---: | :--- | :--- | :--- |",
         ]
         lines += [zone_summary_row(sym, zone) for sym, zone in zones]
+    # Only satellites carry revenue evidence; other stocks are not checked.
+    checks = [(sym, rec["thesis_check"]) for sym, rec in (pilot_coverage or {}).get("symbols", {}).items()
+              if (rec.get("thesis_check") or {}).get("revenue") is not None]
+    if checks:
+        lines += [
+            "", f"### 衛星個股論點檢查（{THESIS_DISCLAIMER}）", "",
+            "月營收年增率連續低於門檻（預設連續 3 個月 < 0%，見 config/watchlist.yaml）或當日有 TWSE 重大公告時"
+            "標為「請檢視」；資料不足或來源失敗為「未評估」。", "",
+            "| 標的 | 論點狀態 | 月營收年增率 | 當日重大公告 | 依據 |",
+            "| :--- | :--- | :--- | ---: | :--- |",
+        ]
+        lines += [thesis_summary_row(sym, check) for sym, check in checks]
     lines += render_price_watch_summary(result["price_watch"])
 
     (out / "daily_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -163,7 +163,8 @@ def test_watchlist_override_is_normalized(tmp_path):
     config = write_config(tmp_path, "satellites:\n  2317.TW:\n    thesis: 代工龍頭\n"
                           "    valuation_zone:\n      pe_multiples: [10, 12.5, 15]\n")
     assert load_watchlist(config) == {
-        "2317.TW": {"thesis": "代工龍頭", "valuation_zone": {"pe_multiples": (10.0, 12.5, 15.0)}}}
+        "2317.TW": {"thesis": "代工龍頭", "valuation_zone": {"pe_multiples": (10.0, 12.5, 15.0)},
+                    "revenue_check": {"consecutive_months": 3, "yoy_below_pct": 0.0}}}
 
 
 @pytest.mark.parametrize("body,message", [
