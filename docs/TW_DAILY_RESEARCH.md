@@ -35,6 +35,7 @@ TW runtime job 與既有手動 publisher 共用 `research-publication-production
 | incident Issue | 保持原 scan health 語意；每日研究有獨立結果 |
 | prospective guard／observe／archive | 原 schedule-only 條件、模式與實作保持 |
 | 固定研究發布 | TW／both runtime 新增；與手動發布共用序列及 owner |
+| 觀察名單提醒 Issue（#116） | 只在 main 的 TW／both schedule／dispatch 執行（step 條件與 `scripts/watchlist_alert.py` 的 runtime guard 雙重限制）；以隱藏 marker 找唯一開啟中的 Issue，沒有就建立；內文保存上次已評估狀態，衛星個股估值區間或論點狀態改變時，每次執行最多留一則留言 |
 
 ## 驗收層級
 
