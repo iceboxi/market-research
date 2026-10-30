@@ -27,7 +27,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from market_research.research_comparison import available, compare_snapshots
-from market_research.research_snapshot import SnapshotError, prepare_snapshot, utc
+from market_research.research_snapshot import DISCLOSURE_DEFAULT_SOURCE, SnapshotError, prepare_snapshot, utc
 from market_research.fundamentals import finmind_per_url
 from market_research.price_watch import (DISCLAIMER as PRICE_WATCH_DISCLAIMER, MA_SESSIONS,
                                          WINDOW_WEEKS, price_watch_notes)
@@ -1232,7 +1232,8 @@ def _events(fr: dict[str, Any] | None, snap: dict[str, Any]) -> str:
     cal_rows = "".join(groups["upcoming"] + groups["unknown"] + groups["past"] + groups["rule"])
     disc = (fr or {}).get("disclosure_and_news") or {}
     discl = "".join(
-        f'<li><time>{_e(d.get("event_date") or d.get("reported_at"))}</time> {_e(d.get("title"))} {_link(d.get("source"))}</li>'
+        f'<li><time>{_e(d.get("event_date") or d.get("reported_at"))}</time> {_e(d.get("title"))} '
+        f'{_link(d.get("source") or DISCLOSURE_DEFAULT_SOURCE.get(d.get("category")))}</li>'
         for d in disc.get("official_disclosures") or [])
     news = "".join(
         f'<li><time>{_e((n.get("published_at") or "")[:10] or None)}</time> {_link(n.get("url"), n.get("title") or "新聞")} '
@@ -1284,7 +1285,9 @@ def _methodology(snap: dict[str, Any], comp: dict[str, Any], stock: dict[str, An
         f'<td>{_e(COMPONENT_LABELS.get(c.get("component"), c.get("component")))}</td><td><code>{_e(c.get("reason"))}</code></td>'
         f'<td>{_e(c.get("period"))}</td></tr>' for c in comp.get("changes") or [])
     sources = "".join(f"<li>{_link(u, u)}</li>" for u in snap.get("source_links") or [])
-    datasets = "".join(f'<li>{_e(d.get("name"))}：{_link(d.get("endpoint"), d.get("endpoint"))}</li>' for d in fr.get("ogdl_datasets") or [])
+    from market_research.company_analysis import TW_OGDL_DATASETS  # snapshots after #137 omit the constant list
+    datasets = "".join(f'<li>{_e(d.get("name"))}：{_link(d.get("endpoint"), d.get("endpoint"))}</li>'
+                       for d in fr.get("ogdl_datasets") or (TW_OGDL_DATASETS if fr else ()))
     attr_ds = "".join(f'<li>{_link(d.get("catalog"), d.get("name"))}（上架 {_e(d.get("released_year"))}）</li>' for d in attr.get("datasets") or [])
     status_table_rows = []
     for key, name, notes in MODULES:

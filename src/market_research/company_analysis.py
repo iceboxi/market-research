@@ -171,6 +171,19 @@ def research_status(financial, valuation, technical):
             "investment_recommendation": "not_available"}
 
 
+# TWSE open datasets behind the TW financial research; constant per code version, so the
+# public snapshot leaves it out and the site rebuilds it from here (#137).
+TW_OGDL_DATASETS = (
+    {"name": "上市公司綜合損益表(一般業)", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"},
+    {"name": "上市公司資產負債表(一般業)", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap07_L_ci"},
+    {"name": "上市公司營益分析查詢彙總表", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap17_L"},
+    {"name": "上市公司股利分派情形", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap45_L"},
+    {"name": "上市公司召集股東常(臨時)會公告資料彙總表", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap38_L"},
+    {"name": "上市公司召開股東常(臨時)會日期、地點及採用電子投票情形", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap41_L"},
+    {"name": "上市個股日本益比、殖利率及股價淨值比", "endpoint": "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"},
+)
+
+
 def build_financial_research_summary(result):
     financial = result.get("financial_comparison") or {}
     if financial.get("status") != "available" or result.get("market") != "tw":
@@ -264,15 +277,7 @@ def build_financial_research_summary(result):
         "calendar_schedule": issuer.get("calendar_schedule"),
         "valuation_zone": result.get("valuation_zone"),
         "valuation_summary": val_summary,
-        "ogdl_datasets": [
-            {"name": "上市公司綜合損益表(一般業)", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"},
-            {"name": "上市公司資產負債表(一般業)", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap07_L_ci"},
-            {"name": "上市公司營益分析查詢彙總表", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap17_L"},
-            {"name": "上市公司股利分派情形", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap45_L"},
-            {"name": "上市公司召集股東常(臨時)會公告資料彙總表", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap38_L"},
-            {"name": "上市公司召開股東常(臨時)會日期、地點及採用電子投票情形", "endpoint": "https://openapi.twse.com.tw/v1/opendata/t187ap41_L"},
-            {"name": "上市個股日本益比、殖利率及股價淨值比", "endpoint": "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"},
-        ],
+        "ogdl_datasets": list(TW_OGDL_DATASETS),
     }
 
 
