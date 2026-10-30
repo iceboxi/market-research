@@ -40,7 +40,9 @@ jobs:
     outputs:
       pages_ready: ${{ steps.pages_site.outputs.ready }}
     env:
-      SCAN_MARKET: ${{ github.event_name == 'schedule' && 'tw' || inputs.market || 'both' }}
+      # Only a manual dispatch picks a market; schedule and push scan TW (#135), so a Yahoo
+      # outage for the retired US universe never turns a TW change red.
+      SCAN_MARKET: ${{ github.event_name == 'workflow_dispatch' && inputs.market || 'tw' }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

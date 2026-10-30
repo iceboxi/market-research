@@ -1,6 +1,6 @@
 # 台股每日固定研究
 
-`EOD market scan` 的 TW／both schedule 或手動執行會研究固定 2330，即使掃描為 `no_candidates`。US 保持既有候選入口；push 僅做原本的 scan／CI，不發布固定報告。cron、策略啟用與掃描 universe 不變。
+`EOD market scan` 的 TW／both schedule 或手動執行會研究固定 2330，即使掃描為 `no_candidates`。US 保持既有候選入口（只能手動選擇）；push 只掃 TW 並跑 CI，不發布固定報告（#135）。cron、策略啟用與掃描 universe 不變。
 
 ## 資料與去重
 

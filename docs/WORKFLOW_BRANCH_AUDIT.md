@@ -116,7 +116,7 @@
 
 | YAML | 觸發 | 用途 | 備註 |
 | --- | --- | --- | --- |
-| `scan.yml` | schedule、dispatch、push | **[User]** 每日盤後掃描、固定研究、TW 發布後部署 Pages、觀察名單提醒 Issue | TW 15:40（臺灣）名目排程；US 排程與 prospective 步驟已於 #117 移除；提醒 Issue 只在 main 的 TW schedule／dispatch 寫入（#116） |
+| `scan.yml` | schedule、dispatch、push | **[User]** 每日盤後掃描、固定研究、TW 發布後部署 Pages、觀察名單提醒 Issue | TW 15:40（臺灣）名目排程；US 排程與 prospective 步驟已於 #117 移除；提醒 Issue 只在 main 的 TW schedule／dispatch 寫入（#116）；push 只掃 TW，US 只能手動選擇（#135） |
 | `company-research.yml` | dispatch、push | **[User]** 指定個股研究 | |
 | `event-watch.yml` | schedule、dispatch | **[User]** 官方事件觀察，寫 `research-state/events` | |
 | `research-publication.yml` | dispatch、push | push／validation：發布驗收；dispatch production：手動發布 2330 並部署 Pages | production 只限 main dispatch |
