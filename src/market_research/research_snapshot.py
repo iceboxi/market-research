@@ -8,7 +8,13 @@ from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 from .fundamentals import FINMIND_URL, TW_PROFILE, TW_REVENUE, tw_report_date
+from .event_risk import TW_DIVIDEND_SCHEDULE_URL, TW_MATERIAL_URL, TW_SHAREHOLDER_ANNOUNCE_URL
 from .valuation_zone import compact_zone
+
+# A disclosure whose source is its category's usual dataset stores no URL; the site restores it.
+DISCLOSURE_DEFAULT_SOURCE = {"material_information": TW_MATERIAL_URL,
+                             "shareholder_meeting_announcement": TW_SHAREHOLDER_ANNOUNCE_URL,
+                             "board_dividend_and_earnings_resolution": TW_DIVIDEND_SCHEDULE_URL}
 
 MAX_SNAPSHOT_BYTES = 20_000
 READINESS = ("instrument", "source_evidence", "valuation_provenance", "financial",
@@ -232,8 +238,13 @@ def validate_snapshot(value):
 
 
 def _compact_financial_research(fr):
-    """Strip ephemeral per-run timestamps and third-party news links before Git retention."""
+    """Strip ephemeral per-run timestamps and third-party news links before Git retention.
+
+    Values the site can rebuild are left out (#137): the constant dataset list, each event's
+    timezone when it equals the calendar's, and a disclosure source equal to its category's.
+    """
     cleaned = json.loads(encoded(fr))
+    cleaned.pop("ogdl_datasets", None)
     disc = cleaned.get("disclosure_and_news")
     if isinstance(disc, dict):
         disc.pop("evaluated_at_utc", None)
@@ -243,10 +254,13 @@ def _compact_financial_research(fr):
         compact_disclosures = []
         for item in (disc.get("official_disclosures") or [])[:6]:
             if isinstance(item, dict):
-                compact_disclosures.append({
+                kept = {
                     k: item.get(k)
                     for k in ("disclosure_id", "category", "title", "event_date", "published_at", "reported_at", "source")
-                })
+                }
+                if kept["source"] == DISCLOSURE_DEFAULT_SOURCE.get(kept["category"]):
+                    del kept["source"]
+                compact_disclosures.append(kept)
         disc["official_disclosures"] = compact_disclosures
     cal = cleaned.get("calendar_schedule")
     if isinstance(cal, dict):
@@ -260,6 +274,8 @@ def _compact_financial_research(fr):
                     k: ev.get(k)
                     for k in ("schedule_id", "event_type", "period_label", "title", "scheduled_date", "timezone", "confirmation_status", "source")
                 }
+                if compact_ev["timezone"] == cal.get("timezone"):
+                    del compact_ev["timezone"]
                 if ev.get("retained_from_previous"):
                     compact_ev["retained_from_previous"] = True
                 if ev.get("superseded_dates"):
