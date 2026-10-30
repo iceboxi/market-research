@@ -157,12 +157,17 @@ def evaluate_valuation_zone(symbol, cutoff, settings, per_history, ttm, price):
         return blocked("Not a watchlist satellite (config/watchlist.yaml)")
     ttm = ttm or {}
     eps = ttm.get("basic_eps") if ttm.get("status") == "available" else None
+    derivation = ttm.get("eps_derivation")
+    if eps is None and ttm.get("status") == "available" and ttm.get("quarter_eps_sum") is not None:
+        # TWSE's P/E history divides by the same plain four-quarter sum, so the band and EPS
+        # stay on one basis even when the share count moved more than 0.5% (#133).
+        eps, derivation = ttm["quarter_eps_sum"], "sum_of_four_quarters_twse_pe_basis"
     if eps is None or isinstance(eps, bool) or not math.isfinite(eps):
         return blocked("TTM EPS unavailable: " + str(ttm.get("reason") or
                        ttm.get("eps_derivation") or "no verified four-quarter EPS"))
     result["eps"] = {"ttm_basic_eps": float(eps), "period_start": ttm.get("period_start"),
                      "period_end": ttm.get("period_end"), "quarters": ttm.get("quarters"),
-                     "derivation": ttm.get("eps_derivation")}
+                     "derivation": derivation}
     if eps <= 0:
         return blocked("TTM EPS is not positive; a P/E band is undefined")
     eps_end = date.fromisoformat(ttm["period_end"])

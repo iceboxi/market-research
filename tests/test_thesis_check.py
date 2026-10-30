@@ -207,7 +207,7 @@ def test_all_three_satellites_are_in_the_announcement_watch():
     watched = {(item["market"], item["symbol"]) for item in events["symbols"]}
     satellites = load_watchlist(ROOT / "config")
     assert {("tw", symbol) for symbol in satellites} <= watched
-    assert set(satellites) == {"2330.TW", "2317.TW", "2454.TW"}
+    assert set(satellites) == {"2330.TW", "2317.TW", "2454.TW", "2356.TW", "3017.TW"}
 
 
 # ---------------------------------------------------------------- pipeline

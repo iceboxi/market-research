@@ -30,7 +30,7 @@ RSI is retained as disabled reference code, not used by the scheduled scanner.
 ## Market coverage and request cost
 
 The TW watchlist ([#111](https://github.com/iceboxi/market-research/issues/111))
-is **3 TWSE stocks (2330, 2317, 2454) plus 2 ETFs (0050, 00631L)**; ETF codes
+is **5 TWSE stocks (2330, 2317, 2454, 2356, 3017) plus 2 ETFs (0050, 00631L)**; ETF codes
 start with `00` and are monitored for price only, without issuer research.
 The US list keeps 12 stocks. Default scheduled period is **6mo**:
 TWSE STOCK_DAY requires one official monthly request per ticker, so this
@@ -83,7 +83,7 @@ the 20th/50th/80th percentiles of the stock's own daily P/E over the five years
 up to the cutoff (FinMind `TaiwanStockPER`, positive P/E only) times trailing
 four-quarter basic EPS give low / mid / high review prices, and the latest close
 is placed `below_low`, `fair` or `above_high`. Missing or non-positive EPS, EPS
-older than 200 days, or fewer than 720 P/E samples give `not_evaluated`.
+older than 200 days, or fewer than 720 P/E samples give `not_evaluated`. When the share count moved more than 0.5% across the four quarters, the zone uses the plain four-quarter EPS sum (TWSE's own P/E basis) and labels it `sum_of_four_quarters_twse_pe_basis`; other uses of TTM EPS stay strict.
 `config/watchlist.yaml` lists the satellites (a subset of the scanned TW stocks,
 never ETFs) with an optional thesis and percentile or fixed-multiple override.
 The zone is a prompt to review, not a fair value, target or trade price.

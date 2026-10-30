@@ -6,4 +6,8 @@ symbols:
     symbol: 2317.TW
   - market: tw
     symbol: 2454.TW
+  - market: tw
+    symbol: 2356.TW
+  - market: tw
+    symbol: 3017.TW
 # Add US issuers after configuring the SEC_USER_AGENT GitHub Actions Secret.

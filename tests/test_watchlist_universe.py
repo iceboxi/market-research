@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_config_universe_is_the_agreed_watchlist():
     markets = yaml.safe_load((ROOT / "config/markets.yaml").read_text(encoding="utf-8"))
     assert markets["markets"]["tw"]["symbols"] == [
-        "2330.TW", "2317.TW", "2454.TW", "0050.TW", "00631L.TW"]
+        "2330.TW", "2317.TW", "2454.TW", "2356.TW", "3017.TW", "0050.TW", "00631L.TW"]
     assert get_pilot_symbols("tw") == markets["markets"]["tw"]["symbols"]
 
 
