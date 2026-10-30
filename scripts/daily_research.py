@@ -11,6 +11,9 @@ import time
 from scripts.company_report import run
 from scripts.research_publication import execute as publish_report
 from scripts.scan_company_research import execute as candidate_research
+from market_research.industry_watch import (
+    load_industry_watch, load_industry_watch_rows, render_industry_watch_summary,
+)
 from market_research.price_watch import load_price_watch, render_price_watch_summary
 from market_research.research_site import latest_only_records, write_research_site
 from market_research.thesis_check import DISCLAIMER as THESIS_DISCLAIMER, thesis_summary_row
@@ -69,7 +72,8 @@ def is_full_market_endpoint(url):
 
 def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
             research_fn=run, publication_fn=publish_report, sec_user_agent=None, now=None,
-            pilot=False, symbols=None, price_watch_fn=load_price_watch, benchmarks=None):
+            pilot=False, symbols=None, price_watch_fn=load_price_watch, benchmarks=None,
+            industry_watch_fn=load_industry_watch_rows, industry_groups=None):
     if market not in ("tw", "both"):
         raise ValueError("Daily fixed research requires TW coverage")
     if not 1 <= max_candidates <= 20 or now is not None and now.tzinfo is None:
@@ -97,6 +101,7 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
         },
         "pilot_coverage": None,
         "candidates": None,
+        "industry_watch": None,
     }
     fixed = result["fixed_research"]
 
@@ -209,6 +214,18 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
         for row in watch_rows:
             if row["symbol"] in pilot_coverage["symbols"]:
                 pilot_coverage["symbols"][row["symbol"]]["price_watch"] = row["status"]
+
+        # Industry-watch stocks are priced and zoned, never scanned or researched (#142);
+        # their gaps stay in their own section and never change the run status.
+        try:
+            if industry_groups is None:
+                industry_groups = (load_industry_watch(Path(__file__).resolve().parents[1] / "config")
+                                   if pilot and symbols is None else [])
+            if industry_groups:
+                result["industry_watch"] = industry_watch_fn(industry_groups, now)
+        except Exception as err:
+            result["industry_watch"] = {"status": "failed", "error_type": type(err).__name__,
+                                        "reason": str(err)}
 
         pilot_coverage["shared_endpoints_cached"] = len(shared_stats["shared_endpoints"])
         pilot_coverage["cache_hit_count"] = shared_stats["cache_hits"]
@@ -354,6 +371,7 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
             "| :--- | :--- | :--- | ---: | :--- |",
         ]
         lines += [thesis_summary_row(sym, check) for sym, check in checks]
+    lines += render_industry_watch_summary(result["industry_watch"])
     lines += render_price_watch_summary(result["price_watch"])
 
     (out / "daily_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
