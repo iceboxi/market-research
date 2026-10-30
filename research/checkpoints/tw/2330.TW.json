@@ -1,17 +1,10 @@
 {
-  "consumed_event_ids": [],
+  "consumed_event_ids": [
+    "tw-material-c7e0158c2c708a226387"
+  ],
   "consumed_financial_version": "ifrs-2026-06-30",
-  "last_completed_snapshot_id": "0c6bbca92bec3303705783228da8109305e58a07760daeede3473b5f6ffe8e66",
-  "pending_rerun": {
-    "reasons": [
-      "new_official_events"
-    ],
-    "request_id": "e23acd66d45f9132fce93de453eded5576df0454e5d994ffc2e307898c0f3dc3",
-    "target_financial_version": null,
-    "trigger_event_ids": [
-      "tw-material-c7e0158c2c708a226387"
-    ]
-  },
+  "last_completed_snapshot_id": "27f675632880491b43c744a849274dc844a1176526d49303efac4cab494e3959",
+  "pending_rerun": null,
   "schema_version": 1,
   "symbol": "2330.TW"
 }
