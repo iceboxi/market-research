@@ -16,7 +16,7 @@ from market_research.research_site import latest_only_records, write_research_si
 from market_research.thesis_check import DISCLAIMER as THESIS_DISCLAIMER, thesis_summary_row
 from market_research.valuation_zone import zone_summary_row
 
-DEFAULT_TW_PILOT_SYMBOLS = ["2330.TW", "2317.TW", "2454.TW", "0050.TW", "00631L.TW"]
+DEFAULT_TW_PILOT_SYMBOLS = ["2330.TW", "2317.TW", "2454.TW", "2356.TW", "3017.TW", "0050.TW", "00631L.TW"]
 DEFAULT_TW_BENCHMARKS = ["TAIEX"]
 
 FULL_MARKET_PATTERNS = (

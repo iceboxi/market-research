@@ -708,9 +708,10 @@ def normalize_tw_financial_history(code, asof, finmind=None, twse=None, source=N
                 ttm_fcf = (ttm_cfo - ttm_capex) if (ttm_cfo is not None and ttm_capex is not None) else None
                 q_shares = [q["ordinary_shares"] for q in q4 if q.get("ordinary_shares")]
                 share_drift = ((max(q_shares) - min(q_shares)) / min(q_shares)) if len(q_shares) == 4 and min(q_shares) > 0 else None
-                ttm_eps = round(sum(q["basic_eps"] for q in q4), 2) if (
-                    all(q["basic_eps"] is not None for q in q4) and share_drift is not None and share_drift <= 0.005
-                ) else None
+                # The plain four-quarter sum is TWSE's own P/E basis; basic_eps stays strict.
+                quarter_eps_sum = (round(sum(q["basic_eps"] for q in q4), 2)
+                                   if all(q["basic_eps"] is not None for q in q4) else None)
+                ttm_eps = quarter_eps_sum if share_drift is not None and share_drift <= 0.005 else None
                 def _tpct(v):
                     return round(100.0 * v / ttm_rev, 2) if v is not None and ttm_rev > 0 else None
                 ttm = {
@@ -727,6 +728,7 @@ def normalize_tw_financial_history(code, asof, finmind=None, twse=None, source=N
                     "basic_eps": ttm_eps,
                     "eps_derivation": "sum_of_four_quarters_within_0.5pct_share_drift" if ttm_eps is not None else "not_evaluated",
                     "share_count_max_drift_pct": round(share_drift * 100.0, 6) if share_drift is not None else None,
+                    "quarter_eps_sum": quarter_eps_sum,
                     "operating_cash_flow": ttm_cfo,
                     "capex": ttm_capex,
                     "free_cash_flow": ttm_fcf,

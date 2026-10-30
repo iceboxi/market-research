@@ -153,10 +153,11 @@ def write_config(tmp_path, watchlist, symbols=("2330.TW", "2317.TW", "0050.TW"))
     return tmp_path
 
 
-def test_production_watchlist_is_the_three_satellites():
+def test_production_watchlist_is_the_five_satellites_with_theses():
     satellites = load_watchlist(ROOT / "config")
-    assert sorted(satellites) == ["2317.TW", "2330.TW", "2454.TW"]
+    assert sorted(satellites) == ["2317.TW", "2330.TW", "2356.TW", "2454.TW", "3017.TW"]
     assert all(s["valuation_zone"] == {"percentiles": (20, 50, 80)} for s in satellites.values())
+    assert all(s["thesis"] and "失效條件" in s["thesis"] for s in satellites.values())
 
 
 def test_watchlist_override_is_normalized(tmp_path):
@@ -188,3 +189,22 @@ def test_invalid_watchlist_is_a_config_error(tmp_path, body, message):
 def test_missing_watchlist_means_no_satellites(tmp_path):
     (tmp_path / "markets.yaml").write_text("markets:\n  tw:\n    symbols: []\n")
     assert load_watchlist(tmp_path) == {}
+
+
+def test_share_count_change_falls_back_to_the_twse_four_quarter_sum():
+    # basic_eps stays strict (None above 0.5% share drift); the zone uses TWSE's P/E basis.
+    drifted = {**ttm(eps=None), "eps_derivation": "not_evaluated", "quarter_eps_sum": 40.0,
+               "share_count_max_drift_pct": 7.47}
+    result = zone(eps=drifted)
+    assert result["status"] == "available"
+    assert result["eps"]["ttm_basic_eps"] == 40.0
+    assert result["eps"]["derivation"] == "sum_of_four_quarters_twse_pe_basis"
+    assert result["review_prices_twd"] == {"low": 480.0, "mid": 600.0, "high": 720.0}
+    strict = zone()
+    assert strict["eps"]["derivation"] == "sum_of_four_quarters_within_0.5pct_share_drift"
+
+
+def test_no_quarter_sum_still_blocks_the_zone():
+    missing = {**ttm(eps=None), "eps_derivation": "not_evaluated", "quarter_eps_sum": None}
+    result = zone(eps=missing)
+    assert result["status"] == "not_evaluated" and result["reason"].startswith("TTM EPS unavailable")
