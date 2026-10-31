@@ -33,7 +33,7 @@ from .valuation_zone import (
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 PBR_FIELD = "PBR"
-SUFFIXES = (".TW",)
+SUFFIXES = (".TW", ".TWO")  # TWSE listed, TPEx listed (#144)
 GROUP_KEYS = {"name", "rationale", "symbols", "pb_zone", "revenue_momentum"}
 SYMBOL_KEYS = {"name", "revenue_momentum"}
 ROLLING_MONTHS = 3
@@ -365,7 +365,8 @@ def render_industry_watch_summary(industry):
         "", f"### 產業觀察（{DISCLAIMER}）", "",
         "景氣循環股以股價淨值比（PBR）觀察，不用本益比：獲利高峰時本益比反而最低。"
         f"價位 = 近 {WINDOW_YEARS} 年每日 PBR（FinMind {PER_DATASET}）百分位（預設第 20／50／80）"
-        "× 每股淨值（收盤 ÷ 同日 PBR，推導值）；價格位置算法同核心 ETF（TWSE 官方日 K）。"
+        "× 每股淨值（收盤 ÷ 同日 PBR，推導值）；價格位置算法同核心 ETF（上市為 TWSE 官方日 K，"
+        "上櫃為 FinMind TaiwanStockPrice，無參考價，每日比照不比價日）。"
         f"營收動能 = 3 個月滾動年增率（FinMind {REVENUE_DATASET}，只用截止時已公開的月份）："
         "低於 0 為衰退，連續 N 個月嚴格下降為放緩（預設 N = 3）。"
         "不跑公司研究與論點檢查，設定見 config/watchlist.yaml。",
