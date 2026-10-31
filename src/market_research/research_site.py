@@ -29,10 +29,11 @@ from zoneinfo import ZoneInfo
 from market_research.research_comparison import available, compare_snapshots
 from market_research.research_snapshot import DISCLOSURE_DEFAULT_SOURCE, SnapshotError, prepare_snapshot, utc
 from market_research.fundamentals import finmind_per_url
+from market_research.industry_watch import MOMENTUM_LABELS
 from market_research.price_watch import (DISCLAIMER as PRICE_WATCH_DISCLAIMER, MA_SESSIONS,
                                          WINDOW_WEEKS, price_watch_notes)
-from market_research.thesis_check import STATUS_LABELS as THESIS_LABELS
-from market_research.valuation_zone import DISCLAIMER, ZONE_LABELS
+from market_research.thesis_check import REVENUE_DATASET, STATUS_LABELS as THESIS_LABELS
+from market_research.valuation_zone import DISCLAIMER, PER_DATASET, WINDOW_YEARS, ZONE_LABELS
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 # The overview, risk and valuation narrative was hand-written for TSMC's foundry business;
@@ -958,6 +959,111 @@ def _zone_row(symbol: str, zone: dict[str, Any] | None, name: Any, check: dict[s
             f'<td>{_e(ZONE_LABELS.get(zone.get("zone")))}</td>{_thesis_cell(check)}</tr>')
 
 
+def _gap(reason: Any, colspan: int = 1) -> str:
+    """A missing or not_evaluated cell: the dash plus why, never a zero."""
+    span = f' colspan="{colspan}"' if colspan > 1 else ""
+    return f'<td{span}>{NA}<span class="unit">未評估：{_e(reason)}</span></td>'
+
+
+def _industry_measure(measure: dict[str, Any] | None, detail: str) -> str:
+    if (measure or {}).get("status") != "available":
+        return _gap((measure or {}).get("reason"))
+    return f'<td class="num">{_chg(measure["pct"], decimals=2)}<span class="unit">{detail}</span></td>'
+
+
+def _price_source(source: Any) -> str:
+    text = str(source or "")
+    if text.startswith("finmind"):
+        return "FinMind TaiwanStockPrice 日 K"
+    return "TWSE 官方日 K" if text.startswith("twse") else (text or "日 K")
+
+
+def _industry_row(row: dict[str, Any]) -> str:
+    """One industry-watch stock (#146): price position, P/B zone, revenue momentum and sources."""
+    label = f'{_e(row.get("symbol"))}<span class="unit">{_e(row.get("name") or "")}</span>'
+    position = row.get("price_position") or {}
+    zone = row.get("pb_zone") or {}
+    momentum = row.get("revenue_momentum") or {}
+    if position.get("status") == "failed":
+        failure = f'行情取得失敗：{position.get("error_type")}：{position.get("reason")}'
+        price_cells = _gap(failure, 3)
+    else:
+        high, ma = position.get("drawdown_52w") or {}, position.get("ma_200") or {}
+        price_cells = (
+            f'<td class="num">{_num(position.get("close"))}<span class="unit">{_e(position.get("session"))}</span></td>'
+            + _industry_measure(high, f'高點 {_num(high.get("high"))}（{_e(high.get("high_date"))}）')
+            + _industry_measure(ma, f'均線 {_num(ma.get("average"))}'))
+    history = zone.get("pbr_history") or {}
+    if history.get("latest_pbr") is None:
+        pbr = _gap(zone.get("reason"))
+    else:
+        rank = history.get("latest_percentile_rank")
+        rank_text = f'5 年 P{rank:.0f}' if rank is not None else f'{history.get("samples")} 筆樣本'
+        pbr = f'<td class="num">{_num(history["latest_pbr"])}<span class="unit">{rank_text}</span></td>'
+    if zone.get("status") == "available":
+        prices = zone["review_prices_twd"]
+        zone_cells = ("".join(f'<td class="num">{_num(prices[k])}</td>' for k in ("low", "mid", "high"))
+                      + f'<td>{_e(ZONE_LABELS.get(zone.get("zone")))}</td>')
+    else:
+        zone_cells = _gap(zone.get("reason"), 4)
+    months = momentum.get("months") or []
+    if momentum.get("status") in (None, "not_evaluated") or not months:
+        momentum_cell = _gap(momentum.get("reason"))
+    else:
+        trend = " → ".join(f'{m["rolling_3m_yoy_pct"]:+.1f}%' for m in months)
+        momentum_cell = (
+            f'<td>{_e(MOMENTUM_LABELS.get(momentum["status"], momentum["status"]))} '
+            f'{_chg(months[-1]["rolling_3m_yoy_pct"])}<span class="unit">'
+            f'{_e(months[0]["period"])}～{_e(months[-1]["period"])} 3 個月滾動年增率：{_e(trend)}；'
+            f'{_e(momentum.get("reason"))}</span></td>')
+    sources = []
+    if position.get("session"):
+        sources.append(f'{_e(_price_source(position.get("source")))} {_e(position["session"])}')
+    if history.get("source"):
+        sources.append(_link(history["source"], f'PBR {history.get("last_date")}'))
+    if momentum.get("source") and momentum.get("latest_period"):
+        published = momentum.get("latest_published") or "依法定期限"
+        sources.append(_link(momentum["source"], f'月營收 {momentum["latest_period"]}（{published}）'))
+    notes = price_watch_notes({k: v for k, v in position.items() if k not in ("drawdown_52w", "ma_200")})
+    if notes != "—":
+        sources.append(_e(notes))
+    source_cell = f'<td>{"<br>".join(sources) or NA}</td>'
+    return f'<tr><th scope="row">{label}</th>{price_cells}{pbr}{zone_cells}{momentum_cell}{source_cell}</tr>'
+
+
+def _industry_watch(industry: dict[str, Any] | None) -> str:
+    """Industry-watch tables by group (#146); its stocks have no research versions or selector entry."""
+    if not industry:
+        return ""
+    head = (f'<h3>產業觀察</h3><p class="disclaimer">{_e(DISCLAIMER)}。景氣循環股以股價淨值比（PBR）觀察，'
+            f'不用本益比：獲利高峰時本益比反而最低。價位 = 近 {WINDOW_YEARS} 年每日 PBR（FinMind {PER_DATASET}）'
+            '百分位 × 每股淨值（收盤 ÷ 同日 PBR，推導值）。營收動能 = 3 個月滾動年增率'
+            f'（FinMind {REVENUE_DATASET}，只用當時已公開的月份）：低於 0 為衰退，連續下降達門檻為放緩。'
+            '設定見 config/watchlist.yaml。</p>')
+    if industry.get("status") == "failed":
+        return head + (f'<p>{NA} 產業觀察取得失敗：{_e(industry.get("error_type"))}：'
+                       f'{_e(industry.get("reason"))}</p>')
+    rows = industry.get("rows") or []
+    parts = [head]
+    for group in industry.get("groups") or []:
+        members = [r for r in rows if r.get("group") == group.get("id")]
+        if not members:
+            continue
+        parts.append(
+            f'<h4>{_e(group.get("name"))}</h4><p class="disclaimer">觀察理由：{_e(group.get("rationale"))}</p>'
+            '<div class="table-wrap"><table><thead><tr><th scope="col">標的</th>'
+            '<th scope="col" class="num">收盤<span class="unit">日期</span></th>'
+            f'<th scope="col" class="num">距 {WINDOW_WEEKS} 週高點</th>'
+            f'<th scope="col" class="num">距 {MA_SESSIONS} 日均線</th>'
+            '<th scope="col" class="num">PBR<span class="unit">百分位</span></th>'
+            '<th scope="col" class="num">偏低價<span class="unit">元/股</span></th>'
+            '<th scope="col" class="num">合理價<span class="unit">元/股</span></th>'
+            '<th scope="col" class="num">偏高價<span class="unit">元/股</span></th>'
+            '<th scope="col">目前區間</th><th scope="col">營收動能</th><th scope="col">來源與日期</th></tr></thead>'
+            f'<tbody>{"".join(_industry_row(r) for r in members)}</tbody></table></div>')
+    return "".join(parts) if len(parts) > 1 else ""
+
+
 def _watchlist_overview(watchlist: dict[str, Any] | None) -> str:
     """Daily watchlist overview (#113, #115): core ETF / TAIEX positions, satellite zones and thesis checks.
 
@@ -970,7 +1076,8 @@ def _watchlist_overview(watchlist: dict[str, Any] | None) -> str:
     names = watchlist.get("names") or {}
     checks = watchlist.get("thesis_checks") or {}
     satellites = list(zones) + [s for s in checks if s not in zones]
-    if not rows and not satellites:
+    industry = _industry_watch(watchlist.get("industry_watch"))
+    if not rows and not satellites and not industry:
         return ""
     parts = ['<section id="watchlist" class="watchlist" aria-labelledby="watchlist-title">'
              '<h2 id="watchlist-title">觀察名單總覽</h2>']
@@ -997,6 +1104,7 @@ def _watchlist_overview(watchlist: dict[str, Any] | None) -> str:
             '<th scope="col">目前區間</th><th scope="col">論點檢查</th></tr></thead>'
             f'<tbody>{"".join(_zone_row(s, zones.get(s), names.get(s), checks.get(s)) for s in satellites)}'
             '</tbody></table></div>')
+    parts.append(industry)
     parts.append("</section>")
     return "".join(parts)
 
