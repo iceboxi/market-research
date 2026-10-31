@@ -232,7 +232,7 @@ GROUP = "  memory:\n    name: 記憶體\n    rationale: 理由\n    symbols:\n  
 def test_repository_memory_group_defaults_to_p20_p50_p80():
     [group] = load_industry_watch(ROOT / "config")
     assert group["id"] == "memory" and group["name"] == "記憶體"
-    assert group["symbols"] == {"2408.TW": "南亞科", "2344.TW": "華邦電"}
+    assert group["symbols"] == {"2408.TW": "南亞科", "2344.TW": "華邦電", "8299.TWO": "群聯"}
     assert group["pb_zone"] == {"percentiles": (20, 50, 80)}
     assert group["revenue_momentum"] == {"consecutive_months": 3} and group["overrides"] == {}
     assert "Sandisk" in group["rationale"] and "2026-10-29" in group["rationale"]
@@ -240,8 +240,10 @@ def test_repository_memory_group_defaults_to_p20_p50_p80():
 
 @pytest.mark.parametrize("groups, match", [
     (GROUP.replace("2408.TW", "2330.TW"), "already scanned in markets.yaml or a satellite"),
-    (GROUP.replace("2408.TW", "8299.TWO"), "stock codes end in .TW"),
-    (GROUP.replace("2408.TW", "2408"), "stock codes end in .TW"),
+    (GROUP.replace("2408.TW", "2408.TWX"), "stock codes end in .TW or .TWO"),
+    (GROUP.replace("2408.TW", "SNDK"), "stock codes end in .TW or .TWO"),
+    (GROUP.replace("2408.TW", "2408"), "stock codes end in .TW or .TWO"),
+    (GROUP.replace("2408.TW", "006201.TWO"), "ETF/ETN codes are price-only"),
     (GROUP.replace("2408.TW", "0056.TW"), "ETF/ETN codes are price-only"),
     (GROUP + GROUP.replace("memory", "dram"), "listed in more than one group"),
     (GROUP.replace("    name: 記憶體\n", ""), "name must be text"),
@@ -260,6 +262,11 @@ def test_repository_memory_group_defaults_to_p20_p50_p80():
 def test_invalid_groups_fail_when_the_config_loads(tmp_path, groups, match):
     with pytest.raises(ValueError, match=match):
         load_industry_watch(config(tmp_path, groups))
+
+
+def test_tpex_codes_load(tmp_path):
+    [group] = load_industry_watch(config(tmp_path, GROUP + "      8299.TWO: 群聯\n"))
+    assert group["symbols"] == {"2408.TW": "南亞科", "8299.TWO": "群聯"}
 
 
 def test_custom_percentiles_are_kept(tmp_path):
@@ -354,6 +361,21 @@ def test_stale_bars_are_never_priced():
     for row in result["rows"]:
         assert row["price_position"]["error_type"] == "StaleMarketData"
         assert row["pb_zone"]["status"] == "not_evaluated"
+
+
+def test_tpex_stock_gets_price_zone_and_momentum_without_reference():
+    dates = sessions("2025-09-01", LAST)
+    frame = bars(dates, [100.0] * len(dates), reference=[float("nan")] * len(dates))
+    groups = [dict(GROUPS[0], symbols={"8299.TWO": "群聯"})]
+    get = finmind()
+    [row] = load_industry_watch_rows(groups, EVENING, provider=FrameProvider({"8299.TWO": frame}),
+                                     get=get)["rows"]
+    assert row["status"] == "available" and row["pb_zone"]["zone"] == "fair"
+    assert row["price_position"]["adjustments"]["no_reference_price"] is True
+    assert get.urls[0].endswith("dataset=TaiwanStockPER&data_id=8299&start_date=2021-10-29")
+    assert (row["revenue_momentum"]["status"], row["revenue_momentum"]["declining_months"]) == ("ok", 2)
+    assert get.urls[1].endswith("dataset=TaiwanStockMonthRevenue&data_id=8299&start_date=2023-10-01")
+    assert industry_summary_row(row).endswith("| 無參考價，未還原（每日比照不比價日） |")
 
 
 # ---------------------------------------------------------------- daily outputs

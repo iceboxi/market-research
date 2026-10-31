@@ -9,7 +9,9 @@ from the previous close (a split or reverse split), earlier bars are scaled by
 reference / previous close so one series stays comparable. 'X' (不比價) days,
 e.g. ex-dividend days, publish no reference: they stay unadjusted and are
 listed, and a gap on such a day too large for a distribution makes the
-measures whose window contains it not_evaluated.
+measures whose window contains it not_evaluated. A source with no reference
+on any day (TPEx via FinMind, #144) has every day treated that way and is
+labelled once instead of listing each day.
 """
 from datetime import datetime, timedelta, timezone
 import math
@@ -35,6 +37,7 @@ NOTES = {"00631L.TW": "每日 2 倍槓桿，盤整時有波動侵蝕"}
 SOURCE_LABELS = {
     "twse_stock_day_official_raw_ohlcv": "TWSE STOCK_DAY",
     "twse_mi_5mins_hist_index_with_fmtqik_volume": "TWSE MI_5MINS_HIST＋FMTQIK",
+    "finmind_taiwan_stock_price_raw_ohlcv": "FinMind TaiwanStockPrice",
 }
 
 
@@ -86,9 +89,9 @@ def _covers(first, window_start):
                                           pd.Timestamp(first - timedelta(days=1)))) == 0
 
 
-def _gap_in(gaps, start):
+def _gap_in(gaps, start, label="不比價日"):
     inside = [d.isoformat() for d in gaps if d > start]
-    return _not_evaluated(f"不比價日價格斷層無法還原：{', '.join(inside)}") if inside else None
+    return _not_evaluated(f"{label}價格斷層無法還原：{', '.join(inside)}") if inside else None
 
 
 def evaluate_price_watch(symbol, frame, *, source):
@@ -104,11 +107,14 @@ def evaluate_price_watch(symbol, frame, *, source):
         row.update(status="partial", drawdown_52w=_not_evaluated(str(error)),
                    ma_200=_not_evaluated(str(error)))
         return row
+    # Every day lacks a reference: each is an 'X' day, and the gap names why.
+    no_reference = bool(frame["reference_price"].isna().iloc[1:].all()) and len(dates) > 1
+    label = "無參考價，" if no_reference else "不比價日"
     window_start = last - timedelta(weeks=WINDOW_WEEKS)
     if not _covers(first, window_start):
         drawdown = _not_evaluated(f"資料不足 52 週（最早 {first}，需要 {window_start}）")
     else:
-        drawdown = _gap_in(gaps, window_start)
+        drawdown = _gap_in(gaps, window_start, label)
     if drawdown is None:
         in_window = [d >= window_start for d in dates]
         highs = (frame["high"].astype(float) * scale)[in_window]
@@ -123,15 +129,18 @@ def evaluate_price_watch(symbol, frame, *, source):
     else:
         ma_first = dates[-MA_SESSIONS]
         relevant = min(relevant, ma_first)
-        ma = _gap_in(gaps, ma_first)
+        ma = _gap_in(gaps, ma_first, label)
         if ma is None:
             average = float((frame["close"].astype(float) * scale).iloc[-MA_SESSIONS:].mean())
             ma = {"status": "available", "pct": round((close / average - 1) * 100, 2),
                   "average": round(average, 4), "first_date": ma_first.isoformat(),
                   "sessions": MA_SESSIONS}
-    row.update(drawdown_52w=drawdown, ma_200=ma, adjustments={
+    adjustments = {
         "reference_breaks": [b for b in breaks if b["date"] > relevant.isoformat()],
-        "unadjusted_dates": [d.isoformat() for d in unadjusted if d > relevant]})
+        "unadjusted_dates": [d.isoformat() for d in unadjusted if d > relevant]}
+    if no_reference:
+        adjustments.update(unadjusted_dates=[], no_reference_price=True)
+    row.update(drawdown_52w=drawdown, ma_200=ma, adjustments=adjustments)
     if "not_evaluated" in (drawdown["status"], ma["status"]):
         row["status"] = "partial"
     return row
@@ -171,6 +180,8 @@ def price_watch_notes(row):
     adjustments = row.get("adjustments") or {}
     for brk in adjustments.get("reference_breaks") or []:
         notes.append(f"{brk['date']} 依 TWSE 參考價還原（×{brk['factor']:g}）")
+    if adjustments.get("no_reference_price"):
+        notes.append("無參考價，未還原（每日比照不比價日）")
     if adjustments.get("unadjusted_dates"):
         notes.append("不比價日未還原（如除息）：" + "、".join(adjustments["unadjusted_dates"]))
     for key in ("drawdown_52w", "ma_200"):
