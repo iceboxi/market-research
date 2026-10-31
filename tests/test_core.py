@@ -197,7 +197,11 @@ def test_production_scan_enables_no_pattern_strategy():
     assert [x["id"] for x in config["strategies"] if x["enabled"]] == []  # #117
 
 
-def test_twse_retries_transient_timeout_without_losing_month():
+@pytest.mark.parametrize("error", [
+    "ReadTimeout",
+    "RemoteProtocolError",  # server dropped a kept-alive connection (#155)
+])
+def test_twse_retries_transient_failure_without_losing_month(error):
     import httpx
     calls = []
     class Response:
@@ -212,13 +216,29 @@ def test_twse_retries_transient_timeout_without_losing_month():
         month = kwargs["params"]["date"]
         calls.append(month)
         if len(calls) == 1:
-            raise httpx.ReadTimeout("temporary TWSE read timeout")
+            raise getattr(httpx, error)("temporary TWSE failure")
         return Response(month)
     provider = TwseDailyProvider(get=flaky, today=date(2026,10,17),
                                   request_pause_seconds=0, timeout_retries=2)
     result = provider.load("2330.TW", "3mo")
     assert len(result) == 4
     assert len(calls) == 5  # first month twice; remaining three months once
+
+
+def test_twse_fails_closed_when_the_server_keeps_disconnecting(monkeypatch):
+    import httpx
+    sleeps, calls = [], []
+    monkeypatch.setattr("market_research.twse.time.sleep", sleeps.append)
+    def dropped(url, **kwargs):
+        calls.append(kwargs["params"]["date"])
+        raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
+    provider = TwseDailyProvider(get=dropped, today=date(2026,10,17),
+                                  request_pause_seconds=0, timeout_retries=2)
+    with pytest.raises(ValueError, match="TWSE 2330.TW: failed months: 2026-07-01: "
+                                         "Server disconnected without sending a response."):
+        provider.load("2330.TW", "3mo")
+    assert calls[:3] == ["20260701"] * 3 and len(calls) == 12  # 3 attempts per month
+    assert sleeps == [1, 2] * 4
 
 
 def test_twse_does_not_retry_invalid_official_payload():
