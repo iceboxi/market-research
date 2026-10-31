@@ -209,9 +209,9 @@ def _load_monthly(provider, label: str, period: str, fetch) -> pd.DataFrame:
                         frames.append(frame)
                     break
                 except (httpx.TimeoutException, httpx.NetworkError,
-                        httpx.HTTPStatusError) as exc:
-                    # Only retry timeouts, broken connections and HTTP
-                    # 429/5xx. Malformed official data must fail closed.
+                        httpx.RemoteProtocolError, httpx.HTTPStatusError) as exc:
+                    # Only retry timeouts, broken or dropped connections and
+                    # HTTP 429/5xx. Malformed official data must fail closed.
                     retryable = not isinstance(exc, httpx.HTTPStatusError) or (
                         exc.response.status_code == 429 or
                         500 <= exc.response.status_code <= 599
