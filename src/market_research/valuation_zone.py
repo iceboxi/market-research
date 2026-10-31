@@ -59,8 +59,10 @@ def load_watchlist(config_dir):
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     markets = yaml.safe_load((Path(config_dir) / "markets.yaml").read_text())["markets"]
     scanned = set((markets.get("tw") or {}).get("symbols") or [])
-    if set(raw) - {"satellites"}:
-        raise ValueError(f"watchlist: unknown top-level keys {sorted(set(raw) - {'satellites'})}")
+    # industry_watch is read by industry_watch.load_industry_watch (#142).
+    if set(raw) - {"satellites", "industry_watch"}:
+        raise ValueError("watchlist: unknown top-level keys "
+                         f"{sorted(set(raw) - {'satellites', 'industry_watch'})}")
     satellites = {}
     for symbol, entry in (raw.get("satellites") or {}).items():
         entry = entry or {}
@@ -109,8 +111,8 @@ def _revenue_rule(raw, symbol):
     return {"consecutive_months": months, "yoy_below_pct": float(threshold)}
 
 
-def _per_series(rows, code, cutoff):
-    """Positive daily P/E dated within [window start, cutoff]; nothing later is read."""
+def ratio_series(rows, code, cutoff, field="PER"):
+    """Positive daily PER or PBR dated within [window start, cutoff]; nothing later is read."""
     start = per_window_start(cutoff)
     by_date = {}
     for row in rows:
@@ -124,10 +126,11 @@ def _per_series(rows, code, cutoff):
             continue
         if not start <= day <= cutoff:
             continue
-        value = row.get("PER")
+        value = row.get(field)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             continue
-        # Loss-making periods have no meaningful P/E; they are excluded, not zero-filled.
+        # Loss-making periods (or negative equity) have no meaningful ratio; they are
+        # excluded, not zero-filled.
         if not math.isfinite(value) or value <= 0:
             continue
         if day in by_date and by_date[day] != float(value):
@@ -191,7 +194,7 @@ def evaluate_valuation_zone(symbol, cutoff, settings, per_history, ttm, price):
     series = []
     if per_history is not None:
         try:
-            series = _per_series(per_history.get("rows") or [], code, cutoff)
+            series = ratio_series(per_history.get("rows") or [], code, cutoff)
         except ValueError as error:
             if "pe_multiples" not in setting:
                 return blocked(str(error))
