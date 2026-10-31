@@ -1,5 +1,6 @@
-"""#142, #143: industry-watch tier — price position, P/B review zone, revenue momentum."""
+"""#142, #143, #146: industry-watch tier — price position, P/B review zone, revenue momentum, Pages table."""
 from datetime import date, datetime, timezone
+from html import escape
 import json
 from pathlib import Path
 
@@ -10,11 +11,13 @@ from market_research.industry_watch import (
     evaluate_pb_zone, evaluate_revenue_momentum, industry_summary_row, load_industry_watch,
     load_industry_watch_rows, momentum_summary_row,
 )
+from market_research.research_site import _report_records, render_research_site_html
 from market_research.valuation_zone import per_window_start
 from scripts.daily_research import execute
 from test_company_report_feedback import NOW, source_clock  # noqa: F401
 from test_daily_research import Sources, delivered
 from test_price_watch import LAST, FrameProvider, bars, sessions, watch_rows
+from test_research_site import _sample_report
 from test_scan_company_research import artifacts
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -444,3 +447,133 @@ def test_unevaluated_momentum_row_names_its_gap():
            "revenue_momentum": momentum(revenue_rows()[:-1])}
     assert momentum_summary_row(row) == (
         "| 2408.TW 南亞科 | not_evaluated：缺月營收：2026-09 | — | — | — | — | — |")
+
+
+# ---------------------------------------------------------------- Pages (#146)
+
+def overview_of(html):
+    return html[html.index('<section id="watchlist"'):html.index("</section>", html.index('<section id="watchlist"'))]
+
+
+def page(industry, **extra):
+    return render_research_site_html(latest_report=_sample_report(), watchlist={
+        "price_watch": [], "valuation_zones": {}, "industry_watch": industry, **extra})
+
+
+def test_pages_table_shows_each_group_with_values_and_sources():
+    get = finmind()
+    industry = load_industry_watch_rows(GROUPS, EVENING, provider=provider(), get=get)
+    html = page(industry)
+    overview = overview_of(html)
+    assert "<h3>產業觀察</h3>" in overview and "<h4>記憶體</h4>" in overview
+    assert "檢視區，非買賣建議" in overview and "觀察理由：" in overview
+    assert '2408.TW<span class="unit">南亞科</span>' in overview
+    # Close 100 / P/B 3.0 = book value 33.33; x 1.8 / 3.0 / 4.2 (same as the daily summary).
+    assert ('<td class="num">3.00<span class="unit">5 年 P50</span></td><td class="num">60.00</td>'
+            '<td class="num">100.00</td><td class="num">140.00</td><td>合理區間</td>') in overview
+    assert ('未放緩 <span class="chg up">▲ +196.7%</span><span class="unit">2026-06～2026-09 '
+            '3 個月滾動年增率：+200.0% → +233.3% → +216.7% → +196.7%；') in overview
+    row = overview[overview.index('2408.TW<span'):].split("</tr>")[0]
+    assert (f'<td>TWSE 官方日 K 2026-10-29<br><a href="{escape(get.urls[0])}" target="_blank" '
+            f'rel="noopener">PBR 2026-10-29</a><br><a href="{escape(get.urls[1])}" target="_blank" '
+            'rel="noopener">月營收 2026-09（依法定期限）</a></td>') in row
+
+
+def hand_row(**over):
+    row = {"symbol": "2344.TW", "name": "華邦電", "group": "memory", "status": "available",
+           "price_position": {"status": "available", "source": "twse_stock_day_official_raw_ohlcv",
+                              "session": "2026-10-30", "close": 80.0, "adjustments": {},
+                              "drawdown_52w": {"status": "available", "pct": -21.5, "high": 101.9,
+                                               "high_date": "2026-06-12"},
+                              "ma_200": {"status": "available", "pct": 3.25, "average": 77.48}},
+           "pb_zone": {"status": "available", "zone": "fair", "reason": None,
+                       "review_prices_twd": {"low": 50.0, "mid": 70.0, "high": 90.0},
+                       "pbr_history": {"source": "https://api.finmindtrade.com/x", "last_date": "2026-10-30",
+                                       "samples": 1200, "latest_pbr": 2.1, "latest_percentile_rank": 61.0}},
+           "revenue_momentum": {"status": "contracting", "reason": "3 個月滾動年增率 -4.20%，低於 0",
+                                "latest_period": "2026-09", "latest_published": "2026-10-09",
+                                "source": "https://api.finmindtrade.com/y",
+                                "months": [{"period": "2026-08", "rolling_3m_yoy_pct": 1.5},
+                                           {"period": "2026-09", "rolling_3m_yoy_pct": -4.2}]}}
+    row.update(over)
+    return row
+
+
+def industry_of(*rows):
+    return {"status": "partial", "cutoff": "2026-10-30",
+            "groups": [{"id": "memory", "name": "記憶體", "rationale": "理由", "symbols": []}],
+            "rows": list(rows)}
+
+
+def test_moves_use_the_page_wide_up_down_colours():
+    overview = overview_of(page(industry_of(hand_row())))
+    assert '<span class="chg down">▼ -21.50%</span><span class="unit">高點 101.90（2026-06-12）</span>' in overview
+    assert '<span class="chg up">▲ +3.25%</span><span class="unit">均線 77.48</span>' in overview
+    assert '衰退 <span class="chg down">▼ -4.2%</span>' in overview
+    assert ">月營收 2026-09（2026-10-09）</a>" in overview
+
+
+def test_gaps_show_a_dash_and_their_reason_never_a_zero():
+    failed = hand_row(
+        price_position={"status": "failed", "error_type": "StaleMarketData", "reason": "latest 2026-10-29"},
+        pb_zone={"status": "not_evaluated", "zone": "not_evaluated",
+                 "reason": "Verified close unavailable: StaleMarketData",
+                 "review_prices_twd": None, "pbr_history": None},
+        revenue_momentum={"status": "not_evaluated", "reason": "缺月營收：2026-09", "months": [],
+                          "latest_period": "2026-09", "source": None})
+    overview = overview_of(page(industry_of(failed)))
+    dash = '<span class="na" title="資料未提供">—</span>'
+    assert (f'<td colspan="3">{dash}<span class="unit">未評估：行情取得失敗：StaleMarketData：'
+            'latest 2026-10-29</span></td>') in overview
+    assert f'<td colspan="4">{dash}<span class="unit">未評估：Verified close unavailable: StaleMarketData' in overview
+    assert f'<td>{dash}<span class="unit">未評估：缺月營收：2026-09</span></td>' in overview
+    row = overview[overview.index('2344.TW<span'):]
+    assert ">0.00<" not in row and "0%" not in row
+
+
+def test_too_few_pbr_samples_still_shows_the_latest_pbr_with_the_reason():
+    thin = hand_row(pb_zone={"status": "not_evaluated", "zone": "not_evaluated",
+                             "reason": "Only 120 PBR samples in the 5-year window; need 750",
+                             "review_prices_twd": None,
+                             "pbr_history": {"source": "https://api.finmindtrade.com/x", "last_date": "2026-10-30",
+                                             "samples": 120, "latest_pbr": 1.4}})
+    overview = overview_of(page(industry_of(thin)))
+    assert '<td class="num">1.40<span class="unit">120 筆樣本</span></td>' in overview
+    assert "未評估：Only 120 PBR samples" in overview
+
+
+def test_industry_stocks_stay_out_of_the_stock_selector():
+    html = page(industry_of(hand_row()))
+    assert "2344.TW" in overview_of(html)
+    assert "2344.TW" not in html.replace(overview_of(html), "")
+
+
+def test_no_or_failed_industry_data_leaves_the_rest_of_the_overview_alone():
+    zones = {"2454.TW": {"status": "available", "zone": "above_high",
+                         "review_prices_twd": {"low": 657.27, "mid": 1190.74, "high": 1391.01},
+                         "price": {"close": 4235.0, "session": "2026-10-28"}}}
+    without = overview_of(page(None, valuation_zones=zones))
+    assert "產業觀察" not in without and "1,391.01" in without
+    assert overview_of(page({"groups": [], "rows": []}, valuation_zones=zones)) == without
+    failed = overview_of(page({"status": "failed", "error_type": "ConnectError", "reason": "unreachable"},
+                              valuation_zones=zones))
+    assert failed.startswith(without) and "產業觀察取得失敗：ConnectError：unreachable" in failed
+    assert 'id="watchlist"' in page(industry_of(hand_row()))
+
+
+def test_daily_run_passes_industry_watch_to_the_published_page(tmp_path):
+    def publish(mode, bootstrap, out, *, report, daily):
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "index.html").write_text("published without overview", encoding="utf-8")
+        (out / "research_state.json").write_text(
+            json.dumps({"records": _report_records(report)}), encoding="utf-8")
+        return {"publication": {"status": "published"}, "snapshot_id": "a" * 64,
+                "state_branch": "research-state-validation"}
+    result = execute(artifacts(tmp_path), tmp_path / "out", research_fn=Sources().research,
+                     publication_fn=publish, now=NOW, price_watch_fn=watch_rows(),
+                     symbols=["2330.TW"], benchmarks=[], industry_groups=GROUPS,
+                     industry_watch_fn=loaded)
+    assert result["watchlist_site"]["status"] == "rendered"
+    html = (tmp_path / "out" / "fixed_research" / "index.html").read_text()
+    overview = overview_of(html)
+    assert "<h4>記憶體</h4>" in overview and '2344.TW<span class="unit">華邦電</span>' in overview

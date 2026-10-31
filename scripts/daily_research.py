@@ -282,7 +282,7 @@ def execute(scan_dir, out, *, market="tw", mode="validation", max_candidates=3,
                 sym: rec["thesis_check"] for sym, rec in pilot_coverage["symbols"].items()
                 if rec.get("thesis_check")}, "names": {
                 sym: rec["company_name"] for sym, rec in pilot_coverage["symbols"].items()
-                if rec.get("company_name")}}
+                if rec.get("company_name")}, "industry_watch": result["industry_watch"]}
             # Other researched stocks appear from today's report only (#125).
             extra, skipped = latest_only_records([
                 rep for sym, rep in reports.items()
