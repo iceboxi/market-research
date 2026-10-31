@@ -37,6 +37,21 @@ LOOKBACK_MONTHS = {"3mo": 4, "6mo": 7, "1y": 13, "2y": 25}
 # well after that, so a slow publication is never mistaken for a closure.
 CLOSURE_CONFIRMATION_LAG = timedelta(hours=6)
 CLOSURE_LOOKBACK_SESSIONS = 5
+# TWSE's stat for a month it has nothing for: before the month's first session,
+# and equally for an unknown stock code (checked live 2026-11-01, #157).
+NO_DATA_STAT = "很抱歉，沒有符合條件的資料!"
+
+
+class NoTwseData(ValueError):
+    """TWSE published nothing for the requested month."""
+
+
+def _check_stat(payload: dict, label: str):
+    stat = payload.get("stat")
+    if stat == NO_DATA_STAT:
+        raise NoTwseData(f"TWSE {label}: {stat}")
+    if stat != "OK":
+        raise ValueError(f"TWSE {label}: {stat or 'unknown status'}")
 
 
 def parse_twse_roc_date(value: str) -> date:
@@ -60,8 +75,7 @@ def _change(s: str) -> float:
 
 def parse_stock_day(payload: dict, symbol: str) -> pd.DataFrame:
     """Parse one STOCK_DAY response. Non-trading/zero-volume rows are excluded."""
-    if payload.get("stat") != "OK":
-        raise ValueError(f"TWSE {symbol}: {payload.get('stat', 'unknown status')}")
+    _check_stat(payload, symbol)
     headers = payload["fields"]
     columns = [headers.index(name) for name in REQUIRED]
     change = headers.index("漲跌價差") if "漲跌價差" in headers else None
@@ -86,8 +100,7 @@ def parse_stock_day(payload: dict, symbol: str) -> pd.DataFrame:
 
 
 def _rows(payload: dict, required: tuple, label: str) -> list:
-    if payload.get("stat") != "OK":
-        raise ValueError(f"TWSE {label}: {payload.get('stat', 'unknown status')}")
+    _check_stat(payload, label)
     headers = payload["fields"]
     columns = [headers.index(name) for name in required]
     return [[values[i] for i in columns] for values in payload.get("data", [])]
@@ -181,6 +194,17 @@ def twse_unscheduled_closures(now: datetime, get=None) -> tuple[date, ...]:
     return ()
 
 
+def _awaits_first_session(month: date, today: date) -> bool:
+    """True for the current month while no XTAI session falls before today."""
+    if (month.year, month.month) != (today.year, today.month):
+        return False
+    if today == month:
+        return True
+    calendar = xcals.get_calendar("XTAI")
+    return len(calendar.sessions_in_range(pd.Timestamp(month),
+                                          pd.Timestamp(today - timedelta(days=1)))) == 0
+
+
 def _load_monthly(provider, label: str, period: str, fetch) -> pd.DataFrame:
     """Every month of `period` from `fetch(request, month)`; any failed month fails closed."""
     if type(provider.timeout_retries) is not int or not 0 <= provider.timeout_retries <= 5:
@@ -220,6 +244,11 @@ def _load_monthly(provider, label: str, period: str, fetch) -> pd.DataFrame:
                         failures.append(f"{month}: {exc}")
                         break
                     time.sleep(min(2 ** attempt, 4))
+                except NoTwseData as exc:
+                    # Only the current month may be empty, and only before its first session.
+                    if not _awaits_first_session(month, current):
+                        failures.append(f"{month}: {exc}")
+                    break
                 except (ValueError, KeyError, TypeError) as exc:
                     failures.append(f"{month}: {exc}")
                     break

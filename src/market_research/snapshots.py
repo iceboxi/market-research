@@ -31,6 +31,7 @@ def write_snapshot(directory: Path, symbol: str, frame: pd.DataFrame,
 
 def write_index(directory: Path, records: list[dict]):
     directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)  # no snapshot is written when every symbol fails
     index = {"schema_version": SNAPSHOT_SCHEMA,
              "symbols": sorted(records, key=lambda row: row["symbol"])}
     (directory / "index.json").write_text(

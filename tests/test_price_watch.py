@@ -24,6 +24,8 @@ from test_scan_company_research import artifacts
 INDEX_FIELDS = ["日期", "開盤指數", "最高指數", "最低指數", "收盤指數"]
 MARKET_FIELDS = ["日期", "成交股數", "成交金額", "成交筆數", "發行量加權股價指數", "漲跌點數"]
 CAL = xcals.get_calendar("XTAI")
+# TWSE's answer for a month without a session (and for an unknown code), checked live 2026-11-01.
+NO_DATA = {"stat": "很抱歉，沒有符合條件的資料!", "total": 0}
 SOURCE = "twse_stock_day_official_raw_ohlcv"
 
 
@@ -104,7 +106,7 @@ def index_get(calls, empty_month=None, broken_market_month=None):
             data = [[f"{roc}/{mm}/15", "5,000,000,000", "1", "1", "20,050.00", "50.00"]]
             payload = {"stat": "OK", "fields": MARKET_FIELDS, "data": data}
         if month == empty_month:
-            payload["data"] = []
+            payload = dict(NO_DATA)
 
         class Response:
             def raise_for_status(self):
@@ -121,9 +123,10 @@ def test_index_provider_merges_both_official_reports_per_month():
     provider = TwseIndexProvider(get=index_get(calls, empty_month="20261001"),
                                  today=date(2026, 10, 1), request_pause_seconds=0)
     frame = provider.load(TAIEX, "3mo")
-    assert [m for _, m in calls] == [m for m in ("20260701", "20260801", "20260901", "20261001")
-                                     for _ in range(2)]
-    assert len(frame) == 3  # the current month has no session yet
+    # The current month has no session yet: MI_5MINS_HIST says so, FMTQIK is not asked.
+    assert [m for _, m in calls] == [m for m in ("20260701", "20260801", "20260901")
+                                     for _ in range(2)] + ["20261001"]
+    assert len(frame) == 3
     assert frame["volume"].iloc[-1] == 5_000_000_000
     assert frame["reference_price"].iloc[-1] == 20000.0
     assert list(frame.columns) == ["open", "high", "low", "close", "volume", "adj_close",
