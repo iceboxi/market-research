@@ -18,13 +18,13 @@
 3. 需要研究細節時，於 Run 頁面下方找到 **Artifacts**，下載對應 ZIP。
 4. 可把 Run URL 或下載 ZIP 交給 ChatGPT／本地 Agent 討論。GitHub Actions Artifact 目前多數僅保留 **14 天**；長期研究證據須另行保存合法且必要的精簡資料。
 
-**研究限制：** 目前範圍是觀察名單（2330、2317、2454，加上只看行情的 0050、00631L；#111），估值區間只作為檢視區提醒、不是買賣建議。事件已觀察 ≠ 利多／利空；ATR、支撐壓力 ≠ 可執行停損目標；系統尚未提供完整可信的交易建議，亦未自動下單。
+**研究限制：** 目前範圍凍結到 2026-11-30（[#159](https://github.com/iceboxi/market-research/issues/159)）：核心 ETF 0050、00631L 與加權指數只看行情；衛星股 2330、2317、2454、2356、3017 有本益比檢視區與論點檢查（#111）；產業觀察 2408、2344、8299 有價格位置、股價淨值比檢視區與營收動能（#141）。檢視區只作為提醒、不是買賣建議。事件已觀察 ≠ 利多／利空；ATR、支撐壓力 ≠ 可執行停損目標；系統尚未提供完整可信的交易建議，亦未自動下單。
 
 ## 正式事件 state 遷移（已完成）
 
 [Issue #9：官方事件 state](https://github.com/iceboxi/market-research/issues/9) 已於 2026-10-19 驗收關閉：[Bootstrap Run #39205820593](https://github.com/iceboxi/market-research/actions/runs/39205820593) 成功，之後兩次真實 TWSE 觀察通過。一次性的 `Official event state bootstrap` workflow 已於 2026-10-27 移除；若日後經核准需要重新 bootstrap，從 git 歷史還原，不在日常入口保留。
 
-- 自然排程仍由 [Issue #14](https://github.com/iceboxi/market-research/issues/14) 獨立驗收。
+- 排程只確認自動化有執行，延遲不追蹤（2026-10-29 決策；[#14](https://github.com/iceboxi/market-research/issues/14) 已關閉）。
 
 詳細 migration runbook：[EVENT_STATE_MIGRATION.md](EVENT_STATE_MIGRATION.md)。**一般使用者不應自行重新初始化、修改或刪除 `research-state`。**
 
@@ -37,7 +37,7 @@
 | TWSE 資料不足／當天還未收盤 | `data_quality.json`、來源狀態、最新已完成交易日 | EOD market scan |
 | 事件監控失敗 | 是否已完成 #9 正式遷移；查看恢復／來源／持久化 receipts，不要重做 baseline | Official disclosure watch |
 | 工作流程顯示成功但報告沒有完整買賣價 | 查看 `readiness`、`not_evaluated` 與來源證據；這是不同層級的 gate | Company report；相關研究 Issue |
-| 排程沒有發動 | 查看實際 `event=schedule` Run 及 [#14](https://github.com/iceboxi/market-research/issues/14) | EOD schedule watchdog（工程入口） |
+| 排程沒有發動 | 查看實際 `event=schedule` Run；只確認有執行，延遲不追蹤（2026-10-29 決策） | EOD schedule watchdog（工程入口） |
 
 ## 排程狀態怎麼看
 
@@ -49,4 +49,4 @@
 
 ## GitHub 多 Agent 工作方式
 
-新功能以 [AGENTS.md](../AGENTS.md) / [GitHub Issue tracker](agents/issue-tracker.md) 為準。新 Agent 先確認最新 main、開啟的 PR 與 Issue 認領，再用獨立 branch、PR、GitHub Actions 驗收。可從 [交接 Issue #11](https://github.com/iceboxi/market-research/issues/11) 取得整體進度。避免將聊天紀錄當成唯一事實來源。
+新功能以 [AGENTS.md](../AGENTS.md) / [GitHub Issue tracker](agents/issue-tracker.md) 為準。新 Agent 先確認最新 main、開啟的 PR 與 Issue 認領，再用獨立 branch、PR、GitHub Actions 驗收。整體進度看開啟中的 Issue 與 PR，目前範圍與 2026-11-30 評估見 [#159](https://github.com/iceboxi/market-research/issues/159)；交接寫在各自的 Issue／PR（舊的交接總覽 #11 已於 2026-11-01 關閉）。避免將聊天紀錄當成唯一事實來源。

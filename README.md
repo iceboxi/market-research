@@ -56,9 +56,9 @@ prices or treat unadjusted Taiwan prices as corporate-action-neutral.
 | --- | --- | --- |
 | 每日盤後掃描、產生候選名單 | [EOD market scan](https://github.com/iceboxi/market-research/actions/workflows/scan.yml) | 排程；必要時可 Run workflow |
 | 指定股票研究，如 `2330.TW`、`AAPL` | [On-demand company research](https://github.com/iceboxi/market-research/actions/workflows/company-research.yml) | 手動 Run workflow |
-| 追蹤官方重大公告是否變更 | [Official disclosure watch](https://github.com/iceboxi/market-research/actions/workflows/event-watch.yml) | 排程；**首次正式啟用前必須完成 Issue #9 遷移驗收** |
+| 追蹤官方重大公告是否變更 | [Official disclosure watch](https://github.com/iceboxi/market-research/actions/workflows/event-watch.yml) | 排程（事件 state 遷移已於 2026-10-19 由 [#9](https://github.com/iceboxi/market-research/issues/9) 驗收） |
 
-**目前部署注意：** [Issue #9](https://github.com/iceboxi/market-research/issues/9) 的事件 state Bootstrap 程式已修復，但正式遷移／連續兩次真實觀察尚未驗收，勿直接啟用或當成已經正常監控。[Issue #14](https://github.com/iceboxi/market-research/issues/14) 另行驗證真正的自然排程。 [Issue #28](https://github.com/iceboxi/market-research/issues/28) 負責 Actions／Branch 的收斂；[逐項盤點](docs/WORKFLOW_BRANCH_AUDIT.md) 保留技術驗收與必要的 state 分支，不以刪到特定數字為目標。
+**目前範圍：** 2026-11-01 起凍結到 2026-11-30 的使用評估（[#159](https://github.com/iceboxi/market-research/issues/159)），期間不新增標的、指標或分析層。排程只確認自動化有執行，延遲不追蹤（2026-10-29 決策）。現行 workflow 與 branch 清單見[逐項盤點](docs/WORKFLOW_BRANCH_AUDIT.md) F 節。
 
 ## Run with GitHub Actions
 
@@ -115,13 +115,15 @@ satellites are also in `config/event_watchlist.yaml`. The report, daily summary
 and Pages overview show the status and its basis; `review` asks for a re-read
 of the thesis, not a trade.
 
-One open Issue titled 觀察名單提醒 ([#116](https://github.com/iceboxi/market-research/issues/116))
-tracks those two states. Its body is the current table and stores the last
-evaluated state in a hidden marker; each main TW schedule or dispatch run
-comments only when a satellite's zone or thesis status changes (old → new,
-prices or basis, data date, run link), at most once per run. The first run
-creates the Issue with a baseline comment; an unreadable stored state is
-rebuilt and explained in a comment. `not_evaluated` is never a change: the last
+One open Issue titled 觀察名單提醒 ([#139](https://github.com/iceboxi/market-research/issues/139),
+built in #116) tracks those two states and, since #145, each industry-watch
+stock's P/B zone and revenue momentum. Its body is the current table and stores
+the last evaluated state in a hidden marker; each main TW schedule or dispatch run
+comments only when one of those items changes (old → new, prices or basis, data
+date, run link), at most once per run. The first run creates the Issue with a
+baseline comment, and items the stored state has never held (a newly added
+stock, the first industry-watch run) get one baseline comment; an unreadable
+stored state is rebuilt and explained in a comment. `not_evaluated` is never a change: the last
 evaluated value is kept and the body shows the gap. Branch, pull-request and
 validation runs never write it.
 
