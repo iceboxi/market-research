@@ -1,0 +1,21 @@
+{
+  "body_sha256": "b3308905d2645929cb00e7ccc6955a691c1fe772af5e74247701336e2d224233",
+  "comparison": {
+    "last_good_snapshot_ids": {
+      "events": "27f675632880491b43c744a849274dc844a1176526d49303efac4cab494e3959",
+      "issuer": "27f675632880491b43c744a849274dc844a1176526d49303efac4cab494e3959",
+      "monthly_revenue": "27f675632880491b43c744a849274dc844a1176526d49303efac4cab494e3959",
+      "technical": "27f675632880491b43c744a849274dc844a1176526d49303efac4cab494e3959"
+    },
+    "previous_snapshot_id": "27f675632880491b43c744a849274dc844a1176526d49303efac4cab494e3959"
+  },
+  "id": "1bad59f74fbdb7bf0e28d3858287143913b652f7b044a41d7ef5f702b6b7f2a4",
+  "issue_number": null,
+  "kind": "fixed_report",
+  "last_success_id": "d1eeb12a58102924df267c9ea228600d41292ff1635aa68992f28afc7a7da63a",
+  "renderer_version": 2,
+  "schema_version": 2,
+  "snapshot_id": "d1eeb12a58102924df267c9ea228600d41292ff1635aa68992f28afc7a7da63a",
+  "status": "pending",
+  "symbol": "2330.TW"
+}
