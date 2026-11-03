@@ -49,20 +49,26 @@ def test_prior_slot_not_accepted_for_new_day():
         "scheduled_run_missing")
 
 
-def test_runs_delayed_up_to_eight_hours_still_match_their_slot():
+def test_runs_delayed_up_to_twelve_hours_still_match_their_slot():
     # Natural US run 40642805380: 00:45 slot, created 06:15:57 (5h31m late).
     us = scheduled(datetime(2026, 10, 28, 6, 15, 57, tzinfo=timezone.utc))
     assert watchdog.evaluate("us", [us], when("2026-10-28", 8, 23))[:2] == (
         "healthy", "scheduled_run_success")
+    # Natural TW run 41490981368: 07:40 slot, created 17:25:06 (9h45m late); the
+    # 2026-11-03 09:27:59 watchdog (run 41611228739) reported it missing under 8h.
+    tw = scheduled(datetime(2026, 11, 2, 17, 25, 6, tzinfo=timezone.utc))
+    assert watchdog.evaluate("tw", [tw], datetime(
+        2026, 11, 3, 9, 27, 59, tzinfo=timezone.utc))[:2] == (
+        "healthy", "scheduled_run_success")
     watchdog_run = when("2026-10-29", 8, 23)
-    edge = scheduled(when("2026-10-28", 15, 40))
+    edge = scheduled(when("2026-10-28", 19, 40))
     assert watchdog.evaluate("tw", [edge], watchdog_run)[:2] == (
         "healthy", "scheduled_run_success")
-    late = scheduled(when("2026-10-28", 15, 41))
+    late = scheduled(when("2026-10-28", 19, 41))
     assert watchdog.evaluate("tw", [late], watchdog_run)[1] == "scheduled_run_missing"
 
     feedback = watchdog.record_for("tw", [edge], "owner/repo", watchdog_run)["schedule_feedback"]
-    assert feedback["run_window_seconds"] == 8 * 3600
+    assert feedback["run_window_seconds"] == 12 * 3600
     assert feedback["last_successful_scheduled_run"]["created_at"] == edge["created_at"]
 
 

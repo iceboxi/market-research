@@ -13,9 +13,11 @@ SLOTS = {"tw": (7, 40, frozenset(range(5))),
 # US cron removed in #117; its slot stays defined for manual probes.
 MONITORED_MARKETS = ("tw",)
 GRACE = timedelta(hours=2)
-# Natural schedule runs were created 4-6.2h after their cron slot (#51);
-# windows now overlap 07:25-08:45 UTC, where created_at cannot tell markets apart.
-MAX_LATENESS = timedelta(hours=8)
+# Natural schedule runs were created 4-6.2h after their cron slot (#51), and the
+# 2026-11-02 TW run 41490981368 9h45m after it. Only TW is monitored (#117); the
+# manual US probe's window overlaps TW 07:25-12:45 UTC, where created_at cannot
+# tell markets apart.
+MAX_LATENESS = timedelta(hours=12)
 
 
 def utc_time(value):
