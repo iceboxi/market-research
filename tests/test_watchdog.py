@@ -15,16 +15,16 @@ def scheduled(date, status="completed", conclusion="success"):
 
 
 def test_taiwan_and_us_cron_are_independent_over_weekends():
-    t = when("2026-10-20")
+    t = when("2026-10-20", 13, 0)
     assert watchdog.latest_due_slot("tw", t) == when("2026-10-19", 7, 40)
     assert watchdog.latest_due_slot("us", t) == when("2026-10-20", 0, 45)
-    sat = when("2026-10-17")
+    sat = when("2026-10-17", 13, 0)
     assert watchdog.latest_due_slot("tw", sat) == when("2026-10-16", 7, 40)
     assert watchdog.latest_due_slot("us", sat) == when("2026-10-17", 0, 45)
 
 
 def test_successful_push_is_not_evidence_of_scheduled_run():
-    now = when("2026-10-20")
+    now = when("2026-10-20", 13, 0)
     push = scheduled(when("2026-10-20", 0, 47))
     push["event"] = "push"
     assert watchdog.evaluate("us", [push], now)[:2] == (
@@ -32,7 +32,7 @@ def test_successful_push_is_not_evidence_of_scheduled_run():
 
 
 def test_success_failed_and_stalled_jobs():
-    now = when("2026-10-20")
+    now = when("2026-10-20", 13, 0)
     d = when("2026-10-20", 0, 47)
     assert watchdog.evaluate("us", [scheduled(d)], now)[:2] == (
         "healthy", "scheduled_run_success")
@@ -44,7 +44,7 @@ def test_success_failed_and_stalled_jobs():
 
 
 def test_prior_slot_not_accepted_for_new_day():
-    now = when("2026-10-20")
+    now = when("2026-10-20", 13, 0)
     assert watchdog.evaluate("us", [scheduled(when("2026-10-19", 0, 47))], now)[1] == (
         "scheduled_run_missing")
 
@@ -52,7 +52,7 @@ def test_prior_slot_not_accepted_for_new_day():
 def test_runs_delayed_up_to_twelve_hours_still_match_their_slot():
     # Natural US run 40642805380: 00:45 slot, created 06:15:57 (5h31m late).
     us = scheduled(datetime(2026, 10, 28, 6, 15, 57, tzinfo=timezone.utc))
-    assert watchdog.evaluate("us", [us], when("2026-10-28", 8, 23))[:2] == (
+    assert watchdog.evaluate("us", [us], when("2026-10-28", 12, 45))[:2] == (
         "healthy", "scheduled_run_success")
     # Natural TW run 41490981368: 07:40 slot, created 17:25:06 (9h45m late); the
     # 2026-11-03 09:27:59 watchdog (run 41611228739) reported it missing under 8h.
@@ -72,15 +72,26 @@ def test_runs_delayed_up_to_twelve_hours_still_match_their_slot():
     assert feedback["last_successful_scheduled_run"]["created_at"] == edge["created_at"]
 
 
+def test_late_watchdog_judges_the_previous_slot_until_todays_window_closes():
+    # Watchdog runs executed 08:22-09:27 UTC over 2026-10-28..11-03; with a 2h grace
+    # one starting after 09:40 judged that day's TW slot before its run was created.
+    run = scheduled(datetime(2026, 11, 2, 17, 25, 6, tzinfo=timezone.utc))
+    late = when("2026-11-03", 9, 50)
+    assert watchdog.latest_due_slot("tw", late) == when("2026-11-02", 7, 40)
+    assert watchdog.evaluate("tw", [run], late)[:2] == ("healthy", "scheduled_run_success")
+    assert watchdog.latest_due_slot("tw", when("2026-11-03", 19, 39)) == when("2026-11-02", 7, 40)
+    assert watchdog.latest_due_slot("tw", when("2026-11-03", 19, 40)) == when("2026-11-03", 7, 40)
+
+
 def test_queued_run_is_distinct_from_missing_or_running_job():
-    now = when("2026-10-20")
+    now = when("2026-10-20", 13, 0)
     queued = scheduled(when("2026-10-20", 0, 47), status="queued", conclusion=None)
     assert watchdog.evaluate("us", [queued], now)[:2] == (
         "critical", "scheduled_run_queued")
 
 
 def test_missing_schedule_feedback_has_freshness_next_slot_and_last_success():
-    now = when("2026-10-29", 12, 30)
+    now = when("2026-10-29", 20, 0)
     prior = scheduled(when("2026-10-28", 7, 45))
     prior["run_started_at"] = "2026-10-28T07:46:00Z"
     us = scheduled(when("2026-10-29", 1, 0))
@@ -88,11 +99,11 @@ def test_missing_schedule_feedback_has_freshness_next_slot_and_last_success():
 
     assert record["reasons"] == ["scheduled_run_missing"]
     feedback = record["schedule_feedback"]
-    assert feedback["observed_at_utc"] == "2026-10-29T12:30:00+00:00"
+    assert feedback["observed_at_utc"] == "2026-10-29T20:00:00+00:00"
     assert feedback["phase"] == "not_created"
     assert feedback["freshness"] == "overdue"
-    assert feedback["grace_seconds"] == 7200
-    assert feedback["grace_expires_utc"] == "2026-10-29T09:40:00+00:00"
+    assert feedback["grace_seconds"] == 12 * 3600
+    assert feedback["grace_expires_utc"] == "2026-10-29T19:40:00+00:00"
     assert feedback["next_scheduled_utc"] == "2026-10-30T07:40:00+00:00"
     assert feedback["last_successful_scheduled_run"]["created_at"] == prior["created_at"]
     assert feedback["last_successful_scheduled_run"]["run_started_at"] == prior["run_started_at"]
@@ -106,7 +117,7 @@ def test_first_slot_inside_grace_is_visible_before_watchdog_judges_it():
     assert record["health"] == "warming_up"
     feedback = record["schedule_feedback"]
     assert feedback["latest_nominal_slot_utc"] == "2026-10-20T00:45:00+00:00"
-    assert feedback["latest_nominal_grace_expires_utc"] == "2026-10-20T02:45:00+00:00"
+    assert feedback["latest_nominal_grace_expires_utc"] == "2026-10-20T12:45:00+00:00"
     assert feedback["latest_nominal_within_grace"] is True
     assert feedback["next_scheduled_utc"] == "2026-10-21T00:45:00+00:00"
 
@@ -120,7 +131,7 @@ def test_first_slot_inside_grace_is_visible_before_watchdog_judges_it():
 def test_feedback_keeps_actual_execution_phase_and_times(status, conclusion, phase):
     run = scheduled(when("2026-10-20", 0, 47), status=status, conclusion=conclusion)
     run["run_started_at"] = None if status == "queued" else "2026-10-20T01:10:00Z"
-    record = watchdog.record_for("us", [run], "owner/repo", when("2026-10-20"))
+    record = watchdog.record_for("us", [run], "owner/repo", when("2026-10-20", 13, 0))
     feedback = record["schedule_feedback"]
     assert feedback["phase"] == phase
     assert feedback["matched_run"]["created_at"] == run["created_at"]
@@ -133,7 +144,7 @@ def test_future_and_push_runs_do_not_satisfy_schedule_feedback():
     future = scheduled(when("2026-10-30", 7, 45))
     push = scheduled(when("2026-10-29", 7, 45))
     push["event"] = "push"
-    record = watchdog.record_for("tw", [future, push], "owner/repo", when("2026-10-29", 12, 30))
+    record = watchdog.record_for("tw", [future, push], "owner/repo", when("2026-10-29", 20, 0))
     assert record["reasons"] == ["scheduled_run_missing"]
     assert record["schedule_feedback"]["last_successful_scheduled_run"] is None
 
@@ -176,7 +187,7 @@ def test_before_installation_does_not_create_false_incident(monkeypatch):
         assert record["reasons"] == ["first_scheduled_slot_not_due"]
 
 def test_first_live_due_slot_is_monitored():
-    for market, at in (("tw", when("2026-10-28", 9, 40)), ("us", when("2026-10-20"))):
+    for market, at in (("tw", when("2026-10-28", 19, 40)), ("us", when("2026-10-20", 12, 45))):
         record = watchdog.record_for(market, [], "owner/repo", at)
         assert record["health"] == "critical"
         assert "scheduled_run_missing" in record["reasons"]
@@ -186,7 +197,7 @@ def test_slots_before_moved_taiwan_cron_do_not_alarm():
     # The TW cron moved from 11:30 to 07:40 UTC; 07:40 slots before the first
     # live one never existed, so a run created under the old cron cannot match.
     old_cron_run = scheduled(when("2026-10-27", 16, 0))
-    record = watchdog.record_for("tw", [old_cron_run], "owner/repo", when("2026-10-28", 9, 39))
+    record = watchdog.record_for("tw", [old_cron_run], "owner/repo", when("2026-10-28", 19, 39))
     assert record["health"] == "warming_up"
     assert record["reasons"] == ["first_scheduled_slot_not_due"]
 
@@ -203,7 +214,7 @@ def test_github_scheduled_run_schema_and_query(monkeypatch):
     actual = watchdog.get_scheduled_runs("owner/repo")
     assert actual[0]["event"] == "schedule"
     assert "event=schedule" in calls[0][-1]
-    assert watchdog.evaluate("us", actual, when("2026-10-20"))[0] == "healthy"
+    assert watchdog.evaluate("us", actual, when("2026-10-20", 13, 0))[0] == "healthy"
 
 
 def test_probe_writes_readable_feedback_without_issue_mutations(monkeypatch, tmp_path):

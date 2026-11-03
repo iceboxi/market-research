@@ -12,12 +12,14 @@ SLOTS = {"tw": (7, 40, frozenset(range(5))),
          "us": (0, 45, frozenset(range(1, 6)))}
 # US cron removed in #117; its slot stays defined for manual probes.
 MONITORED_MARKETS = ("tw",)
-GRACE = timedelta(hours=2)
 # Natural schedule runs were created 4-6.2h after their cron slot (#51), and the
 # 2026-11-02 TW run 41490981368 9h45m after it. Only TW is monitored (#117); the
 # manual US probe's window overlaps TW 07:25-12:45 UTC, where created_at cannot
 # tell markets apart.
 MAX_LATENESS = timedelta(hours=12)
+# A slot is judged only once its matching window has closed: a 2h grace let a
+# watchdog run after 09:40 UTC judge that day's TW slot before its run existed.
+GRACE = MAX_LATENESS
 
 
 def utc_time(value):
@@ -25,7 +27,7 @@ def utc_time(value):
 
 
 def latest_due_slot(market, now):
-    """Latest UTC cron slot due >= two hours ago, respecting each market weekday."""
+    """Latest UTC cron slot whose grace has expired, respecting each market weekday."""
     if now.tzinfo is None:
         raise ValueError("watchdog clock must be timezone-aware")
     hour, minute, weekdays = SLOTS[market]
