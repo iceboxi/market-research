@@ -3,9 +3,9 @@
   "issue_number": 74,
   "last_success_id": "fdd386fbb79ba446374d72a667e69d7a7235dac0aaab17dfb4cf70466a6dc4a4",
   "latest_observation_id": "fdd386fbb79ba446374d72a667e69d7a7235dac0aaab17dfb4cf70466a6dc4a4",
-  "pending_notification_id": "7dd2e767b41f1a0763d26cc3c1b32e2623cc3d843a1f73405878e76df8f50999",
+  "pending_notification_id": null,
   "pending_publication_id": null,
-  "published_notification_id": "5684533302b2b3dcf1e5a34201ad0f991bf9870cc19833bed252d998536383c1",
+  "published_notification_id": "7dd2e767b41f1a0763d26cc3c1b32e2623cc3d843a1f73405878e76df8f50999",
   "published_publication_id": "55be96f30887f059bb4f6fe043f933d9a2d0ba3008a6411d90a70beaa72a675f",
   "schema_version": 2,
   "symbol": "2330.TW"
