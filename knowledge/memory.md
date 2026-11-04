@@ -1,0 +1,155 @@
+# 記憶體
+
+最後更新：2026-11-05｜標的：2408 南亞科（DRAM）、2344 華邦電（利基型 DRAM 與 Flash）、8299 群聯（NAND 控制晶片與模組）｜pipeline 設定：`config/watchlist.yaml` 的 `industry_watch.memory`
+
+非買賣建議。寫法見 [README](README.md)。
+
+## 論點
+
+AI 資料中心讓 DRAM 與 NAND 供給吃緊，記憶體廠用長約鎖定 2027–2028 年的產能。
+
+要追蹤的問題是吃緊會持續多久。Sandisk 說長約洽談量到本世紀末都超過供給，華邦電說 2027 年缺貨可能比今年更嚴重。TrendForce 則預估 NAND 在 2027 下半年進入較寬鬆的供給環境。
+
+## 失效條件與轉折訊號
+
+| 訊號 | 檢查方式 | 目前狀態 |
+| --- | --- | --- |
+| 營收動能：3 個月滾動年增率連續下降 3 個月 | pipeline，改變時在 #139 留言 | 南亞科「放緩」（2026-11-03，10 月營收）。華邦電、群聯「未放緩」（資料到 2026-09）。南亞科的「放緩」主要是基期效果，見推論 1 |
+| 單月營收月增率轉負 | 人工：FinMind 月營收 | 未轉負。南亞科 2026-10 月增 +3.1%，華邦電 2026-09 +3.4%，群聯 2026-09 +8.4% |
+| 估值位置：P/B 五年百分位 | pipeline | 南亞科 P83、華邦電 P82，都高於偏高價；群聯 P80，在合理區間（2026-11-04） |
+| 合約價由漲轉平或轉跌 | 人工：TrendForce 季度合約價、法說會 | 華邦電稱 Q4 合約價仍會上漲，但漲幅可能比 Q3 小（2026-11-03，轉述）。TrendForce 最新季度預估還沒查 |
+| 長約被重談、客戶延後拉貨 | 人工：法說會、產業媒體 | 未見。長約涵蓋還在增加：SK hynix 14 家客戶、Samsung 目標涵蓋 60–70% 產能、Kioxia 2028 年 50% |
+| 擴產紀律鬆動：資本支出大幅上調、新產能提前開出 | 人工：法說會 | Sandisk FY27 資本支出約占營收中個位數 %。華邦電通過 731.63 億元擴建高雄 Module B，12/29 動工，量產時間未查到 |
+| 下游需求被高價擠壓 | 人工：下游公司法說會 | 已出現：Sandisk 預期明年 PC 出貨量小幅下滑，MPS 稱筆電需求因記憶體供給限制轉弱。但 Sandisk 也說 PC 的 NAND 總容量仍會成長 |
+| 供給轉鬆的預估時間提前 | 人工：TrendForce | TrendForce 預估 NAND 在 2027 下半年轉鬆（2026-07-31） |
+
+## 數字快照
+
+來源：pipeline 的 [#139](https://github.com/iceboxi/market-research/issues/139) 與報告網頁。只記有事件的日期。
+
+| 資料日期 | 標的 | 收盤 | PBR（百分位） | 偏高價 | 區間 | 營收動能 |
+| --- | --- | ---: | --- | ---: | --- | --- |
+| 2026-11-04 | 南亞科 | 399.50 | 3.36（P83） | 319.12 | 高於偏高價 | 放緩 |
+| 2026-11-04 | 華邦電 | 141.50 | 3.07（P82） | 121.77 | 高於偏高價 | 未放緩 |
+| 2026-11-04 | 群聯 | 1,710.00 | 3.71（P80） | 1,865.79 | 合理區間 | 未放緩 |
+| 2026-11-03 | 南亞科 | 411.00 | 4.40（P87） | 248.28 | 高於偏高價 | 放緩 |
+| 2026-11-03 | 華邦電 | 146.00 | 3.17（P82） | 120.02 | 高於偏高價 | 未放緩 |
+| 2026-11-03 | 群聯 | 1,690.00 | 3.66（P79） | 1,869.16 | 合理區間 | 未放緩 |
+| 2026-11-02 | 南亞科 | 456.50 | 4.88（P89） | 247.89 | 高於偏高價 | 未放緩 |
+| 2026-11-02 | 華邦電 | 162.00 | 4.42（P87） | 94.93 | 高於偏高價 | 未放緩 |
+| 2026-11-02 | 群聯 | 1,875.00 | 4.06（P80） | 1,875.00 | 合理區間 | 未放緩 |
+
+執行紀錄：[11/02](https://github.com/iceboxi/market-research/actions/runs/41490981368)、[11/03](https://github.com/iceboxi/market-research/actions/runs/41664112013)、[11/04](https://github.com/iceboxi/market-research/actions/runs/41860887328)。
+
+- 偏高價跳升是因為每股淨值更新：華邦電在 11/03、南亞科在 11/04。
+- 2026-11-04 收盤距 52 週高點：南亞科 −29.8%（569.00，2026-08-28）、華邦電 −39.4%（233.50，2026-06-22）、群聯 −40.6%（2,880.00，2026-05-14）。
+
+單月營收（億元，[FinMind](https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=2408&start_date=2025-07-01)，2026-11-05 查詢）：
+
+| 月份 | 南亞科 | 月增 | 華邦電 | 月增 | 群聯 | 月增 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2026-07 | 438.68 | +49.3% | 267.73 | +30.0% | 271.62 | +9.3% |
+| 2026-08 | 446.90 | +1.9% | 273.09 | +2.0% | 282.76 | +4.1% |
+| 2026-09 | 450.91 | +0.9% | 282.49 | +3.4% | 306.39 | +8.4% |
+| 2026-10 | 464.76 | +3.1% | 未公布 | | 未公布 | |
+| 基期 2025-10 | 79.08 | | 82.25 | | 70.65 | |
+| 基期 2025-11 | 101.69 | | 86.30 | | 70.22 | |
+| 基期 2025-12 | 120.17 | | 97.70 | | 87.12 | |
+
+## 證據紀錄
+
+### 2026-11-04　南亞科每股淨值更新
+
+- [中性｜pipeline｜原文] 偏高價從 248.28 調到 319.12，PBR 從 4.40（P87）降到 3.36（P83）。收盤 399.50，仍高於偏高價（[執行紀錄](https://github.com/iceboxi/market-research/actions/runs/41860887328)）
+
+### 2026-11-03　南亞科營收動能放緩、記憶體股跌停、華邦電法說會
+
+- [削弱｜pipeline｜原文] 南亞科營收動能「未放緩 → 放緩」。3 個月滾動年增率 2026-07 到 10 月依序為 +691.0%、+628.6%、+611.7%、+538.7%（[#139 留言](https://github.com/iceboxi/market-research/issues/139#issuecomment-6607930860)）
+- [中性｜公司｜原文] 南亞科 2026-10 營收 464.76 億元，月增 3.1%，比 9 月的 450.91 億元高。年增率下滑來自基期：2025-10 營收 79.08 億元，比前一個月多 18.7%（[FinMind](https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=2408&start_date=2025-07-01)、[TechNews 2025-11-04](https://finance.technews.tw/2025/11/04/ntc-2408-202510-financial-report/)）
+- [中性｜媒體｜轉述] 南亞科、華邦電收跌停（411、146）；群聯收 1,690.00，跌 9.9%（收盤價取自 pipeline）。加權指數跌 1,612.60 點，收 43,307.54。媒體歸因於前一交易日美光跌 5.78%、費半跌 3.37%（[今周刊](https://www.businesstoday.com.tw/article/category/183008/post/202611030013/)、[聚財網](https://news.wearn.com/c2137610.html)）
+- [支持｜公司｜轉述] 華邦電 Q3 營收 823.31 億元、毛利率 70.6%、EPS 7.58 元。營收總數和 FinMind 的 7–9 月單月營收加總相符（[新頭殼](https://newtalk.tw/news/view/2026-11-03/1069057)）
+- [支持｜公司｜轉述] 華邦電客製化記憶體（CMS）營收季增 50%，「美元計價混合平均售價季增近60%」（[壹蘋](https://news.nextapple.com/finance/20261103/E8CDB7AE8973A4F13B97ACEC05DC544B)）。Flash 業務季增約 34%，「主要由高密度 NOR Flash 及 SLC NAND 需求帶動」（[新頭殼](https://newtalk.tw/news/view/2026-11-03/1069057)）
+- [支持｜公司｜轉述] 華邦電總經理陳沛銘：「預估2027年缺貨情況可能比今年更嚴重，且下半年將比上半年更緊俏」（[Yahoo 新聞](https://tw.news.yahoo.com/%E8%8F%AF%E9%82%A6%E9%9B%BB%E6%B3%95%E8%AA%AA%E6%9C%83q3%E5%A4%A7%E8%B3%BA354%E5%84%84-%E9%99%B3%E6%B2%9B%E9%8A%98-%E6%98%8E%E5%B9%B4%E8%A8%98%E6%86%B6%E9%AB%94%E6%9B%B4%E7%BC%BA-081200140.html)）。吃緊會延續到哪一年，各家寫法不同：新頭殼寫 2028 年，壹蘋寫 2027 年
+- [支持｜公司｜轉述] Q4 合約價：壹蘋寫「第四季合約仍有上漲空間」；新頭殼寫「DRAM 合約價預期持續走高，但漲幅可能較第三季收斂」
+- [削弱｜公司｜轉述] 華邦電：「部分消費性電子客戶因前幾季已提前備貨，第四季需求開始修正」。Q4 營運仍會成長，但力道比前幾季慢（Yahoo 新聞、新頭殼）
+- [中性｜公司｜轉述] 華邦電董事會通過 731.63 億元資本支出，擴建高雄 Module B。預計 12/29 動工，無塵室規劃月產能 5–6 萬片。量產時間各篇都沒寫（[壹蘋](https://news.nextapple.com/finance/20261103/E8CDB7AE8973A4F13B97ACEC05DC544B)、[Yahoo 新聞](https://tw.news.yahoo.com/%E8%8F%AF%E9%82%A6%E9%9B%BB%E6%B3%95%E8%AA%AA-%E7%AC%AC%E4%B8%89%E5%AD%A3%E6%AF%8F%E8%82%A1%E7%8B%82%E8%B3%BA7-58%E5%85%83-%E6%AF%9B%E5%88%A9%E7%8E%87%E7%AA%81%E7%A0%B470-%E7%A0%B8731%E5%84%84%E6%93%B4%E9%AB%98%E9%9B%84%E6%96%B0%E5%BB%A0-083102372.html)）
+
+### 2026-10-29　Sandisk FY27 Q1 法說會
+
+來源：[逐字稿](https://www.fool.com/earnings/call-transcripts/2026/10/30/sandisk-sndk-q1-2027-earnings-call-transcript/)
+
+- [支持｜公司｜原文] 長約（NBM）約占 FY27 bit 的 50%、FY28 的 2/3。CFO："about 50% of our bits are under NBM for '27 and about 2/3 for '28"
+- [支持｜公司｜原文] CFO："Our NBM pipeline exceeds our supply throughout the end of the decade."
+- [支持｜公司｜原文] 自身 bit 成長維持中高十位數（"mid- to high teens"）；FY27 資本支出約占營收中個位數 %，Q1 為 3.4%
+- [支持｜公司｜原文] SLC：agentic 工作負載對耐久度的要求帶出 SLC 需求，但 CEO 說 "It's not really in sales yet"。SLC 對 TLC/QLC 的產能換算約 3:1–4:1，"a little bit of SLC is a lot of QLC"
+- [支持｜公司｜原文] CEO：KV cache 到本世紀末約占 AI 資料中心 flash 的 1/3，AI 資料中心的機會會接近今天整個 NAND 產業的規模；推論與 agent orchestration 每顆 CPU 約需 60–90 GB NAND
+- [中性｜公司｜原文] PC：這兩個季度是年增率的谷底。明年出貨量小幅下滑（"low single digits"），但 PC 的 NAND 總容量（exabytes）會成長
+- [中性｜公司｜原文] 第一顆 HBF die 已 tape out，明年送樣
+
+**使用者筆記對照**（2026-11-02 貼上）：
+
+- 已在逐字稿確認：NBM 50% 與 2/3、KV cache 1/3、SLC 換算 3:1–4:1、每顆 CPU 60–90 GB、bit 成長中高十位數、資本支出中個位數 %、HBF tape out、PC 兩季谷底
+- 說得太滿：「客戶在架構討論中要求 SLC」，原文是需求還沒進到銷售
+- 逐字稿找不到：「保守看緊到 2028」、「記憶體廠更主動供應 datacenter」、「HBF 定位是補 HBM 容量層」
+- 筆記標示出處是 TrendForce，但沒找到：「Samsung 簽 10 家、另 10 家洽談中」。找到的是 Samsung 計畫以長約涵蓋 60–70% 產能（見 2026-09-07）
+- 使用者自己的看法，未查證：「整個 NAND 市場開始收斂現貨市場」
+
+### 2026-10-29　MPS Q3 2026（下游電源晶片）
+
+來源：[逐字稿](https://www.fool.com/earnings/call-transcripts/2026/10/30/monolithic-power-systems-mpwr-q3-2026-earnings-call-transcript/)、[財報 8-K 附件](https://www.sec.gov/Archives/edgar/data/0001280452/000162828026068202/mpwr-20260930xexx991.htm)
+
+- [中性｜公司｜原文] Storage & computing 營收年增 3.0%，主要來自 DDR5 PMIC；RCD 營收要到 2027–2028 年
+- [削弱｜公司｜原文] CFO："We're seeing not the same strength on notebook due to what's happening downstream with some of the memory constraints."
+- [削弱｜分析師｜原文] Oppenheimer 分析師提問時說 PC 下半年出貨量約減少 20%。CFO 沒有確認這個數字，只說短期筆電趨勢 "track with what you're seeing"
+
+### 2026-10-28　SK hynix 3Q26
+
+- [支持｜公司｜轉述] 已和 14 家客戶簽長約，涵蓋 2027 與 2028 年規劃產能的一半以上，文中沒有說明產品範圍。標題稱 DRAM 與 HBM 到 2029 年實質售罄（[TrendForce](https://www.trendforce.com/news/2026/10/28/news-sk-hynix-3q26-opm-hits-record-80-says-dram-hbm-effectively-sold-out-to-2029-14-lta-customers-signed/)）
+
+### 2026-09-07　Samsung 長約
+
+- [支持｜公司｜轉述] Samsung 計畫以長約涵蓋 60–70% 產能。同一篇報導 Apple 可能已和 Kioxia 簽 NAND 長約（[TrendForce](https://www.trendforce.com/news/2026/09/07/news-apple-said-to-have-signed-nand-lta-with-kioxia-seen-as-likely-partner-foldable-iphone-memory-suppliers-in-focus/)）
+
+### 2026-07-31　Kioxia 1QFY26
+
+來源：[TrendForce](https://www.trendforce.com/news/2026/07/31/news-kioxia-1qfy26-gross-margin-hits-80-reaffirms-50-lta-target-for-2028/)
+
+- [支持｜公司｜轉述] 目標 2028 年對主要客戶的長約量涵蓋 50%（"50% LTA volume coverage for calendar 2028 with key customers"）。基準是 bit、出貨還是營收，文中沒說
+- [支持｜公司｜轉述] NAND 需求持續超過供給，預期 2027 年仍會如此
+- [削弱｜分析機構｜轉述] TrendForce 預估 NAND 在 2027 下半年進入較寬鬆的供給環境（"enter a looser supply environment in 2H27"）
+
+## 推論
+
+**1. 南亞科的「放緩」主要是基期效果，不是營收轉弱。**
+
+- 依據：2026-10 營收 464.76 億元，月增 3.1%；滾動年增率下滑，是因為基期從 2025-10 起快速墊高。
+- 試算：把 FinMind 單月營收代入 pipeline 的算法（`src/market_research/industry_watch.py:225`，3 個月加總比去年同期加總），10 月剛好得到 +538.7%，和 #139 相同。如果 11、12 月營收持平在 464.76 億元，滾動年增率會降到約 +458%、+363%，「放緩」會繼續亮著。
+- 影響：接下來幾個月，這個訊號分辨不出基期效果和真正轉弱。看單月營收月增率比較有用。
+- 不成立的情況：單月營收月增率轉負。
+
+**2. 營收從 7 月起進入高原，成長大概只剩價格。**
+
+- 依據：南亞科 8–10 月月增 0.9–3.1%，華邦電 8–9 月 2.0–3.4%；7 月則是 +49.3% 和 +30.0%。群聯 9 月仍有 +8.4%。
+- 推理：產能短期內加不上去（華邦電高雄 Module B 年底才動工），營收成長應該主要來自價格。
+- 要確認：法說會的出貨量（bit shipment）與平均售價拆分。目前沒有查。
+
+**3. 長約快速增加，可能也是景氣後段的訊號。** 這是 #163 寫進 `rationale` 但沒有出處的說法，改放在這裡。
+
+- 依據：長約涵蓋在一年內大幅增加（SK hynix 超過一半、Samsung 目標 60–70%、Kioxia 2028 年 50%）；TrendForce 預估 NAND 在 2027 下半年轉鬆。
+- 反方：Sandisk 說長約洽談量到本世紀末都超過供給；Kioxia 預期 2027 年需求仍超過供給。
+- 要驗證：需要過去週期（例如 2017–2018 年）長約涵蓋與價格反轉時間的對照，目前沒有資料。
+
+**4. 11/03 的跌停是價格事件，同一天的基本面證據偏向支持論點。**
+
+- 依據：同一天華邦電公布 Q3 創新高、說 Q4 合約價仍有上漲空間，南亞科 10 月營收也創新高。
+- 依據：修正之後，三檔 P/B 仍在五年 P80 以上（11/04），估值沒有回到歷史中段。
+- 不成立的情況：之後的月營收或合約價證實需求轉弱。
+
+## 待確認
+
+- 華邦電、群聯 2026-10 營收：法定期限是 11/10，公布後 pipeline 會自動判斷營收動能。
+- TrendForce 最新 DRAM／NAND 合約價季度預估（2026 Q4、2027 Q1）。
+- 各廠 2027 年的資本支出計畫，以及華邦電高雄 Module B 的量產時間，用來檢查擴產紀律。
+- 華邦電 Flash 成長「由 SLC NAND 需求帶動」，和 Sandisk 說的 SLC 需求是不是同一件事。
+- 推論 2 和推論 3 各自「要確認」與「要驗證」的資料。
+- `rationale` 中沿用、還沒重新核對的內容：Sandisk 資料中心營收季增 61%（8-K）、南亞科 2026-03 私募的認購者（TrendForce 2026-03-26）、「2026-10-30 股價比 2026 年高點低 16–26%」。
