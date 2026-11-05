@@ -1506,6 +1506,7 @@ a{color:var(--accent)}code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace
 .topbar{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
 .topbar-inner,.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
 .topbar-inner{display:flex;align-items:center;gap:16px;min-height:56px;flex-wrap:wrap}
+.topbar-inner .toplink{margin-left:auto;font-size:14px;white-space:nowrap}
 .brand{font-weight:700;font-size:15px;white-space:nowrap}.brand span{font-weight:400;color:var(--muted);margin-left:6px}
 .picker{position:relative;flex:1 1 320px;max-width:460px}
 .picker label{position:absolute;left:-999px}
@@ -1737,6 +1738,7 @@ def render_research_site_html(
       <ul id="stock-list" role="listbox" aria-label="可研究的股票" hidden></ul>
       <span id="stock-live" class="skip" aria-live="polite"></span>
     </div>
+    <a class="toplink" href="knowledge/">知識庫</a>
   </div>
   <nav class="secnav" aria-label="研究章節">{nav}</nav>
 </header>
