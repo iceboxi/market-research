@@ -9,6 +9,7 @@
 | [memory.md](memory.md) | 記憶體：2408 南亞科、2344 華邦電、8299 群聯 |
 | [market-tw.md](market-tw.md) | 台股大盤：加權指數、0050、00631L |
 | [method-forced-selling.md](method-forced-selling.md) | 方法：被迫賣出階段判斷與 P×Q 選股 |
+| [backtest-memory-rules.md](backtest-memory-rules.md) | 回測：固定標準套用在南亞科 2010–2026 的結果 |
 
 ## 和 pipeline 的分工
 
@@ -53,6 +54,8 @@
 ## 固定標準
 
 深度更新都照這些規則計算，前後兩次才比得出差異。要改標準時，在該檔案的「更新紀錄」寫明原因。
+
+> **2026-11-06：這套標準沒有通過南亞科 2010–2026 的回測**（[結果](backtest-memory-rules.md)）。在修改並重新驗證之前，用它算出的判斷都只是計算結果，不是有驗證根據的判斷。
 
 ### 估值情境（12 個月）
 
