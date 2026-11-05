@@ -124,6 +124,10 @@ jobs:
           if [ -f "$site" ] && { [ "$status" = published ] || [ "$status" = already_current ]; }; then
             mkdir -p _site
             cp "$site" _site/index.html
+            if ! uv run --no-sync python -m scripts.build_knowledge_site --src knowledge --out _site/knowledge; then
+              rm -rf _site/knowledge
+              echo "知識庫頁面未更新：產生失敗，報告頁照常部署（#173）" >> "$GITHUB_STEP_SUMMARY"
+            fi
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "研究網站未更新：固定發布狀態 ${status:-missing}" >> "$GITHUB_STEP_SUMMARY"

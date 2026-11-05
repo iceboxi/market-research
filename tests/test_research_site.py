@@ -437,6 +437,7 @@ def test_render_research_site_standalone_report_mode():
     assert "台灣積體電路製造股份有限公司" in html_text
     assert 'id="stock-input"' in html_text
     assert 'href="#overview"' in html_text
+    assert '<a class="toplink" href="knowledge/">知識庫</a>' in html_text
     assert "近 30 個交易日收盤價走勢" in html_text
     assert "price-chart" in html_text
     assert "price-line" in html_text
