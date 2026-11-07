@@ -11,6 +11,7 @@
 | [method-forced-selling.md](method-forced-selling.md) | 方法：被迫賣出階段判斷與 P×Q 選股 |
 | [backtest-memory-rules.md](backtest-memory-rules.md) | 回測：固定標準 v1、v2 套用在南亞科、華邦電、群聯的結果 |
 | [method-timing-revenue.md](method-timing-revenue.md) | 方法：回測的公布日對齊（法定期限）與月營收動能條件 |
+| [method-business-cycle.md](method-business-cycle.md) | 方法：景氣循環四階段的判斷指標與配置（美國觀點） |
 
 ## 和 pipeline 的分工
 
