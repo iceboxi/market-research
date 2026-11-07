@@ -10,6 +10,7 @@
 | [market-tw.md](market-tw.md) | 台股大盤：加權指數、0050、00631L |
 | [method-forced-selling.md](method-forced-selling.md) | 方法：被迫賣出階段判斷與 P×Q 選股 |
 | [backtest-memory-rules.md](backtest-memory-rules.md) | 回測：固定標準 v1、v2 套用在南亞科、華邦電、群聯的結果 |
+| [method-timing-revenue.md](method-timing-revenue.md) | 方法：回測的公布日對齊（法定期限）與月營收動能條件 |
 
 ## 和 pipeline 的分工
 
@@ -41,7 +42,7 @@
 | 欄位 | 值 |
 | --- | --- |
 | 影響 | 支持、削弱、中性（對論點而言） |
-| 誰說的 | 公司、交易所（證交所、櫃買中心的成交、法人、融資券資料，經 FinMind）、分析機構、媒體、分析師（法說會提問或投顧）、使用者筆記、pipeline |
+| 誰說的 | 公司、交易所（證交所、櫃買中心的成交、法人、融資券資料，經 FinMind）、法規（法條原文）、分析機構、媒體、分析師（法說會提問或投顧）、使用者筆記、pipeline |
 | 查證 | **原文**：對照過逐字稿、公告、財報或官方資料<br>**轉述**：媒體或產業媒體報導，未對照原文<br>**未查到**：找不到出處 |
 
 ## 規則
