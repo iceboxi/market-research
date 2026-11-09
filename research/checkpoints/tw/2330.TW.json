@@ -5,7 +5,16 @@
   ],
   "consumed_financial_version": "mrev-11509",
   "last_completed_snapshot_id": "ed16d431d2587cb6d3c40f5e9ded9b82414f3a2dd8a293b5f1995673813ceb98",
-  "pending_rerun": null,
+  "pending_rerun": {
+    "reasons": [
+      "new_official_events"
+    ],
+    "request_id": "27ec8991911d5aa3f43213787ee5002b7d52c23f65d452f72f79945cc679d76b",
+    "target_financial_version": null,
+    "trigger_event_ids": [
+      "tw-material-c67f0895507aef3004dd"
+    ]
+  },
   "schema_version": 1,
   "symbol": "2330.TW"
 }
