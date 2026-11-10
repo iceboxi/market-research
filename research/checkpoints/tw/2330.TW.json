@@ -2,20 +2,12 @@
   "consumed_event_ids": [
     "tw-material-c7e0158c2c708a226387",
     "tw-material-a023d20c51fac6504d64",
-    "tw-material-c67f0895507aef3004dd"
+    "tw-material-c67f0895507aef3004dd",
+    "tw-material-278a265f65e650d4ddf8"
   ],
   "consumed_financial_version": "mrev-11509",
-  "last_completed_snapshot_id": "e148c56246b41fa76b8ac956720817661542e235d9b298dbc3175faf57b2d814",
-  "pending_rerun": {
-    "reasons": [
-      "new_official_events"
-    ],
-    "request_id": "40f5dea70985af9b44b353d09867907673233507df16e8eb4ab202e45e5b6889",
-    "target_financial_version": null,
-    "trigger_event_ids": [
-      "tw-material-278a265f65e650d4ddf8"
-    ]
-  },
+  "last_completed_snapshot_id": "344e7290d61adb7a38d0ddd4abbde7f634168b0b10aa9e5ecaa2cc702600f4ca",
+  "pending_rerun": null,
   "schema_version": 1,
   "symbol": "2330.TW"
 }
