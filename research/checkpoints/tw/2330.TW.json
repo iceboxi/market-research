@@ -7,7 +7,31 @@
   ],
   "consumed_financial_version": "mrev-11509",
   "last_completed_snapshot_id": "344e7290d61adb7a38d0ddd4abbde7f634168b0b10aa9e5ecaa2cc702600f4ca",
-  "pending_rerun": null,
+  "pending_rerun": {
+    "reasons": [
+      "new_official_events"
+    ],
+    "request_id": "0ee91864130df98afb694190f6bc81dcf323768432a7706e5fb40d6e5a15d7c2",
+    "target_financial_version": null,
+    "trigger_event_ids": [
+      "tw-material-0569893c88426f20091f",
+      "tw-material-109fe3514c7fa0074246",
+      "tw-material-247d9c657db14deb0465",
+      "tw-material-26af971f197df2d2c351",
+      "tw-material-3467796c3ae37c331639",
+      "tw-material-4fafdb097e4b1ee7724f",
+      "tw-material-50e68e303ffc56417812",
+      "tw-material-5e8c3dc55102237027c7",
+      "tw-material-623145944789453355d6",
+      "tw-material-677709d077f6b24e5537",
+      "tw-material-7ae274e5ef42f282a0e6",
+      "tw-material-7c33b879ce4057c1a9b6",
+      "tw-material-934ca1cdf4e57d5d4579",
+      "tw-material-98ad37a72389677e49e0",
+      "tw-material-9b1bf28a1c316d98b562",
+      "tw-material-bc376461ad04092ccba1"
+    ]
+  },
   "schema_version": 1,
   "symbol": "2330.TW"
 }
