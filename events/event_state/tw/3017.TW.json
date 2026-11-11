@@ -1,14 +1,24 @@
 {
   "coverage": "recent_daily_snapshot_only_not_a_full_history",
   "market": "tw",
-  "observed_at_utc": "2026-11-10T19:45:39.568025+00:00",
+  "observed_at_utc": "2026-11-11T09:37:38.063536+00:00",
   "schema_version": 1,
   "seen_ids": [
     "tw-material-12906e87f674b6272256",
     "tw-material-df406d06e74d5b392052",
     "tw-material-ffbdc1308bdc3362377b",
     "tw-material-591fe32e586be1394483",
-    "tw-material-de4c24b09cd4bf0ccbde"
+    "tw-material-de4c24b09cd4bf0ccbde",
+    "tw-material-07ce50029cb29daa7807",
+    "tw-material-1468db7a9aee3dc1dbaf",
+    "tw-material-2975dcdd7aa157b89181",
+    "tw-material-417e3ecdaa9b100fca79",
+    "tw-material-42e7e88f1dbe5a623a00",
+    "tw-material-9e903043f9bba51693ee",
+    "tw-material-b638510c59991831b147",
+    "tw-material-e8704b0a0cef0bf2d863",
+    "tw-material-f25d1867b8619d558e5d",
+    "tw-material-fc14f01d710f516f3a4f"
   ],
   "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
   "symbol": "3017.TW"
