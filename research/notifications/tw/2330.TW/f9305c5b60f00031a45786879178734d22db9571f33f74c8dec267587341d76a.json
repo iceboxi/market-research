@@ -1,6 +1,6 @@
 {
   "body_sha256": "736ebb2e90b49787a58bba6847f899780c5b1ffe2d0c90eb06eb819a5d630d0d",
-  "comment_id": null,
+  "comment_id": 6800185516,
   "comparison": {
     "last_good_snapshot_ids": {
       "events": "344e7290d61adb7a38d0ddd4abbde7f634168b0b10aa9e5ecaa2cc702600f4ca",
@@ -12,12 +12,12 @@
   },
   "creation_attempted": true,
   "id": "f9305c5b60f00031a45786879178734d22db9571f33f74c8dec267587341d76a",
-  "issue_number": null,
+  "issue_number": 74,
   "kind": "change_notification",
   "publication_id": "53177712ed68b0dcb0f88e2518ccc925e36bd2d4333fe315e073f4840cf940b5",
   "renderer_version": 1,
   "schema_version": 1,
   "snapshot_id": "ecda82e05d27e448a11265635fe88a4a21645e5c02479471aa768f41686f1c34",
-  "status": "pending",
+  "status": "acked",
   "symbol": "2330.TW"
 }
