@@ -1,0 +1,69 @@
+{
+  "errors": 0,
+  "event": "schedule",
+  "expected_warnings": 0,
+  "health": "healthy",
+  "input_hashes": [
+    {
+      "date": "2026-11-11",
+      "market": "tw",
+      "sha256": "977c1aee68d3485f9c458aececfef69ce33031bf3790521deda2348091ff9b15",
+      "symbol": "2330.TW"
+    },
+    {
+      "date": "2026-11-11",
+      "market": "tw",
+      "sha256": "0cc47137941078044360db22ff84fb91bfab197887475b03336a717afbe1717a",
+      "symbol": "2317.TW"
+    },
+    {
+      "date": "2026-11-11",
+      "market": "tw",
+      "sha256": "f1b7ad89bfc8acb5d705c47c8eceaeb94aecd50f542bf6f0a309ea3aacee4e8c",
+      "symbol": "2454.TW"
+    },
+    {
+      "date": "2026-11-11",
+      "market": "tw",
+      "sha256": "9d45fe262a1f61bfc7b4fc6dec90f5df4177402a9546b3ceaed8a063d36fdac6",
+      "symbol": "2356.TW"
+    },
+    {
+      "date": "2026-11-11",
+      "market": "tw",
+      "sha256": "591fd75704fbb8523b502da9c49da708afed1c988b1bb21d7fc9cf5ac96c413a",
+      "symbol": "3017.TW"
+    },
+    {
+      "date": "2026-11-11",
+      "market": "tw",
+      "sha256": "e1cf5d1ee7b68176986f707a73539717fceca194040eba9176d1231566183c9d",
+      "symbol": "0050.TW"
+    },
+    {
+      "date": "2026-11-11",
+      "market": "tw",
+      "sha256": "53520a74ac9b66559e9defdc0388e35ed03c1db079893fea8cdc5ff4aa815a28",
+      "symbol": "00631L.TW"
+    }
+  ],
+  "market": "tw",
+  "mismatches": 0,
+  "observed_at_utc": "2026-11-11T15:37:56.269518+00:00",
+  "reasons": [],
+  "requested": 7,
+  "run_id": "43050074254",
+  "run_url": "https://github.com/iceboxi/market-research/actions/runs/43050074254",
+  "scan_outcome": "success",
+  "scanned": 7,
+  "schema_version": 1,
+  "session_dates": {
+    "tw": [
+      "2026-11-11"
+    ]
+  },
+  "signals": 0,
+  "source_sha": "8a754d20cdffef2e58f5e3218690d3ee4099f73d",
+  "strategies": [],
+  "unexpected_warnings": 0
+}
