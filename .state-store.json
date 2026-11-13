@@ -26,7 +26,7 @@
     },
     "research": {
       "branch": "research-state",
-      "content_sha256": "4bde9538f58e4c98aea7ab999d9d27f1ecf08725b6d41d8793678d77ac5fa9e0",
+      "content_sha256": "90e44d1c100a9661e28086de51d8f246c2889055d7ef584cba034361c72bea13",
       "legacy_import": {
         "content_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
         "prefix": "research",
