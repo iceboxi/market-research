@@ -2,7 +2,7 @@
   "namespaces": {
     "events": {
       "branch": "research-state",
-      "content_sha256": "dba3b6f741b1ba39fcb89f9dd59d15978f7b7667708ead454b99ff0d8fa703c2",
+      "content_sha256": "96b5d3bb8b2eebb99f8a8d015345b2d0cda4a6436ab77ec552061e43710f1578",
       "legacy_import": {
         "content_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
         "prefix": "event_state",
