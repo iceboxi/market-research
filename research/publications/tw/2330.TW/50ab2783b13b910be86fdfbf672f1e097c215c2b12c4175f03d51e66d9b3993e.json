@@ -10,12 +10,12 @@
     "previous_snapshot_id": "5291814d23c0c3eb62ea6c78749040c5df142e44e5f94948e83c1961d0eb3294"
   },
   "id": "50ab2783b13b910be86fdfbf672f1e097c215c2b12c4175f03d51e66d9b3993e",
-  "issue_number": null,
+  "issue_number": 74,
   "kind": "fixed_report",
   "last_success_id": "a918a4616e698279476d32b91912750646d789d17ea1a2b7b7e40c7f930523fe",
   "renderer_version": 2,
   "schema_version": 2,
   "snapshot_id": "a918a4616e698279476d32b91912750646d789d17ea1a2b7b7e40c7f930523fe",
-  "status": "pending",
+  "status": "acked",
   "symbol": "2330.TW"
 }
