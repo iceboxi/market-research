@@ -22,8 +22,8 @@
     "tw-material-50e68e303ffc56417812",
     "tw-material-77ad261ab59b45265735"
   ],
-  "consumed_financial_version": "mrev-11510",
-  "last_completed_snapshot_id": "5291814d23c0c3eb62ea6c78749040c5df142e44e5f94948e83c1961d0eb3294",
+  "consumed_financial_version": "ifrs-2026-09-30",
+  "last_completed_snapshot_id": "a918a4616e698279476d32b91912750646d789d17ea1a2b7b7e40c7f930523fe",
   "pending_rerun": null,
   "schema_version": 1,
   "symbol": "2330.TW"
