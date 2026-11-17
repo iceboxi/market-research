@@ -187,6 +187,24 @@ def render_body(records, as_of, run_url, announced, removed=(), reminded_week=No
     return "\n".join(lines) + "\n"
 
 
+PAGE_NAME = "predictions.md"
+
+
+def render_page(records, entries, as_of, run_url, removed=()):
+    """The knowledge-site scorecard page: same tables as the Issue body, plus each reason."""
+    ledger_url = f"{REPO_URL}/blob/main/{LEDGER.as_posix()}"
+    lines = ["# 預測成績表", "",
+             f"**{DISCLAIMER}。** 資料日期：{as_of}（[執行紀錄]({run_url})）。每日 TW 排程判定"
+             f"[預測紀錄]({ledger_url})裡到期的預測，寫法見[知識庫 README](README.md#預測紀錄)。", "",
+             *render_scorecard(records), "", "## 預測", "", *render_table(records), *render_deleted(removed)]
+    reasons = [(e["id"], " ".join(str(e.get("reasoning") or "").split())) for e in entries]
+    if reasons:
+        lines += ["", "## 理由", ""]
+        for pid, text in reasons:
+            lines += [f"### {pid}", "", text or "—", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
 def parse_state(body):
     """{"announced": statuses by id, "reminded_week": ISO week}; None when the body never had a state."""
     match = STATE_RE.search(body or "")
@@ -328,6 +346,13 @@ def main():
                           bars_fn=bars_loader(provider, now, closed), closed_sessions=closed,
                           history_fn=bars_loader(provider, now, closed))
             result["history_warnings"] = warnings
+            try:  # the page is extra: a failure is reported, never fails the Issue sync
+                page = render_page(result["records"], entries, result["as_of"], args.run_url,
+                                   deleted(entries, history))
+                (args.out / PAGE_NAME).write_text(page, encoding="utf-8")
+                result["page"] = {"status": "written", "path": str(args.out / PAGE_NAME)}
+            except Exception as error:
+                result["page"] = {"status": "failed", "error_type": type(error).__name__, "reason": str(error)}
         except Exception as error:  # reported in the receipt and the step summary, then the step fails
             result, failed = {"status": "failed", "error_type": type(error).__name__,
                               "reason": str(error)}, True

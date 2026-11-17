@@ -123,7 +123,7 @@ jobs:
             --out output/candidate_research
           status=$?
           set -e
-          jq -r '"預測回顧：\(.status) issue=#\(.issue_number // "-") comment=\(.comment // "-") \(.error_type // "") \(.reason // "")"' \
+          jq -r '"預測回顧：\(.status) issue=#\(.issue_number // "-") comment=\(.comment // "-") page=\(.page.status // "-") \(.error_type // "") \(.reason // "")"' \
             output/candidate_research/prediction_review_receipt.json >> "$GITHUB_STEP_SUMMARY" || true
           exit $status
       - name: Upload candidate company reports
@@ -145,9 +145,19 @@ jobs:
           if [ -f "$site" ] && { [ "$status" = published ] || [ "$status" = already_current ]; }; then
             mkdir -p _site
             cp "$site" _site/index.html
-            if ! uv run --no-sync python -m scripts.build_knowledge_site --src knowledge --out _site/knowledge; then
+            # #183: the prediction scorecard page joins the knowledge site when this run wrote it.
+            scorecard=output/candidate_research/predictions.md
+            if [ -f "$scorecard" ] && uv run --no-sync python -m scripts.build_knowledge_site --src knowledge \
+                --out _site/knowledge --extra "$scorecard" --extra-label "預測紀錄的每日判定（執行紀錄）" \
+                --extra-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; then
+              :
+            else
+              [ -f "$scorecard" ] && echo "預測成績表頁面未更新：產生失敗，知識庫其他頁面照常部署（#183）" >> "$GITHUB_STEP_SUMMARY"
               rm -rf _site/knowledge
-              echo "知識庫頁面未更新：產生失敗，報告頁照常部署（#173）" >> "$GITHUB_STEP_SUMMARY"
+              if ! uv run --no-sync python -m scripts.build_knowledge_site --src knowledge --out _site/knowledge; then
+                rm -rf _site/knowledge
+                echo "知識庫頁面未更新：產生失敗，報告頁照常部署（#173）" >> "$GITHUB_STEP_SUMMARY"
+              fi
             fi
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else

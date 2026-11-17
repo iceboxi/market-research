@@ -200,10 +200,12 @@ def render_markdown(text: str, link: Callable[[str], str] = lambda t: t) -> tupl
     return "\n".join(out), title
 
 
-def _page(title: str, body: str, nav: str, source: str, repo_url: str, sha: str, generated: datetime) -> str:
+def _page(title: str, body: str, nav: str, source: str, repo_url: str, sha: str, generated: datetime,
+          source_url: str | None = None) -> str:
     stamp = generated.astimezone(TAIPEI).strftime("%Y-%m-%d %H:%M")
     commit = f"（commit <code>{_e(sha[:7])}</code>）" if sha else ""
-    src = f"{repo_url.rstrip('/')}/blob/main/knowledge/{source}"
+    src = source_url or f"{repo_url.rstrip('/')}/blob/main/knowledge/{source}"
+    label = source if source_url else f"knowledge/{source}"
     return f"""<!DOCTYPE html>
 <html lang="zh-Hant-TW">
 <head>
@@ -225,7 +227,7 @@ def _page(title: str, body: str, nav: str, source: str, repo_url: str, sha: str,
   <main id="content" class="md" tabindex="-1">
 {body}
   </main>
-  <footer>來源：<a href="{_e(src)}">knowledge/{_e(source)}</a>{commit}；頁面產生於 {stamp}（台北）。研究整理，不是投資建議。</footer>
+  <footer>來源：<a href="{_e(src)}">{_e(label)}</a>{commit}；頁面產生於 {stamp}（台北）。研究整理，不是投資建議。</footer>
 </div>
 </body>
 </html>
@@ -233,21 +235,28 @@ def _page(title: str, body: str, nav: str, source: str, repo_url: str, sha: str,
 
 
 def build_knowledge_site(src_dir: Path, out_dir: Path, *, repo_url: str = DEFAULT_REPO_URL,
-                         sha: str = "", generated: datetime | None = None) -> list[Path]:
-    """Render every `src_dir/*.md` into `out_dir`; return the written paths (index first)."""
+                         sha: str = "", generated: datetime | None = None,
+                         extra: tuple = ()) -> list[Path]:
+    """Render every `src_dir/*.md` into `out_dir`; return the written paths (index first).
+
+    `extra` adds generated pages as (Markdown path, source label, source URL); they join the
+    navigation after the knowledge files and their footer names their own source.
+    """
     generated = generated or datetime.now(timezone.utc)
     sources = sorted(src_dir.glob("*.md"), key=lambda p: (p.name != INDEX_SOURCE, p.name))
-    link = LinkMapper({p.name for p in sources}, repo_url=repo_url)
+    pages = [(path, None, None) for path in sources] + [tuple(item) for item in extra]
+    link = LinkMapper({path.name for path, _, _ in pages}, repo_url=repo_url)
     rendered = []
-    for path in sources:
+    for path, label, url in pages:
         body, title = render_markdown(path.read_text(encoding="utf-8"), link)
-        rendered.append((path, link(path.name), body, title or path.stem))
+        rendered.append((path, link(path.name), body, title or path.stem, label, url))
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
-    for path, href, body, title in rendered:
+    for path, href, body, title, label, url in rendered:
         nav = "".join(f'<a href="{_e(h)}" aria-current="{"page" if h == href else "false"}">{_e(t)}</a>'
-                      for _, h, _, t in rendered)
+                      for _, h, _, t, _, _ in rendered)
         target = out_dir / href
-        target.write_text(_page(title, body, nav, path.name, repo_url, sha, generated), encoding="utf-8")
+        target.write_text(_page(title, body, nav, label or path.name, repo_url, sha, generated, url),
+                          encoding="utf-8")
         written.append(target)
     return written
