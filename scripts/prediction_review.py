@@ -20,7 +20,7 @@ import yaml
 from market_research.market_data import load_daily_bars
 from market_research.prediction_ledger import load_ledger, supported_symbols
 from market_research.prediction_review import (
-    STATUS_LABELS, TRIGGER_LABELS, deleted, evaluate, result_text,
+    STATUS_LABELS, TRIGGER_LABELS, deleted, evaluate, result_text, weekly_reminder,
 )
 from market_research.twse import LOOKBACK_MONTHS
 from scripts.research_github import GitHubResearchSink
@@ -147,10 +147,12 @@ def render_deleted(removed):
     return lines
 
 
-def render_body(records, as_of, run_url, announced, removed=()):
+def render_body(records, as_of, run_url, announced, removed=(), reminded_week=None):
     ledger_url = f"{REPO_URL}/blob/main/{LEDGER.as_posix()}"
     rules_url = f"{REPO_URL}/blob/main/knowledge/README.md#預測紀錄"
     state = {"schema": STATE_SCHEMA, "as_of": as_of, "announced": announced}
+    if reminded_week:
+        state["reminded_week"] = reminded_week
     lines = [MARKER, "# 預測回顧", "",
              f"**{DISCLAIMER}。** 每日 TW 排程讀[預測紀錄]({ledger_url})，判定到期的價格類預測，"
              "在結果第一次出現時於本 Issue 留言。起算日是預測第一次合併到 main 時最近一個已完成的交易日；"
@@ -162,7 +164,7 @@ def render_body(records, as_of, run_url, announced, removed=()):
 
 
 def parse_state(body):
-    """Statuses already announced, by id; None when the body never had a state."""
+    """{"announced": statuses by id, "reminded_week": ISO week}; None when the body never had a state."""
     match = STATE_RE.search(body or "")
     if not match:
         return None
@@ -174,18 +176,24 @@ def parse_state(body):
     if state.get("schema") != STATE_SCHEMA or not isinstance(announced, dict) or any(
             value not in ANNOUNCED for value in announced.values()):
         raise ValueError("狀態格式不符")
-    return announced
+    return {"announced": announced, "reminded_week": state.get("reminded_week")}
 
 
-def render_comment(changes, as_of, run_id, run_url, note=None):
-    lines = [f"<!-- prediction-review-run:{run_id} -->", f"## 預測結果：{as_of}（{DISCLAIMER}）", ""]
+def render_comment(changes, as_of, run_id, run_url, note=None, reminder=None):
+    heading = "預測結果" if changes else "週預測提醒"
+    lines = [f"<!-- prediction-review-run:{run_id} -->", f"## {heading}：{as_of}（{DISCLAIMER}）", ""]
     if note:
         lines += [f"前次狀態無法使用（{note}），以下可能包含已經通知過的結果。", ""]
-    lines += ["| 預測 | 條件 | 機率 | 起算日 | 檢查日 | 結果 |", "| :--- | :--- | ---: | :--- | :--- | :--- |"]
-    for r in changes:
-        lines.append(f"| `{r['id']}` | {_cell(r['condition'])} | {r['probability']:.2f} | "
-                     f"{r['start_session'] or '—'} | {_check(r)} | {_cell(_status(r))} |")
-    lines += ["", f"到期的預測請在對話中說「週回顧」寫回顧。執行紀錄：{run_url}"]
+    if changes:
+        lines += ["| 預測 | 條件 | 機率 | 起算日 | 檢查日 | 結果 |", "| :--- | :--- | ---: | :--- | :--- | :--- |"]
+        for r in changes:
+            lines.append(f"| `{r['id']}` | {_cell(r['condition'])} | {r['probability']:.2f} | "
+                         f"{r['start_session'] or '—'} | {_check(r)} | {_cell(_status(r))} |")
+        lines += ["", "到期的預測請在對話中說「週回顧」寫回顧。"]
+    if reminder:
+        lines += ["", f"**週預測提醒**：本週（{reminder}）結束後沒有未到期的週預測。"
+                  "請在對話中說「週回顧」，在下週一開盤前合併新的週預測。"]
+    lines += ["", f"執行紀錄：{run_url}"]
     return "\n".join(lines) + "\n"
 
 
@@ -198,13 +206,16 @@ def sync(sink, entries, history, now, *, run_id, run_url, bars_fn=None, closed_s
     issues = [issue for issue in sink.find(MARKER) if issue.get("state") == "open"]
     if len(issues) > 1:
         raise ValueError("More than one open prediction review Issue")
-    number, previous, note = None, {}, None
+    number, state, note = None, {}, None
     if issues:
         number = issues[0]["number"]
         try:
-            previous = parse_state(issues[0].get("body")) or {}
+            state = parse_state(issues[0].get("body")) or {}
         except ValueError as error:
             note = str(error)
+    previous, reminded = state.get("announced") or {}, state.get("reminded_week")
+    week = weekly_reminder(records, now, closed_sessions)
+    reminder = week if week and week != reminded else None
     current = {r["id"]: r["status"] for r in records if r["status"] in ANNOUNCED}
     changes = [r for r in records if r["id"] in current and previous.get(r["id"]) != r["status"]]
     announced = {**previous, **current}
@@ -212,18 +223,18 @@ def sync(sink, entries, history, now, *, run_id, run_url, bars_fn=None, closed_s
         # The state lands only after the comment, so a failed comment is retried next run.
         number = sink.create(TITLE, MARKER + "\n初始化中。\n")["number"]
     comment = "not_needed"
-    if changes:
+    if changes or reminder:
         run_marker = f"<!-- prediction-review-run:{run_id} -->"
         if sink.find_comments(number, run_marker):
             comment = "already_posted"
         else:
-            sink.create_comment(number, render_comment(changes, as_of, run_id, run_url, note))
+            sink.create_comment(number, render_comment(changes, as_of, run_id, run_url, note, reminder))
             comment = "posted"
     removed = deleted(entries, history)
-    sink.update(number, render_body(records, as_of, run_url, announced, removed))
+    sink.update(number, render_body(records, as_of, run_url, announced, removed, reminder or reminded))
     return {"status": "synced", "issue_number": number, "as_of": as_of, "run_id": run_id,
             "comment": comment, "changes": [r["id"] for r in changes], "note": note,
-            "deleted": [d["id"] for d in removed], "records": records}
+            "deleted": [d["id"] for d in removed], "reminder": reminder, "records": records}
 
 
 def main():
