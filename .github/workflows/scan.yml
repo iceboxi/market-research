@@ -12,6 +12,7 @@ on:
       - 'scripts/scan_company_research.py'
       - 'scripts/research_publication.py'
       - 'scripts/watchlist_alert.py'
+      - 'scripts/prediction_review.py'
       - '.github/workflows/scan.yml'
   workflow_dispatch:
     inputs:
@@ -105,6 +106,26 @@ jobs:
             --out output/candidate_research
           jq -r '"觀察名單提醒：\(.status) \(.kind // .reason) comment=\(.comment // "-") issue=#\(.issue_number // "-")"' \
             output/candidate_research/watchlist_alert_receipt.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Prediction review Issue
+        # #183: one Issue listing each ledger prediction's start, check session and status.
+        # Independent of the candidate research; never writes the repository.
+        if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && env.SCAN_MARKET != 'us'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # First seen comes from main's history; the checkout is shallow.
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --no-tags --quiet --unshallow origin main
+          fi
+          set +e
+          uv run --no-sync python -m scripts.prediction_review --repo "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --out output/candidate_research
+          status=$?
+          set -e
+          jq -r '"預測回顧：\(.status) issue=#\(.issue_number // "-") \(.error_type // "") \(.reason // "")"' \
+            output/candidate_research/prediction_review_receipt.json >> "$GITHUB_STEP_SUMMARY" || true
+          exit $status
       - name: Upload candidate company reports
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v4
