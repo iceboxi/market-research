@@ -169,6 +169,112 @@ def result_text(record: dict) -> str:
             f"{record['check_session']} 收 {record['check_close']:,.2f}")
 
 
+# ---------------------------------------------------------------- base rate and scorecard
+
+BASE_RATE_YEARS = 5
+
+
+def base_rate_since(start):
+    """First day of the base-rate lookback for a prediction that starts on `start`."""
+    return start.replace(year=start.year - BASE_RATE_YEARS) if not (start.month == 2 and start.day == 29) \
+        else start.replace(year=start.year - BASE_RATE_YEARS, day=28)
+
+
+def base_rate(claim: dict, horizon: int, start, frame: pd.DataFrame) -> dict:
+    """Share of same-length windows in the 5 years before `start` that met the same condition.
+
+    Only bars up to the start session are used. Level conditions become a return relative to
+    the start close. Windows crossing a price gap that cannot be undone are skipped.
+    """
+    dates = [pd.Timestamp(d).date() for d in frame.index]
+    before = [d for d in dates if d <= start]
+    if not before:
+        return {"status": "not_evaluated", "reason": f"缺起算日 {start} 以前的行情", "retry": True}
+    start_bar = before[-1]
+    cutoff = base_rate_since(start)
+    calendar = xcals.get_calendar("XTAI")
+    first = dates[0]
+    if first > cutoff and len(calendar.sessions_in_range(pd.Timestamp(cutoff), pd.Timestamp(first))) > 1:
+        return {"status": "not_evaluated", "reason": f"歷史不足 {BASE_RATE_YEARS} 年（最早 {first}，需要 {cutoff}）",
+                "retry": False}
+    upto = frame.loc[[d <= start_bar for d in dates]]
+    prices, reason = _start_basis(upto, start_bar, start_bar)
+    if reason:  # a gap at the start bar itself is impossible; kept for symmetry
+        return {"status": "not_evaluated", "reason": reason, "retry": False}
+    try:
+        _, _, _, gaps = reference_scale(upto)
+    except ValueError:
+        close = upto["close"].astype(float).to_numpy()
+        days = list(prices.index)
+        gaps = [days[i] for i in range(1, len(days))
+                if max(close[i] / close[i - 1], close[i - 1] / close[i]) > MAX_UNADJUSTED_DAY_RATIO]
+    days = list(prices.index)
+    gap_index = {days.index(g) for g in gaps}
+    close = prices["close"].to_numpy()
+    above = claim["op"] == ">"
+    start_close = float(prices.loc[start_bar, "close"])
+    if claim["kind"] == "return":
+        threshold = claim["threshold_pct"] / 100
+    else:
+        threshold = claim["level"] / start_close - 1
+    column = None
+    if claim["kind"] == "held":
+        column = prices["close" if claim["basis"] == "close" else ("low" if above else "high")].to_numpy()
+    hits = windows = 0
+    last = len(days) - 1
+    for i, day in enumerate(days):
+        if day < cutoff or i + horizon > last:
+            continue
+        if any(i < g <= i + horizon for g in gap_index):
+            continue
+        if column is None:
+            change = close[i + horizon] / close[i] - 1
+        else:
+            span = column[i + 1:i + horizon + 1]
+            change = (span.min() if above else span.max()) / close[i] - 1
+        windows += 1
+        hits += bool(change > threshold if above else change < threshold)
+    if not windows:
+        return {"status": "not_evaluated", "reason": "沒有可比較的窗口", "retry": False}
+    return {"status": "available", "rate": round(float(hits) / windows, 4), "windows": windows,
+            "from": cutoff.isoformat(), "to": start_bar.isoformat()}
+
+
+def brier(probability: float, hit: bool) -> float:
+    return (probability - (1.0 if hit else 0.0)) ** 2
+
+
+def _mean(values):
+    return sum(values) / len(values) if values else None
+
+
+def scorecard(records: list[dict]) -> list[dict]:
+    """Rows for all judged predictions and for each method version.
+
+    Judged = hit or miss, including manual outcomes. Brier compares each probability with the
+    outcome; on the predictions that have a base rate, it is set beside the base rate's own Brier.
+    """
+    judged = [r for r in records if r["status"] in ("hit", "miss")]
+    groups = {"全部": judged}
+    for r in judged:
+        label = f"{r['method']} {r['method_version']}" if r.get("method_version") else r["method"]
+        groups.setdefault(label, []).append(r)
+    rows = []
+    for label, items in groups.items():
+        hits = [r["status"] == "hit" for r in items]
+        based = [r for r in items if (r.get("base_rate") or {}).get("status") == "available"]
+        rows.append({
+            "label": label, "judged": len(items),
+            "hit_rate": _mean([float(h) for h in hits]),
+            "mean_probability": _mean([r["probability"] for r in items]),
+            "brier": _mean([brier(r["probability"], r["status"] == "hit") for r in items]),
+            "with_base": len(based),
+            "brier_with_base": _mean([brier(r["probability"], r["status"] == "hit") for r in based]),
+            "base_brier": _mean([brier(r["base_rate"]["rate"], r["status"] == "hit") for r in based]),
+        })
+    return rows
+
+
 # ---------------------------------------------------------------- weekly reminder
 
 def week_of(session) -> str:

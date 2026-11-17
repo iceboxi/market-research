@@ -20,7 +20,8 @@ import yaml
 from market_research.market_data import load_daily_bars
 from market_research.prediction_ledger import load_ledger, supported_symbols
 from market_research.prediction_review import (
-    STATUS_LABELS, TRIGGER_LABELS, deleted, evaluate, result_text, weekly_reminder,
+    STATUS_LABELS, TRIGGER_LABELS, base_rate, base_rate_since, deleted, evaluate, result_text, scorecard,
+    weekly_reminder,
 )
 from market_research.twse import LOOKBACK_MONTHS
 from scripts.research_github import GitHubResearchSink
@@ -114,7 +115,27 @@ def _method(record):
 def _status(record):
     label = STATUS_LABELS.get(record["status"], record["status"])
     detail = result_text(record)
+    base = record.get("base_rate") or {}
+    if base.get("status") == "available":
+        detail += f"；基準率 {base['rate']:.2f}（{base['windows']:,} 個窗口）"
     return f"{label}：{detail}" if detail else label
+
+
+def _ratio(value, digits=2):
+    return "—" if value is None else f"{value:.{digits}f}"
+
+
+def render_scorecard(records):
+    lines = ["## 成績表", "",
+             "已判定 = 命中或未命中（含人工判定）。Brier 分數越低越好；「同筆」只算有基準率的預測，"
+             f"和用基準率當預測的 Brier 分數比較。基準率是起算日以前 5 年、同樣長度的期間符合同一條件的比例。", "",
+             "| 方法 | 已判定 | 命中率 | 平均機率 | Brier | 有基準率 | 同筆 Brier | 基準率 Brier |",
+             "| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    for row in scorecard(records):
+        lines.append(f"| {_cell(row['label'])} | {row['judged']} | {_ratio(row['hit_rate'])} | "
+                     f"{_ratio(row['mean_probability'])} | {_ratio(row['brier'], 4)} | {row['with_base']} | "
+                     f"{_ratio(row['brier_with_base'], 4)} | {_ratio(row['base_brier'], 4)} |")
+    return lines
 
 
 def _cell(text):
@@ -147,17 +168,20 @@ def render_deleted(removed):
     return lines
 
 
-def render_body(records, as_of, run_url, announced, removed=(), reminded_week=None):
+def render_body(records, as_of, run_url, announced, removed=(), reminded_week=None, base_rates=None):
     ledger_url = f"{REPO_URL}/blob/main/{LEDGER.as_posix()}"
     rules_url = f"{REPO_URL}/blob/main/knowledge/README.md#預測紀錄"
     state = {"schema": STATE_SCHEMA, "as_of": as_of, "announced": announced}
     if reminded_week:
         state["reminded_week"] = reminded_week
+    if base_rates:
+        state["base_rates"] = base_rates
     lines = [MARKER, "# 預測回顧", "",
              f"**{DISCLAIMER}。** 每日 TW 排程讀[預測紀錄]({ledger_url})，判定到期的價格類預測，"
              "在結果第一次出現時於本 Issue 留言。起算日是預測第一次合併到 main 時最近一個已完成的交易日；"
              f"缺行情或來源失敗標為未評估，下次再判定。寫法見[知識庫 README]({rules_url})。", "",
-             f"最後更新：{as_of}（[執行紀錄]({run_url})）", "", *render_table(records),
+             f"最後更新：{as_of}（[執行紀錄]({run_url})）", "", *render_scorecard(records), "", "## 預測", "",
+             *render_table(records),
              *render_deleted(removed), "",
              "<!-- prediction-review-state:" + json.dumps(state, sort_keys=True, separators=(",", ":")) + " -->"]
     return "\n".join(lines) + "\n"
@@ -176,7 +200,10 @@ def parse_state(body):
     if state.get("schema") != STATE_SCHEMA or not isinstance(announced, dict) or any(
             value not in ANNOUNCED for value in announced.values()):
         raise ValueError("狀態格式不符")
-    return {"announced": announced, "reminded_week": state.get("reminded_week")}
+    base_rates = state.get("base_rates") or {}
+    if not isinstance(base_rates, dict):
+        raise ValueError("基準率狀態格式不符")
+    return {"announced": announced, "reminded_week": state.get("reminded_week"), "base_rates": base_rates}
 
 
 def render_comment(changes, as_of, run_id, run_url, note=None, reminder=None):
@@ -199,7 +226,42 @@ def render_comment(changes, as_of, run_id, run_url, note=None, reminder=None):
 
 # ---------------------------------------------------------------- delivery
 
-def sync(sink, entries, history, now, *, run_id, run_url, bars_fn=None, closed_sessions=()):
+def attach_base_rates(records, cached, history_fn):
+    """Base rate for every judged price prediction: cached once known, fetched once per symbol.
+
+    A source failure is retried on later runs; too little history is final.
+    """
+    frames, rates = {}, {}
+    for record in records:
+        if record["status"] not in ("hit", "miss") or record["claim"]["kind"] == "manual":
+            continue
+        known = cached.get(record["id"])
+        if known and (known.get("status") == "available" or not known.get("retry")):
+            rates[record["id"]] = record["base_rate"] = known
+            continue
+        start = date.fromisoformat(record["start_session"])
+        symbol = record["claim"]["symbol"]
+        since = base_rate_since(start)
+        key = (symbol, since.year * 12 + since.month)
+        if key not in frames:
+            try:
+                if history_fn is None:
+                    raise RuntimeError("沒有長期行情來源")
+                frames[key] = history_fn(symbol, since)
+            except Exception as error:  # retried next run; the judgment itself stands
+                frames[key] = error
+        frame = frames[key]
+        if isinstance(frame, Exception):
+            rate = {"status": "not_evaluated", "reason": f"行情取得失敗：{type(frame).__name__}：{frame}",
+                    "retry": True}
+        else:
+            rate = base_rate(record["claim"], record["horizon_sessions"], start, frame)
+        rates[record["id"]] = record["base_rate"] = rate
+    return rates
+
+
+def sync(sink, entries, history, now, *, run_id, run_url, bars_fn=None, closed_sessions=(),
+         history_fn=None):
     """Create or update the review Issue; comment once per run when a result first appears."""
     as_of = now.astimezone(TAIPEI).date().isoformat()
     records = evaluate(entries, history, now, bars_fn, closed_sessions)
@@ -214,6 +276,7 @@ def sync(sink, entries, history, now, *, run_id, run_url, bars_fn=None, closed_s
         except ValueError as error:
             note = str(error)
     previous, reminded = state.get("announced") or {}, state.get("reminded_week")
+    base_rates = attach_base_rates(records, state.get("base_rates") or {}, history_fn)
     week = weekly_reminder(records, now, closed_sessions)
     reminder = week if week and week != reminded else None
     current = {r["id"]: r["status"] for r in records if r["status"] in ANNOUNCED}
@@ -231,7 +294,8 @@ def sync(sink, entries, history, now, *, run_id, run_url, bars_fn=None, closed_s
             sink.create_comment(number, render_comment(changes, as_of, run_id, run_url, note, reminder))
             comment = "posted"
     removed = deleted(entries, history)
-    sink.update(number, render_body(records, as_of, run_url, announced, removed, reminder or reminded))
+    sink.update(number, render_body(records, as_of, run_url, announced, removed, reminder or reminded,
+                                    {**(state.get("base_rates") or {}), **base_rates}))
     return {"status": "synced", "issue_number": number, "as_of": as_of, "run_id": run_id,
             "comment": comment, "changes": [r["id"] for r in changes], "note": note,
             "deleted": [d["id"] for d in removed], "reminder": reminder, "records": records}
@@ -261,7 +325,8 @@ def main():
             closed = provider.unscheduled_closures("tw", now)
             result = sync(GitHubResearchSink(args.repo), entries, history, now,
                           run_id=args.run_id, run_url=args.run_url,
-                          bars_fn=bars_loader(provider, now, closed), closed_sessions=closed)
+                          bars_fn=bars_loader(provider, now, closed), closed_sessions=closed,
+                          history_fn=bars_loader(provider, now, closed))
             result["history_warnings"] = warnings
         except Exception as error:  # reported in the receipt and the step summary, then the step fails
             result, failed = {"status": "failed", "error_type": type(error).__name__,
