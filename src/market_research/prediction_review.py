@@ -20,7 +20,10 @@ from .price_watch import MAX_UNADJUSTED_DAY_RATIO, _reference_scale as reference
 
 STATUS_LABELS = {"pending": "未到期", "withdrawn": "已撤回", "void": "作廢", "hit": "命中",
                  "miss": "未命中", "not_evaluated": "未評估", "awaiting_review": "待人工判定"}
-VOID_REASONS = {"late_entry": "事件發生後才合併"}
+VOID_REASONS = {"late_entry": "事件發生後才合併", "edited": "合併後改過"}
+# Only these may change after First seen; any other field change voids the prediction.
+MUTABLE_FIELDS = {"withdrawn", "review"}
+TIME_FIELDS = {"event_time", "written_at"}
 SYMBOL_NAMES = {"TAIEX": "加權指數"}
 TRIGGER_LABELS = {"weekly": "週預測", "event": "事件預測", "inference": "推論轉預測"}
 
@@ -60,6 +63,32 @@ def claim_text(claim: dict, horizon: int) -> str:
     if claim["kind"] == "close_at_check":
         return f"{name} 第 {horizon} 個交易日收盤 {op} {level}"
     return f"{name} {horizon} 個交易日內每天{_held_price(claim)} {op} {level}"
+
+
+def _normalized(key, value):
+    """Field values as YAML loaded them, with quoting differences on time fields removed."""
+    if key in TIME_FIELDS:
+        try:
+            return datetime.fromisoformat(str(value)).isoformat()
+        except ValueError:
+            return value
+    return value
+
+
+def edited_fields(original: dict, current: dict) -> list[str]:
+    """Fields other than withdrawn and review whose values differ from the First seen version."""
+    keys = (set(original) | set(current)) - MUTABLE_FIELDS
+    return sorted(k for k in keys
+                  if _normalized(k, original.get(k)) != _normalized(k, current.get(k)))
+
+
+def deleted(entries: list[dict], history: dict) -> list[dict]:
+    """Ids that once reached main and are no longer in the ledger, with their First seen."""
+    present = {entry["id"] for entry in entries}
+    return [{"id": pid, "first_seen": item["first_seen"].isoformat(),
+             "condition": claim_text(item["entry"]["claim"], item["entry"]["horizon_sessions"])
+             if isinstance(item.get("entry"), dict) and "claim" in item["entry"] else None}
+            for pid, item in history.items() if pid not in present]
 
 
 # ---------------------------------------------------------------- judging
@@ -146,8 +175,9 @@ def evaluate(entries: list[dict], history: dict, now: datetime, bars_fn=None,
              closed_sessions=()) -> list[dict]:
     """One record per ledger entry: First seen, start, check session and status.
 
-    `history` maps an id to {"first_seen": aware datetime} from main's git history; an id missing
-    from it has not reached main yet and stays pending without a start. `bars_fn(symbol, since)`
+    `history` maps an id to {"first_seen": aware datetime, "entry": the First seen version} from
+    main's git history; an id missing from it has not reached main yet and stays pending without
+    a start. A field other than withdrawn or review that changed since First seen voids it. `bars_fn(symbol, since)`
     returns official daily bars from `since`; it is called only for due price predictions, once
     per symbol, and a raised error leaves those predictions not_evaluated.
     """
@@ -172,7 +202,12 @@ def evaluate(entries: list[dict], history: dict, now: datetime, bars_fn=None,
         check = expected_check_session(start, horizon)
         record.update(start_session=start.isoformat(),
                       expected_check_session=check.isoformat() if check else None)
-        if entry["trigger"] == "event" and seen > datetime.fromisoformat(str(entry["event_time"])):
+        original = (history.get(pid) or {}).get("entry")
+        changed = edited_fields(original, entry) if isinstance(original, dict) else []
+        if changed:
+            record.update(status="void", void_reason="edited",
+                          reason=f"{VOID_REASONS['edited']}：{'、'.join(changed)}")
+        elif entry["trigger"] == "event" and seen > datetime.fromisoformat(str(entry["event_time"])):
             record.update(status="void", void_reason="late_entry", reason=VOID_REASONS["late_entry"])
         elif "withdrawn" in entry:
             withdrawn = entry["withdrawn"]

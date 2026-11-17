@@ -19,7 +19,9 @@ import yaml
 
 from market_research.market_data import load_daily_bars
 from market_research.prediction_ledger import load_ledger, supported_symbols
-from market_research.prediction_review import STATUS_LABELS, TRIGGER_LABELS, evaluate, result_text
+from market_research.prediction_review import (
+    STATUS_LABELS, TRIGGER_LABELS, deleted, evaluate, result_text,
+)
 from market_research.twse import LOOKBACK_MONTHS
 from scripts.research_github import GitHubResearchSink
 
@@ -136,7 +138,16 @@ def render_table(records):
     return lines
 
 
-def render_body(records, as_of, run_url, announced):
+def render_deleted(removed):
+    if not removed:
+        return []
+    lines = ["", "## 已刪除的預測", "", "合併到 main 之後從預測紀錄刪除。預測不刪除，要撤回請寫 `withdrawn`。", "",
+             "| 預測 | First seen（台北） | 條件 |", "| :--- | :--- | :--- |"]
+    lines += [f"| `{d['id']}` | {_taipei(d['first_seen'])} | {_cell(d['condition'] or '—')} |" for d in removed]
+    return lines
+
+
+def render_body(records, as_of, run_url, announced, removed=()):
     ledger_url = f"{REPO_URL}/blob/main/{LEDGER.as_posix()}"
     rules_url = f"{REPO_URL}/blob/main/knowledge/README.md#預測紀錄"
     state = {"schema": STATE_SCHEMA, "as_of": as_of, "announced": announced}
@@ -144,7 +155,8 @@ def render_body(records, as_of, run_url, announced):
              f"**{DISCLAIMER}。** 每日 TW 排程讀[預測紀錄]({ledger_url})，判定到期的價格類預測，"
              "在結果第一次出現時於本 Issue 留言。起算日是預測第一次合併到 main 時最近一個已完成的交易日；"
              f"缺行情或來源失敗標為未評估，下次再判定。寫法見[知識庫 README]({rules_url})。", "",
-             f"最後更新：{as_of}（[執行紀錄]({run_url})）", "", *render_table(records), "",
+             f"最後更新：{as_of}（[執行紀錄]({run_url})）", "", *render_table(records),
+             *render_deleted(removed), "",
              "<!-- prediction-review-state:" + json.dumps(state, sort_keys=True, separators=(",", ":")) + " -->"]
     return "\n".join(lines) + "\n"
 
@@ -207,10 +219,11 @@ def sync(sink, entries, history, now, *, run_id, run_url, bars_fn=None, closed_s
         else:
             sink.create_comment(number, render_comment(changes, as_of, run_id, run_url, note))
             comment = "posted"
-    sink.update(number, render_body(records, as_of, run_url, announced))
+    removed = deleted(entries, history)
+    sink.update(number, render_body(records, as_of, run_url, announced, removed))
     return {"status": "synced", "issue_number": number, "as_of": as_of, "run_id": run_id,
             "comment": comment, "changes": [r["id"] for r in changes], "note": note,
-            "records": records}
+            "deleted": [d["id"] for d in removed], "records": records}
 
 
 def main():
