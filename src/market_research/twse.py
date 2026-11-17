@@ -31,7 +31,7 @@ MARKET_REQUIRED = ("日期", "成交股數", "發行量加權股價指數", "漲
 COLUMNS = ["open", "high", "low", "close", "volume", "adj_close", "execution_open",
            "reference_price"]
 # Exact 1-year lookback includes a warm-up month for 14/20-day signals.
-LOOKBACK_MONTHS = {"3mo": 4, "6mo": 7, "1y": 13, "2y": 25}
+LOOKBACK_MONTHS = {"3mo": 4, "6mo": 7, "1y": 13, "2y": 25, "5y": 61, "6y": 73, "7y": 85}
 # STOCK_DAY already had the same-day session by 15:15 Taipei (close + 1h45m);
 # a session absent from the market-wide record is trusted as closed only
 # well after that, so a slow publication is never mistaken for a closure.

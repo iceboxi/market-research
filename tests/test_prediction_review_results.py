@@ -195,4 +195,4 @@ def test_period_reaches_back_to_the_earliest_start(since, period):
 
 def test_period_beyond_the_source_fails():
     with pytest.raises(ValueError, match="早於行情來源支援的範圍"):
-        period_since(date(2023, 1, 1), date(2026, 11, 18))
+        period_since(date(2018, 1, 1), date(2026, 11, 18))
