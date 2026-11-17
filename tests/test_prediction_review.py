@@ -9,7 +9,7 @@ from scripts.prediction_review import (
 )
 
 RUN_URL = "https://github.com/iceboxi/market-research/actions/runs/1"
-NOW = datetime.fromisoformat("2026-11-18T16:00:00+08:00")
+NOW = datetime.fromisoformat("2026-11-18T10:00:00+08:00")  # latest completed session 11/17: nothing due
 
 
 class FakeSink:
