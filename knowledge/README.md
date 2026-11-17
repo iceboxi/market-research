@@ -12,6 +12,7 @@
 | [backtest-memory-rules.md](backtest-memory-rules.md) | 回測：固定標準 v1、v2 套用在南亞科、華邦電、群聯的結果 |
 | [method-timing-revenue.md](method-timing-revenue.md) | 方法：回測的公布日對齊（法定期限）與月營收動能條件 |
 | [method-business-cycle.md](method-business-cycle.md) | 方法：景氣循環四階段的判斷指標與配置（美國觀點） |
+| [predictions.yaml](predictions.yaml) | 預測紀錄：可以到期判定的預測和回顧（[寫法](#預測紀錄)） |
 
 ## 和 pipeline 的分工
 
@@ -156,3 +157,72 @@ Agent 會以 `knowledge/<檔案>.md` 作為前次結果，依序做以下幾件�
 - 方法檢查不改變固定標準的條件式判斷（避開、考慮買進、觀望）。要把某個方法的訊號加進固定標準，先回測，再升版，並在更新紀錄寫明原因。
 - 方法檢查和條件式判斷的方向相反時，兩個都寫出來，說明衝突在哪裡，不自行取捨。
 - 每次套用，在方法檔的「應用紀錄」記下日期和結果。市場數字仍寫在大盤或產業檔。
+
+## 預測紀錄
+
+[predictions.yaml](predictions.yaml) 記錄可以到期判定的預測，用來檢驗方法到底有沒有用。流程是：策略 → 預測 → 到期評分 → 回顧 → 升版（[#183](https://github.com/iceboxi/market-research/issues/183)）。非買賣建議。
+
+每日排程自動評分還沒上線。在那之前，到期判定在週回顧時手算。
+
+### 什麼時候寫
+
+| 類型 | `trigger` | 什麼時候寫 | 標的與期間 |
+| --- | --- | --- | --- |
+| 週預測 | `weekly` | 每週一筆。週末寫，下週一開盤前合併 | 加權指數，5 個交易日 |
+| 事件預測 | `event` | 重要財報（輝達、台積電、記憶體三檔的法說）或總經事件（FOMC、CPI）之前 | 不限。必須在 `event_time` 之前合併 |
+| 推論轉預測 | `inference` | 深度更新或追蹤時，推論的不成立條件能寫成可判定的條件 | 不限 |
+
+### 欄位
+
+| 欄位 | 寫法 |
+| --- | --- |
+| `id` | `W`（週預測）、`E`（事件預測）或 `P`（推論轉預測）開頭，接寫的日期和短名，例如 `W-20261117-taiex`。不能重複使用 |
+| `event`、`event_time` | 只有事件預測要寫。`event_time` 要帶時區 |
+| `method`、`method_version` | `forced-selling`、`business-cycle`、`timing-revenue`、`fixed-standard`、`judgment`（綜合判斷，不必寫版本）。固定標準的版本寫 `v2`，方法檔寫該檔最新一筆更新紀錄的日期 |
+| `reasoning` | 理由和依據。數字附資料來源，媒體說法註明「轉述」，寫法和「證據寫法」相同。也要寫最強的反面理由 |
+| `claim` | 見下表 |
+| `horizon_sessions` | 幾個交易日後判定，1–252 |
+| `probability` | 0.5 以上、1 以下。條件要寫成自己認為會發生的方向 |
+| `written_at` | 寫的時間，帶時區。只供參考，起算點不看這個欄位 |
+| `withdrawn` | 撤回時寫 `date` 和 `reason` |
+| `review` | 回顧時寫 `date`、`cause`、`note`、`action`。人工判定的預測另外寫 `outcome`（`hit` 或 `miss`） |
+
+`claim` 的種類：
+
+| `kind` | 判定方式 | 欄位 |
+| --- | --- | --- |
+| `return` | 起算收盤到檢查日收盤的報酬，大於（`>`）或小於（`<`）門檻 | `symbol`、`op`、`threshold_pct` |
+| `close_at_check` | 檢查日的收盤高於或低於價位 | `symbol`、`op`、`level` |
+| `held` | 期間內每個交易日都守住價位。`basis` 是 `close`（收盤）或 `intraday`（最低價或最高價） | `symbol`、`op`、`level`、`basis` |
+| `manual` | 文字條件，到期由回顧者判定 | `text` |
+
+`symbol` 只能用 pipeline 已經在抓價的標的：加權指數 `TAIEX`、核心 ETF、衛星股和產業觀察股。其他標的（輝達、費半、美股）用 `manual`。格式由 `tests/test_prediction_ledger.py` 在 PR 時檢查，錯誤訊息會寫出怎麼改。
+
+### 起算點和作廢
+
+- **起算點**：這筆預測第一次出現在 main 的 commit 時間（First seen），當下最近一個已完成的交易日就是起算日。收盤後 60 分鐘才算完成，和 pipeline 相同。不必自己填起算日。
+- **檢查日**：起算後第 N 個有官方日線的交易日。颱風停市等沒有開盤的日子不算。
+- **作廢**：
+  - 事件預測合併的時間晚於 `event_time`。
+  - 合併後改了 `withdrawn` 和 `review` 以外的欄位。要修正，就撤回再新增一筆。
+- **不刪除**：錯的預測也留著。
+
+### 週回顧
+
+```text
+週回顧
+```
+
+Agent 依序做以下幾件事，全部放在同一個 PR：
+
+1. 列出到期的預測，判定結果。自動評分上線前手算，寫在 `review.note`，附檢查日收盤和資料來源。
+2. 寫回顧。`cause` 是 `method`（方法錯）、`data`（資料錯）、`event`（突發事件）、`noise`（雜訊）或 `correct`（判斷正確）；`action` 是 `keep`、`watch` 或 `revise`。
+3. 有教訓時，在方法檔的「應用紀錄」記一筆。
+4. 寫下一週的週預測。
+
+### 升版門檻
+
+- 自動評分上線後，成績表會依方法版本計算 Brier 分數，並和基準率比較。基準率是起算日以前 5 年、同樣長度的期間，有多少比例符合同一個條件。
+- 同一個方法版本累積至少 10 筆已評分、有基準率的預測，而且 Brier 分數比基準率差，才檢討方法。改方法就升版，在更新紀錄寫原因，舊版成績保留。
+- 不到 10 筆只記錄，不改方法。固定標準 v2 照「固定標準」一節的規則：先回測，再升版。
+- 推論可以引用預測 `id`。預測不是證據，不能當成證據引用。

@@ -1,0 +1,89 @@
+# 預測紀錄（#183）。寫法見 README 的「預測紀錄」。非買賣建議。
+#
+# 起算點是這筆預測第一次合併到 main 的時間（First seen），不必自己填。
+# 合併後只能改 withdrawn 和 review；其他欄位改了，這筆預測作廢。要修正就撤回，再新增一筆。
+# 不刪除預測。
+predictions:
+  - id: E-20261117-nvda
+    trigger: event
+    event: 輝達 FY2027 第三季財報（美國 11/17 收盤後公布）
+    event_time: "2026-11-17T16:00:00-05:00"
+    method: judgment
+    reasoning: >-
+      預期已經降低：黃仁勳 11/12 辭職後，加權指數 11/16 跌 2,635.04 點（−6.03%），11/17 再跌 947.97 點（−2.31%），
+      收 40,092.11，兩天跌 8.2%（證交所 FMTQIK）。媒體把 11/16 的大跌歸因於輝達執行長請辭、費半重挫，
+      以及美國通膨和升息的疑慮（聯合報 https://udn.com/news/story/7251/9881656 ，轉述）。
+      財報本身：公司上一季給的營收指引是 1,080 億美元 ±2%，市場共識約 1,090 億美元
+      （https://www.trendingtopics.eu/nvidias-first-earnings-without-huang-wall-street-expects-109-billion-in-revenue/ ，轉述）；
+      門檻不高，只要指引沒有下修，台股隔天就有機會反彈。
+      反面：外資 11/16、11/17 賣超 701.9、380.9 億元，投信 11/16 也轉為賣超 183.0 億元（證交所 BFI82U）；
+      代理執行長的第一次財報有關鍵人物風險；12/8–9 FOMC 預期升息。
+      機率只比五五波高一點：隔天的漲跌接近雜訊，這筆主要是檢驗事件判斷。
+    claim:
+      kind: return
+      symbol: TAIEX
+      op: ">"
+      threshold_pct: 0
+    horizon_sessions: 1
+    probability: 0.55
+    written_at: "2026-11-18T00:30:00+08:00"
+
+  - id: W-20261117-taiex
+    trigger: weekly
+    method: judgment
+    reasoning: >-
+      兩天跌 8.2%，收 40,092.11，比 7/29 低點 39,384.85 只高 1.8%。
+      上一次急跌（11/06 跌 4.51%）之後 3 個交易日漲 11.5%，但那次有國安基金進場和限空令（market-tw.md 的證據紀錄）。
+      這次籌碼也在清：上市融資金額從 11/13 的 5,366.0 億元降到 11/17 的 5,087.2 億元，兩天減少 278.8 億元（證交所 MI_MARGN）。
+      金管會、證交所 11/16 表示必要時會採取穩定措施（經濟日報 https://money.udn.com/money/story/5607/9882744 ，轉述）。
+      反面：這次賣壓的起點是 AI 龍頭的治理事件和升息疑慮，不只是籌碼；投信也從買方轉為賣方；
+      輝達財報如果下修指引，跌勢可能延續。
+      第一筆週預測，在週二晚上寫；之後在週末寫，下週一開盤前合併。
+    claim:
+      kind: return
+      symbol: TAIEX
+      op: ">"
+      threshold_pct: 0
+    horizon_sessions: 5
+    probability: 0.55
+    written_at: "2026-11-18T00:30:00+08:00"
+
+  - id: P-20261117-37837
+    trigger: inference
+    method: forced-selling
+    method_version: "2026-11-12"
+    reasoning: >-
+      market-tw.md 推論 4 和 method-forced-selling.md 11/12 的應用紀錄判斷被迫賣出在 11/06 結束，
+      不成立的條件之一是指數跌破 11/06 盤中低點 37,837.05。11/17 收盤 40,092.11，距離 −5.6%。
+      11/16 上市櫃有 174 家跌停（聯合報，轉述），比 11/06 收盤跌停的 65 檔多，但 11/06 盤中碰過跌停的有 831 檔，
+      兩者口徑不同，不能直接比。
+      機率 0.55：最近單日波動 2%–6%，10 個交易日內碰到 −5.6% 並不罕見；政策護盤的宣示讓我稍微偏向守住。
+      這筆只判定盤中最低價，方法檔的其他不成立條件（當沖占比、跌停家數、融資）在回顧時一起看。
+    claim:
+      kind: held
+      symbol: TAIEX
+      op: ">"
+      level: 37837.05
+      basis: intraday
+    horizon_sessions: 10
+    probability: 0.55
+    written_at: "2026-11-18T00:30:00+08:00"
+
+  - id: P-20261117-43307
+    trigger: inference
+    method: judgment
+    reasoning: >-
+      被迫賣出方法原作者的說法是：發文日（11/03，收 43,307.54）之後 21 個交易日的報酬為正；
+      過去 3 次案例都是 +11.40% 到 +20.26%（method-forced-selling.md）。第 21 個交易日約是 12/02。
+      11/17 收 40,092.11，要在 11 個交易日內漲 8.0% 以上，作者的說法才會成立。
+      11/06 之後 3 個交易日漲 11.5% 是有政策買盤的特例。
+      這筆預測的是作者的說法這次不成立。到期回顧時，結果也要記在方法檔的應用紀錄。
+      檢查日依合併時間推算：11/18 14:30 前合併，起算日是 11/17，第 11 個交易日是 12/02。
+    claim:
+      kind: close_at_check
+      symbol: TAIEX
+      op: "<"
+      level: 43307.54
+    horizon_sessions: 11
+    probability: 0.75
+    written_at: "2026-11-18T00:30:00+08:00"
