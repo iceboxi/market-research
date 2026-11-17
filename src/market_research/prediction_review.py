@@ -169,6 +169,39 @@ def result_text(record: dict) -> str:
             f"{record['check_session']} 收 {record['check_close']:,.2f}")
 
 
+# ---------------------------------------------------------------- weekly reminder
+
+def week_of(session) -> str:
+    year, week, _ = session.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+def weekly_reminder(records: list[dict], now: datetime, closed_sessions=()):
+    """The ISO week whose last session needs a reminder to write next week's prediction, else None.
+
+    It is due on the run whose latest completed session is the last one of its week (exchange
+    holidays and confirmed closures skipped), when no weekly prediction is still open and none
+    started within the last 5 sessions.
+    """
+    calendar = xcals.get_calendar("XTAI")
+    latest = expected_complete_session("tw", now, closed_sessions)
+    closed = {pd.Timestamp(day).date() for day in closed_sessions}
+    following = calendar.next_session(pd.Timestamp(latest)).date()
+    while following in closed:
+        following = calendar.next_session(pd.Timestamp(following)).date()
+    if following.isocalendar()[:2] == latest.isocalendar()[:2]:
+        return None
+    recent = {session.date() for session in calendar.sessions_window(pd.Timestamp(latest), -5)}
+    for record in records:
+        if record["trigger"] != "weekly":
+            continue
+        if record["status"] in ("pending", "not_evaluated"):
+            return None
+        if record["start_session"] and date.fromisoformat(record["start_session"]) in recent:
+            return None
+    return week_of(latest)
+
+
 # ---------------------------------------------------------------- evaluation
 
 def evaluate(entries: list[dict], history: dict, now: datetime, bars_fn=None,
