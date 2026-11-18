@@ -1,7 +1,7 @@
 {
   "coverage": "recent_daily_snapshot_only_not_a_full_history",
   "market": "tw",
-  "observed_at_utc": "2026-11-17T20:57:18.516837+00:00",
+  "observed_at_utc": "2026-11-18T10:23:38.191863+00:00",
   "schema_version": 1,
   "seen_ids": [
     "tw-material-236c2d60c85c2c73d394",
@@ -13,7 +13,9 @@
     "tw-material-a1892dfefdfbd2aa9efe",
     "tw-material-ea86e8594aa6b07e33c9",
     "tw-material-b130f3ae6462575989c9",
-    "tw-material-575952019850dbaf7206"
+    "tw-material-575952019850dbaf7206",
+    "tw-material-4090840c7bc8ca50d73a",
+    "tw-material-aa7b80a14c2c579b926c"
   ],
   "source": "https://openapi.twse.com.tw/v1/opendata/t187ap04_L",
   "symbol": "2454.TW"
