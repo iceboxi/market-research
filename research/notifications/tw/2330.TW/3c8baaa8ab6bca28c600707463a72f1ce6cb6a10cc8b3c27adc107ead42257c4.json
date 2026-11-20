@@ -10,7 +10,7 @@
     },
     "previous_snapshot_id": "fcfdc91f6f6eb918ff022449f0a923c4de431498bb5c2687028450fd9ef671cd"
   },
-  "creation_attempted": false,
+  "creation_attempted": true,
   "id": "3c8baaa8ab6bca28c600707463a72f1ce6cb6a10cc8b3c27adc107ead42257c4",
   "issue_number": null,
   "kind": "change_notification",
