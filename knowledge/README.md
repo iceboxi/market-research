@@ -165,7 +165,7 @@ Agent 會以 `knowledge/<檔案>.md` 作為前次結果，依序做以下幾件�
 
 [predictions.yaml](predictions.yaml) 記錄可以到期判定的預測，用來檢驗方法到底有沒有用。流程是：策略 → 預測 → 到期評分 → 回顧 → 升版（[#183](https://github.com/iceboxi/market-research/issues/183)）。非買賣建議。
 
-每日排程會自動判定到期的價格類預測（`return`、`close_at_check`、`held`），結果留言在[預測回顧 Issue](https://github.com/iceboxi/market-research/issues/192)，成績表也會發布到網頁的預測紀錄頁。`manual` 預測和回顧仍在週回顧時寫。
+每日排程會自動判定到期的價格類預測（`return`、`close_at_check`、`held`、`range`），`held` 一跌破價位就判定未命中，不等檢查日。結果留言在[預測回顧 Issue](https://github.com/iceboxi/market-research/issues/192)，成績表也會發布到網頁的預測紀錄頁。`manual` 預測和回顧仍在週回顧時寫。
 
 ### 什麼時候寫
 
@@ -186,6 +186,7 @@ Agent 會以 `knowledge/<檔案>.md` 作為前次結果，依序做以下幾件�
 | `claim` | 見下表 |
 | `horizon_sessions` | 幾個交易日後判定，1–252 |
 | `probability` | 0.5 以上、1 以下。條件要寫成自己認為會發生的方向 |
+| `decision` | 這筆預測對應知識庫哪一條決策規則（`rule`），命中（`if_hit`）和未命中（`if_miss`）時這條規則怎麼走。id 日期在 2026-11-22 以後必填，合併後不能改 |
 | `written_at` | 寫的時間，帶時區。只供參考，起算點不看這個欄位 |
 | `withdrawn` | 撤回時寫 `date` 和 `reason` |
 | `review` | 回顧時寫 `date`、`cause`、`note`、`action`。人工判定的預測另外寫 `outcome`（`hit` 或 `miss`） |
@@ -196,10 +197,25 @@ Agent 會以 `knowledge/<檔案>.md` 作為前次結果，依序做以下幾件�
 | --- | --- | --- |
 | `return` | 起算收盤到檢查日收盤的報酬，大於（`>`）或小於（`<`）門檻 | `symbol`、`op`、`threshold_pct` |
 | `close_at_check` | 檢查日的收盤高於或低於價位 | `symbol`、`op`、`level` |
-| `held` | 期間內每個交易日都守住價位。`basis` 是 `close`（收盤）或 `intraday`（最低價或最高價） | `symbol`、`op`、`level`、`basis` |
+| `held` | 期間內每個交易日都守住價位。`basis` 是 `close`（收盤）或 `intraday`（最低價或最高價）。跌破的那天就判定未命中 | `symbol`、`op`、`level`、`basis` |
+| `range` | 檢查日的收盤落在 `low` 到 `high` 之間（含兩端）。`probability` 是區間應該涵蓋的比例，例如五成區間寫 0.5 | `symbol`、`low`、`high` |
 | `manual` | 文字條件，到期由回顧者判定 | `text` |
 
 `symbol` 只能用 pipeline 已經在抓價的標的：加權指數 `TAIEX`、核心 ETF、衛星股和產業觀察股。其他標的（輝達、費半、美股）用 `manual`。格式由 `tests/test_prediction_ledger.py` 在 PR 時檢查，錯誤訊息會寫出怎麼改。
+
+### 怎麼寫才能用
+
+只寫漲跌，機率通常貼近基準率（過去 5 年加權指數 5 天後收高約 0.58），也對應不到價位和動作。id 日期在 2026-11-22 以後，門檻是 0 的 `return` 不會通過檢查。改寫成：
+
+| 寫法 | 例子 | `kind` |
+| --- | --- | --- |
+| 觸價 | 21 個交易日內盤中守住 31,706 | `held`，從機率 0.5 以上的那一邊寫 |
+| 幅度 | 21 個交易日內收盤不站回 39,385；第 21 天收盤高於 38,000 | `held`（`basis: close`）、`close_at_check`，或門檻不是 0 的 `return` |
+| 區間 | 第 5 天收盤落在 35,750–37,600（五成） | `range` |
+
+- 價位用知識庫已經寫下的規則價位（停止加碼的那條線、轉折低點），才接得上 `decision`。
+- 機率從 `knowledge/data` 算：條件相近的歷史日子（例如大跌而且當沖退場），以及過去 5 年所有同長度期間的比例，兩個都寫在 `reasoning`。
+- 價位還沒經過預測紀錄驗證前，不是買賣價（AGENTS.md）。預測紀錄就是讓價位累積成績的地方。
 
 ### 起算點和作廢
 
@@ -226,6 +242,7 @@ Agent 依序做以下幾件事，全部放在同一個 PR：
 ### 升版門檻
 
 - 成績表依方法版本計算 Brier 分數，並和基準率比較。基準率是起算日以前 5 年、同樣長度的期間，有多少比例符合同一個條件。
+- 區間預測另外列覆蓋率：同一個設定機率的區間，實際有多少比例落在區間內，以及區間平均多寬。0.8 的區間只有五成落在裡面，代表區間畫太窄。
 - 同一個方法版本累積至少 10 筆已評分、有基準率的預測，而且 Brier 分數比基準率差，才檢討方法。改方法就升版，在更新紀錄寫原因，舊版成績保留。
 - 不到 10 筆只記錄，不改方法。固定標準 v2 照「固定標準」一節的規則：先回測，再升版。
 - 推論可以引用預測 `id`。預測不是證據，不能當成證據引用。

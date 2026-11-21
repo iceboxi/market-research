@@ -15,7 +15,7 @@ import yaml
 
 TRIGGERS = {"weekly", "event", "inference"}
 METHODS = {"forced-selling", "business-cycle", "timing-revenue", "fixed-standard", "judgment"}
-CLAIM_KINDS = {"return", "close_at_check", "held", "manual"}
+CLAIM_KINDS = {"return", "close_at_check", "held", "range", "manual"}
 OPS = {">", "<"}
 BASES = {"close", "intraday"}
 CAUSES = {"method", "data", "event", "noise", "correct"}
@@ -25,12 +25,17 @@ WEEKLY_SYMBOL, WEEKLY_HORIZON = "TAIEX", 5
 MAX_HORIZON = 252
 ID_RE = re.compile(r"^[A-Z]-\d{8}-[a-z0-9-]+$")
 ENTRY_KEYS = {"id", "trigger", "event", "event_time", "method", "method_version", "reasoning",
-              "claim", "horizon_sessions", "probability", "written_at", "withdrawn", "review"}
+              "claim", "horizon_sessions", "probability", "decision", "written_at", "withdrawn", "review"}
 REQUIRED = {"id", "trigger", "method", "reasoning", "claim", "horizon_sessions", "probability"}
 CLAIM_KEYS = {"return": {"kind", "symbol", "op", "threshold_pct"},
               "close_at_check": {"kind", "symbol", "op", "level"},
               "held": {"kind", "symbol", "op", "level", "basis"},
+              "range": {"kind", "symbol", "low", "high"},
               "manual": {"kind", "text"}}
+DECISION_KEYS = {"rule", "if_hit", "if_miss"}
+# From this id date on, a prediction names the knowledge-base decision rule it tests and is more
+# than a bare up/down call (user feedback 2026-11-20: direction alone cannot be acted on).
+ACTIONABLE_FROM = date(2026, 11, 22)
 
 
 class LedgerError(ValueError):
@@ -84,6 +89,11 @@ def _check_claim(pid, claim, symbols):
         return
     if claim["symbol"] not in symbols:
         raise LedgerError(f"{pid}: {claim['symbol']} 不在 pipeline 抓價的標的內，改用 kind: manual")
+    if kind == "range":
+        low, high = _number(claim["low"], f"{pid}: claim.low"), _number(claim["high"], f"{pid}: claim.high")
+        if not 0 < low < high:
+            raise LedgerError(f"{pid}: range 的 low 要大於 0，而且小於 high")
+        return
     if claim["op"] not in OPS:
         raise LedgerError(f"{pid}: claim.op 要是 '>' 或 '<'")
     if kind == "return":
@@ -93,6 +103,20 @@ def _check_claim(pid, claim, symbols):
             raise LedgerError(f"{pid}: claim.level 要大於 0")
     if kind == "held" and claim["basis"] not in BASES:
         raise LedgerError(f"{pid}: held 的 basis 要是 close（收盤）或 intraday（最低／最高價）")
+
+
+def _written_on(pid):
+    try:
+        return datetime.strptime(str(pid)[2:10], "%Y%m%d").date()
+    except ValueError:
+        raise LedgerError(f"{pid}: id 裡的日期不是有效日期") from None
+
+
+def _check_decision(pid, decision):
+    if (not isinstance(decision, dict) or set(decision) != DECISION_KEYS
+            or not all(str(decision[key] or "").strip() for key in DECISION_KEYS)):
+        raise LedgerError(f"{pid}: decision 要寫 rule（對應知識庫哪一條決策規則）、if_hit 和 if_miss"
+                          "（命中、未命中時這條規則怎麼走）")
 
 
 def _check_review(pid, review, manual):
@@ -145,6 +169,14 @@ def check_entry(entry, symbols):
     _check_claim(pid, claim, symbols)
     if trigger == "weekly" and (claim.get("symbol") != WEEKLY_SYMBOL or horizon != WEEKLY_HORIZON):
         raise LedgerError(f"{pid}: 週預測的標的是 {WEEKLY_SYMBOL}，期間 {WEEKLY_HORIZON} 個交易日")
+    if _written_on(pid) >= ACTIONABLE_FROM:
+        if "decision" not in entry:
+            raise LedgerError(f"{pid}: 要寫 decision：對應知識庫哪一條決策規則，命中和未命中時這條規則怎麼走")
+        if claim["kind"] == "return" and claim["threshold_pct"] == 0:
+            raise LedgerError(f"{pid}: 只預測漲跌對應不到動作；改寫成觸價（held）、幅度（close_at_check，"
+                              "或門檻不是 0 的 return）或區間（range）")
+    if "decision" in entry:
+        _check_decision(pid, entry["decision"])
     if "written_at" in entry:
         _aware(entry["written_at"], f"{pid}: written_at")
     if "withdrawn" in entry:
