@@ -20,8 +20,8 @@ import yaml
 from market_research.market_data import load_daily_bars
 from market_research.prediction_ledger import load_ledger, supported_symbols
 from market_research.prediction_review import (
-    STATUS_LABELS, TRIGGER_LABELS, base_rate, base_rate_since, deleted, evaluate, result_text, scorecard,
-    weekly_reminder,
+    STATUS_LABELS, TRIGGER_LABELS, base_rate, base_rate_since, deleted, evaluate, range_coverage, result_text,
+    scorecard, weekly_reminder,
 )
 from market_research.twse import LOOKBACK_MONTHS
 from scripts.research_github import GitHubResearchSink
@@ -135,6 +135,15 @@ def render_scorecard(records):
         lines.append(f"| {_cell(row['label'])} | {row['judged']} | {_ratio(row['hit_rate'])} | "
                      f"{_ratio(row['mean_probability'])} | {_ratio(row['brier'], 4)} | {row['with_base']} | "
                      f"{_ratio(row['brier_with_base'], 4)} | {_ratio(row['base_brier'], 4)} |")
+    coverage = range_coverage(records)
+    if coverage:
+        lines += ["", "區間預測：設定機率是區間應該涵蓋收盤的比例，實際比例越接近越好；寬度是區間占起算收盤的百分比，"
+                  "同樣的覆蓋率下越窄越有用。", "",
+                  "| 設定機率 | 已判定 | 落在區間內 | 實際比例 | 平均寬度 |", "| ---: | ---: | ---: | ---: | ---: |"]
+        for row in coverage:
+            width = "—" if row["mean_width_pct"] is None else f"{row['mean_width_pct']:.1f}%"
+            lines.append(f"| {row['probability']:.2f} | {row['judged']} | {row['inside']} | "
+                         f"{row['coverage']:.2f} | {width} |")
     return lines
 
 
@@ -190,6 +199,15 @@ def render_body(records, as_of, run_url, announced, removed=(), reminded_week=No
 PAGE_NAME = "predictions.md"
 
 
+def _decision_lines(decision):
+    return [f"- 對應規則：{_line(decision['rule'])}", f"- 命中時：{_line(decision['if_hit'])}",
+            f"- 未命中時：{_line(decision['if_miss'])}"]
+
+
+def _line(text):
+    return " ".join(str(text).split())
+
+
 def render_page(records, entries, as_of, run_url, removed=()):
     """The knowledge-site scorecard page: same tables as the Issue body, plus each reason."""
     ledger_url = f"{REPO_URL}/blob/main/{LEDGER.as_posix()}"
@@ -197,11 +215,12 @@ def render_page(records, entries, as_of, run_url, removed=()):
              f"**{DISCLAIMER}。** 資料日期：{as_of}（[執行紀錄]({run_url})）。每日 TW 排程判定"
              f"[預測紀錄]({ledger_url})裡到期的預測，寫法見[知識庫 README](README.md#預測紀錄)。", "",
              *render_scorecard(records), "", "## 預測", "", *render_table(records), *render_deleted(removed)]
-    reasons = [(e["id"], " ".join(str(e.get("reasoning") or "").split())) for e in entries]
-    if reasons:
+    if entries:
         lines += ["", "## 理由", ""]
-        for pid, text in reasons:
-            lines += [f"### {pid}", "", text or "—", ""]
+        for entry in entries:
+            lines += [f"### {entry['id']}", "", _line(entry.get("reasoning") or "") or "—", ""]
+            if entry.get("decision"):
+                lines += [*_decision_lines(entry["decision"]), ""]
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
@@ -234,6 +253,12 @@ def render_comment(changes, as_of, run_id, run_url, note=None, reminder=None):
         for r in changes:
             lines.append(f"| `{r['id']}` | {_cell(r['condition'])} | {r['probability']:.2f} | "
                          f"{r['start_session'] or '—'} | {_check(r)} | {_cell(_status(r))} |")
+        actions = [f"- `{r['id']}` {STATUS_LABELS[r['status']]}："
+                   f"{_line(r['decision']['if_hit' if r['status'] == 'hit' else 'if_miss'])}"
+                   f"（規則：{_line(r['decision']['rule'])}）"
+                   for r in changes if r.get("decision") and r["status"] in ("hit", "miss")]
+        if actions:
+            lines += ["", "對應規則怎麼走：", "", *actions]
         lines += ["", "到期的預測請在對話中說「週回顧」寫回顧。"]
     if reminder:
         lines += ["", f"**週預測提醒**：本週（{reminder}）結束後沒有未到期的週預測。"
