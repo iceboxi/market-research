@@ -21,20 +21,12 @@
     "tw-material-26af971f197df2d2c351",
     "tw-material-50e68e303ffc56417812",
     "tw-material-77ad261ab59b45265735",
-    "tw-material-d8a82879165c1b8717b0"
+    "tw-material-d8a82879165c1b8717b0",
+    "tw-material-ef0eff34c32cc11ee970"
   ],
   "consumed_financial_version": "ifrs-2026-09-30",
-  "last_completed_snapshot_id": "c502032220aa34da5d918092f86a4138e9a364d115620ac408eccacf12b2c679",
-  "pending_rerun": {
-    "reasons": [
-      "new_official_events"
-    ],
-    "request_id": "d4f584e58d343e37af63b348c968858903add50bf9030cc7f40a782cd5bf8cdc",
-    "target_financial_version": null,
-    "trigger_event_ids": [
-      "tw-material-ef0eff34c32cc11ee970"
-    ]
-  },
+  "last_completed_snapshot_id": "7282b0bbb4f89169221c79be1f41f5ad066d01d6211c40957e4b1d2072ec36e5",
+  "pending_rerun": null,
   "schema_version": 1,
   "symbol": "2330.TW"
 }
