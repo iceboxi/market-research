@@ -3,9 +3,10 @@
 A prediction starts at the latest completed TWSE session when it first appeared on main (First
 seen), so nothing written after the fact can count. A due price prediction is judged from
 official daily bars: the check session is the horizon-th bar after the start, so a closed day
-never counts. Missing bars or a failed source leave it not_evaluated, never a miss. Nothing here
-writes to the repository: every status is derived again from the ledger, its git history and
-prices on each run.
+never counts. A held claim is a miss on the first session that breaks its level, before it is
+due, because no later price can change that outcome. Missing bars or a failed source leave a due
+prediction not_evaluated, never a miss. Nothing here writes to the repository: every status is
+derived again from the ledger, its git history and prices on each run.
 """
 from __future__ import annotations
 
@@ -56,6 +57,8 @@ def claim_text(claim: dict, horizon: int) -> str:
     if claim["kind"] == "manual":
         return claim["text"]
     name = SYMBOL_NAMES.get(claim["symbol"], claim["symbol"])
+    if claim["kind"] == "range":
+        return f"{name} 第 {horizon} 個交易日收盤在 {_number(claim['low'])}–{_number(claim['high'])} 之間"
     op = claim["op"]
     if claim["kind"] == "return":
         return f"{name} {horizon} 個交易日報酬 {op} {claim['threshold_pct']:g}%"
@@ -116,8 +119,28 @@ def _start_basis(frame, start_bar, check):
     return prices, None
 
 
+def _early_miss(claim, frame, start_bar, window):
+    """The first session in a partial window where a held claim already broke its level, else None."""
+    prices, reason = _start_basis(frame, start_bar, window[-1])
+    if reason:
+        return None
+    above = claim["op"] == ">"
+    column = "close" if claim["basis"] == "close" else ("low" if above else "high")
+    for day in window:
+        price = float(prices.loc[day, column])
+        if not (price > claim["level"] if above else price < claim["level"]):
+            return {"status": "miss", "decided_early": True, "start_bar": start_bar.isoformat(),
+                    "start_close": round(float(prices.loc[start_bar, "close"]), 4),
+                    "breach_session": day.isoformat(), "breach_price": round(price, 4)}
+    return None
+
+
 def judge(claim: dict, horizon: int, start, frame: pd.DataFrame, latest) -> dict:
-    """Status and evidence for one due price claim from official daily bars."""
+    """Status and evidence for one price claim from official daily bars.
+
+    Before the check session only a held claim can be decided (a miss on its first breach);
+    anything else stays pending.
+    """
     dates = [pd.Timestamp(d).date() for d in frame.index]
     before = [d for d in dates if d <= start]
     if not before:
@@ -125,6 +148,9 @@ def judge(claim: dict, horizon: int, start, frame: pd.DataFrame, latest) -> dict
     start_bar = before[-1]  # a closed start day falls back to the session before it
     after = [d for d in dates if start_bar < d <= latest]
     if len(after) < horizon:
+        early = _early_miss(claim, frame, start_bar, after) if claim["kind"] == "held" and after else None
+        if early:
+            return early
         if dates[-1] >= latest:
             return {"status": "pending", "reason": f"休市使檢查日延後（已有 {len(after)}／{horizon} 個交易日）"}
         return {"status": "not_evaluated", "reason": f"缺 {latest} 以前的行情（最新 {dates[-1]}）"}
@@ -136,8 +162,10 @@ def judge(claim: dict, horizon: int, start, frame: pd.DataFrame, latest) -> dict
     start_close, check_close = float(prices.loc[start_bar, "close"]), float(prices.loc[check, "close"])
     detail = {"start_bar": start_bar.isoformat(), "start_close": round(start_close, 4),
               "check_session": check.isoformat(), "check_close": round(check_close, 4)}
-    above = claim["op"] == ">"
-    if claim["kind"] == "return":
+    above = claim.get("op") == ">"
+    if claim["kind"] == "range":
+        hit = claim["low"] <= check_close <= claim["high"]
+    elif claim["kind"] == "return":
         pct = (check_close / start_close - 1) * 100
         detail["return_pct"] = round(pct, 4)
         hit = pct > claim["threshold_pct"] if above else pct < claim["threshold_pct"]
@@ -155,6 +183,9 @@ def judge(claim: dict, horizon: int, start, frame: pd.DataFrame, latest) -> dict
 
 def result_text(record: dict) -> str:
     """The evidence behind a status, for the Issue body and comments."""
+    if record.get("decided_early"):
+        return (f"{record['breach_session']} {_held_price(record['claim'])} {record['breach_price']:,.2f}，"
+                f"未到檢查日就確定；{record['start_bar']} 收 {record['start_close']:,.2f}")
     if record["status"] not in ("hit", "miss") or "check_close" not in record:
         return record.get("reason") or ""
     claim = record["claim"]
@@ -211,12 +242,18 @@ def base_rate(claim: dict, horizon: int, start, frame: pd.DataFrame) -> dict:
     days = list(prices.index)
     gap_index = {days.index(g) for g in gaps}
     close = prices["close"].to_numpy()
-    above = claim["op"] == ">"
+    above = claim.get("op") == ">"
     start_close = float(prices.loc[start_bar, "close"])
-    if claim["kind"] == "return":
-        threshold = claim["threshold_pct"] / 100
+    if claim["kind"] == "range":
+        low, high = claim["low"] / start_close - 1, claim["high"] / start_close - 1
+
+        def met(change):
+            return low <= change <= high
     else:
-        threshold = claim["level"] / start_close - 1
+        threshold = claim["threshold_pct"] / 100 if claim["kind"] == "return" else claim["level"] / start_close - 1
+
+        def met(change):
+            return change > threshold if above else change < threshold
     column = None
     if claim["kind"] == "held":
         column = prices["close" if claim["basis"] == "close" else ("low" if above else "high")].to_numpy()
@@ -233,7 +270,7 @@ def base_rate(claim: dict, horizon: int, start, frame: pd.DataFrame) -> dict:
             span = column[i + 1:i + horizon + 1]
             change = (span.min() if above else span.max()) / close[i] - 1
         windows += 1
-        hits += bool(change > threshold if above else change < threshold)
+        hits += bool(met(change))
     if not windows:
         return {"status": "not_evaluated", "reason": "沒有可比較的窗口", "retry": False}
     return {"status": "available", "rate": round(float(hits) / windows, 4), "windows": windows,
@@ -272,6 +309,27 @@ def scorecard(records: list[dict]) -> list[dict]:
             "brier_with_base": _mean([brier(r["probability"], r["status"] == "hit") for r in based]),
             "base_brier": _mean([brier(r["base_rate"]["rate"], r["status"] == "hit") for r in based]),
         })
+    return rows
+
+
+def range_coverage(records: list[dict]) -> list[dict]:
+    """Judged range predictions by stated probability: how often the close fell inside, and how wide.
+
+    A well-calibrated 0.8 range holds the close about 80% of the time; the width, relative to
+    the start close, shows whether that coverage came from a useful interval or a very wide one.
+    """
+    groups = {}
+    for r in records:
+        if (r.get("claim") or {}).get("kind") == "range" and r["status"] in ("hit", "miss"):
+            groups.setdefault(r["probability"], []).append(r)
+    rows = []
+    for probability in sorted(groups):
+        items = groups[probability]
+        inside = sum(r["status"] == "hit" for r in items)
+        widths = [(r["claim"]["high"] - r["claim"]["low"]) / r["start_close"] * 100
+                  for r in items if r.get("start_close")]
+        rows.append({"probability": probability, "judged": len(items), "inside": inside,
+                     "coverage": inside / len(items), "mean_width_pct": _mean(widths)})
     return rows
 
 
@@ -317,11 +375,12 @@ def evaluate(entries: list[dict], history: dict, now: datetime, bars_fn=None,
     `history` maps an id to {"first_seen": aware datetime, "entry": the First seen version} from
     main's git history; an id missing from it has not reached main yet and stays pending without
     a start. A field other than withdrawn or review that changed since First seen voids it. `bars_fn(symbol, since)`
-    returns official daily bars from `since`; it is called only for due price predictions, once
-    per symbol, and a raised error leaves those predictions not_evaluated.
+    returns official daily bars from `since`; it is called once per symbol for due price
+    predictions and for held predictions not yet due (to catch a breach). A raised error leaves
+    the due ones not_evaluated and the others pending.
     """
     latest = expected_complete_session("tw", now, closed_sessions)
-    records, due = [], []
+    records, due, watch = [], [], []
     for entry in entries:
         pid, horizon = entry["id"], entry["horizon_sessions"]
         seen = (history.get(pid) or {}).get("first_seen")
@@ -329,7 +388,8 @@ def evaluate(entries: list[dict], history: dict, now: datetime, bars_fn=None,
             "id": pid, "trigger": entry["trigger"], "method": entry["method"],
             "method_version": entry.get("method_version"), "claim": entry["claim"],
             "condition": claim_text(entry["claim"], horizon), "probability": entry["probability"],
-            "horizon_sessions": horizon, "first_seen": seen.isoformat() if seen else None,
+            "horizon_sessions": horizon, "decision": entry.get("decision"),
+            "first_seen": seen.isoformat() if seen else None,
             "start_session": None, "expected_check_session": None, "status": "pending",
             "reason": None,
         }
@@ -357,24 +417,35 @@ def evaluate(entries: list[dict], history: dict, now: datetime, bars_fn=None,
                 record.update(status=outcome, reason=f"人工判定（{entry['review']['date']}）")
             elif check is not None and latest >= check:
                 record.update(status="awaiting_review", reason="已到期，請在回顧寫 review.outcome")
-        elif check is None:
-            record["reason"] = "檢查日超出交易所行事曆，之後再推算"
-        elif latest >= check:
+        elif check is not None and latest >= check:
             due.append((record, start))
-    frames = {}
-    for record, start in due:
+        else:
+            if check is None:
+                record["reason"] = "檢查日超出交易所行事曆，之後再推算"
+            if entry["claim"]["kind"] == "held":
+                watch.append((record, start))
+    frames, fetch = {}, due + watch
+    for record, start in fetch:
         symbol = record["claim"]["symbol"]
         if symbol not in frames:
-            since = min(s for r, s in due if r["claim"]["symbol"] == symbol)
+            since = min(s for r, s in fetch if r["claim"]["symbol"] == symbol)
             try:
                 if bars_fn is None:
                     raise RuntimeError("沒有行情來源")
                 frames[symbol] = bars_fn(symbol, since)
             except Exception as error:  # one symbol's source failure never blocks the others
                 frames[symbol] = error
-        frame = frames[symbol]
+    for record, start in due:
+        frame = frames[record["claim"]["symbol"]]
         if isinstance(frame, Exception):
             record.update(status="not_evaluated", reason=f"行情取得失敗：{type(frame).__name__}：{frame}")
             continue
         record.update(judge(record["claim"], record["horizon_sessions"], start, frame, latest))
+    for record, start in watch:  # not due: only a breach changes the status
+        frame = frames[record["claim"]["symbol"]]
+        if isinstance(frame, Exception):
+            continue
+        result = judge(record["claim"], record["horizon_sessions"], start, frame, latest)
+        if result["status"] == "miss":
+            record.update(result, reason=None)
     return records

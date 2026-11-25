@@ -60,6 +60,11 @@ def _with(**changes):
     (_with(review={"date": "2026-11-24", "cause": "noise", "note": "n", "action": "keep", "outcome": "hit"}),
      "自動評分的結果不寫在 outcome"),
     (_with(withdrawn={"date": "2026-11-20"}), "withdrawn 要寫 date 和 reason"),
+    (_with(claim={"kind": "range", "symbol": "TAIEX", "low": 37600, "high": 35750}), "range 的 low 要大於 0，而且小於 high"),
+    (_with(claim={"kind": "range", "symbol": "TAIEX", "op": ">", "low": 35750, "high": 37600}), "range 的 claim 欄位要剛好是"),
+    (_with(decision={"rule": "0050 停止加碼", "if_hit": "維持"}), "decision 要寫 rule"),
+    (_with(decision={"rule": "0050 停止加碼", "if_hit": "維持", "if_miss": " "}), "decision 要寫 rule"),
+    (_with(id="W-20261340-taiex"), "id 裡的日期不是有效日期"),
 ])
 def test_bad_entries_fail_with_the_fix(entry, message):
     with pytest.raises(LedgerError, match=message.replace("[", r"\[").replace("]", r"\]")):
@@ -86,3 +91,28 @@ def test_duplicate_ids_fail(tmp_path):
                     "     horizon_sessions: 5, probability: 0.55}\n", encoding="utf-8")
     with pytest.raises(LedgerError, match="id 重複"):
         load_ledger(path, SYMBOLS)
+
+
+DECISION = {"rule": "0050 停止加碼：收盤跌破 39,385", "if_hit": "停止加碼維持", "if_miss": "重算參考價位再談分批"}
+TOUCH = {"kind": "held", "symbol": "TAIEX", "op": ">", "level": 34232, "basis": "intraday"}
+
+
+def test_range_claim_passes():
+    check_entry(_with(claim={"kind": "range", "symbol": "TAIEX", "low": 35750, "high": 37600}), SYMBOLS)
+
+
+def test_predictions_written_from_11_22_name_their_decision_rule():
+    with pytest.raises(LedgerError, match="要寫 decision"):
+        check_entry(_with(id="W-20261122-taiex", claim=TOUCH), SYMBOLS)
+    check_entry(_with(id="W-20261122-taiex", claim=TOUCH, decision=DECISION), SYMBOLS)
+    check_entry(_with(decision=DECISION), SYMBOLS)  # older ids may carry one too
+
+
+def test_a_bare_up_down_call_is_rejected_from_11_22():
+    # The draft W-20261120-taiex (TAIEX 5-day return > 0) that the user found impossible to act on.
+    draft = _with(id="W-20261122-taiex", decision=DECISION,
+                  claim={"kind": "return", "symbol": "TAIEX", "op": ">", "threshold_pct": 0})
+    with pytest.raises(LedgerError, match="只預測漲跌對應不到動作"):
+        check_entry(draft, SYMBOLS)
+    check_entry({**draft, "claim": {**draft["claim"], "threshold_pct": 3}}, SYMBOLS)  # a magnitude is fine
+    check_entry(copy.deepcopy(VALID), SYMBOLS)  # entries written before 11/22 keep their format
