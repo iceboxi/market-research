@@ -1,6 +1,6 @@
 # 歷史資料
 
-抓取日：2026-11-20｜資料到 2026-11-19 收盤｜用途：推論和回測的歷史對照。非買賣建議。
+抓取日：2026-11-26｜資料到 2026-11-26 收盤（美股到 11/25，11/26 感恩節休市）｜用途：推論和回測的歷史對照。非買賣建議。
 
 ## 怎麼用
 
@@ -19,9 +19,9 @@
 | [market/margin_daily.csv](market/margin_daily.csv) | 上市融資餘額（張、元）、融券餘額，融資買進、賣出、現金償還（張） | 2001-01-03 起 | FinMind `TaiwanStockTotalMarginPurchaseShortSale` | 籌碼止穩、融資斷頭 |
 | [market/institutional_daily.csv](market/institutional_daily.csv) | 三大法人買賣超（元）。自營商 2014-11 以前只有合計 `Dealer_net`，之後分成自行買賣和避險 | 2004-04-07 起 | FinMind `TaiwanStockTotalInstitutionalInvestors` | 外資賣超縮小 |
 | [market/etf_daily.csv](market/etf_daily.csv) | 0050、00631L 收盤，沒有還原 | 0050 2003-06-30 起；00631L 2014-10-31 起 | FinMind `TaiwanStockPrice` | 0050 分批、00631L 耗損 |
-| [market/limit_down_days.csv](market/limit_down_days.csv) | 事件日和隔天的跌停結構：跌幅達門檻的家數、鎖死沒有委買的家數、鎖單合計和中位數、盤中碰過跌停的家數、官方漲跌停家數 | 2004-02-11 起，111 個事件日 | 證交所 `MI_INDEX`（`type=ALLBUT0999`） | 被迫賣出 |
+| [market/limit_down_days.csv](market/limit_down_days.csv) | 事件日和隔天的跌停結構：跌幅達門檻的家數、鎖死沒有委買的家數、鎖單合計和中位數、盤中碰過跌停的家數、官方漲跌停家數 | 2004-02-11 起，113 個事件日 | 證交所 `MI_INDEX`（`type=ALLBUT0999`） | 被迫賣出 |
 | [market/limit_down_locked_stocks.csv](market/limit_down_locked_stocks.csv) | 事件日鎖死跌停的個股和鎖單張數，以及隔天的漲跌 | 同上 | 同上 | 被迫賣出：鎖單少、隔夜衝擊 |
-| [market/day_trading_days.csv](market/day_trading_days.csv) | 事件日、前一天和隔天的當沖成交股數、買賣金額和占市場比重 | 資料 2014-01-06 起；事件日 2015-08-21 起，42 個 | 證交所 `TWTB4U` | 流動性 |
+| [market/day_trading_days.csv](market/day_trading_days.csv) | 事件日、前一天和隔天的當沖成交股數、買賣金額和占市場比重 | 資料 2014-01-06 起；事件日 2015-08-21 起，44 個 | 證交所 `TWTB4U` | 流動性 |
 | [market/disposition_stocks.csv](market/disposition_stocks.csv) | 上市股票的處置公告：公布日、代號、處置期間、第幾次處置 | 處置期間在 2004 年以後的公告（最早公布日 2003-12-26） | 證交所 `announcement/punish` | 處置股家數 |
 | `stocks/<代號>_daily.csv` | 日線、本益比、P/B、殖利率、總報酬指數 | 日線 1999 年或上市日起；本益比 2005-09-02 起（群聯 2007-01-02） | FinMind `TaiwanStockPrice`、`TaiwanStockPER`；總報酬指數自己算 | 衛星股本益比檢視區、記憶體 P/B v2 |
 | `stocks/<代號>_quarterly.csv` | 損益（`is_`，單季）：營收、毛利、營業利益、稅後淨利、歸屬母公司淨利、EPS。資產負債（`bs_`，季底）：資產、負債、母公司權益、存貨、現金。營業現金流（`cf_ytd_`，年初累計） | 1990–2002 年起，各檔不同，到 2026 Q3 | FinMind `TaiwanStockFinancialStatements`、`TaiwanStockBalanceSheet`、`TaiwanStockCashFlowsStatement` | ROE、P×Q、避開條件 |
@@ -65,7 +65,13 @@
 - **信用利差**：ICE 高收益債利差（`BAMLH0A0HYM2`）在 FRED 只有 2023-11 以後的資料，長期比較用 Baa 公司債和 10 年期公債的利差（`BAA10Y`）。
 - **FRED 月資料的寫法**：日、週資料取當月平均；季資料（`PNFI`、`GPDIC1`、`PCECC96`）放在每季的第一個月。
 - **處置公告**只收四碼、不是 0 開頭的股票，不含權證和 ETF。
-- **核對**：2026-11-19 的加權指數收盤、成交金額、融資、融券、三大法人，和 [market-tw.md](../market-tw.md) 直接查證交所的數字相同。
+- **核對**：2026-11-26 的加權指數開高低收、成交金額、融資、融券、三大法人、0050 和 00631L 收盤，以及 11/20–11/26 的當沖金額占比，和 [market-tw.md](../market-tw.md) 直接查證交所的數字相同。
+- **2026-11-26 重抓時的變動**：
+  - 舊快照的美股 2026-11-19 是美股盤中抓的值，這次換成收盤值（費半 9,805.20 → 9,419.72）。
+  - FRED 修正了工業生產指數（`INDPRO`）整段歷史，其他序列只動到最近一兩個月。
+  - 處置公告的 `count_in_period` 是證交所當下的累計次數，重抓時會變。
+  - 華邦電 2026-11-18 的除息（現金股利 2 元）FinMind 這次才有，總報酬指數從那天起重算。
+  - 11/19 當沖統計小幅修正（成交股數 4,259,348 千股 → 4,259,359 千股）。
 
 ## 重抓
 
