@@ -28,7 +28,16 @@
   ],
   "consumed_financial_version": "ifrs-2026-09-30",
   "last_completed_snapshot_id": "69adee05deba9a60e4db61ca17c61783ae30ea1f49b563d4f9aac0574aaf77c3",
-  "pending_rerun": null,
+  "pending_rerun": {
+    "reasons": [
+      "new_official_events"
+    ],
+    "request_id": "aa378c9018bf9f3be2df3b7567b438275f3bf4b7579e5c8726f8ec14607edc32",
+    "target_financial_version": null,
+    "trigger_event_ids": [
+      "tw-material-c2139000d8ce07697d90"
+    ]
+  },
   "schema_version": 1,
   "symbol": "2330.TW"
 }
