@@ -4,9 +4,9 @@
   "last_success_id": "24cd8936e35b1baa6a0685474ba5ef11692d6893c5c7fc18cbcdf604a3057268",
   "latest_observation_id": "24cd8936e35b1baa6a0685474ba5ef11692d6893c5c7fc18cbcdf604a3057268",
   "pending_notification_id": null,
-  "pending_publication_id": "e4f66a0a3041e5bf1d0545894233bcfb7b0e5b829be0de04da6992cdfb4ff817",
+  "pending_publication_id": null,
   "published_notification_id": "41369009eb1d849eabc16d541e26b160c935605a313f753878466b91ea1d792e",
-  "published_publication_id": "a5b7b0fc3e19c6b543281ed39b328e7c15341a54b685c1c9bc8d94db92052632",
+  "published_publication_id": "e4f66a0a3041e5bf1d0545894233bcfb7b0e5b829be0de04da6992cdfb4ff817",
   "schema_version": 2,
   "symbol": "2330.TW"
 }
