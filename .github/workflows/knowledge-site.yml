@@ -12,6 +12,12 @@ permissions:
   issues: write
 jobs:
   build:
+    # Same group as the scan job (scan.yml) and this run's pages job: the scan's
+    # manual dispatch also writes #192, so two runs must not sync it at once.
+    concurrency:
+      group: research-publication-production
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -26,7 +32,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
       - run: uv python install 3.12
-      - run: uv sync --extra dev --locked
+      - run: uv sync --locked
       - name: Sync prediction review Issue and scorecard page
         id: review
         if: github.ref == 'refs/heads/main'

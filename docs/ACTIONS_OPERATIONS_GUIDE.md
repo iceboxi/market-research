@@ -3,13 +3,14 @@
 > 專案採 Remote-first。日常研究不需要在本機安裝 Python、uv 或下載行情。
 > 這份文件給「要使用研究系統的人」；CI、state migration、策略驗收請由工程人員依 Issue 管理。
 
-## 最常用的 3 個入口
+## 最常用的入口
 
 | 需求 | Workflow | 如何執行 | 哪裡看結果 |
 | --- | --- | --- | --- |
-| 台股／美股盤後掃描 | [EOD market scan](https://github.com/iceboxi/market-research/actions/workflows/scan.yml) | 台股自動排程（美股排程已於 #117 停用，需要時手動執行）；要人工測試就 Run workflow，選擇 `main` 與 TW/US/both | Run Summary 和 `market-scan-...` Artifact；TW/both 的 `candidate-research-...` 含[每日固定2330與候選摘要](TW_DAILY_RESEARCH.md)，零候選也發布固定報告；main 的 TW/both 排程或手動執行在固定報告發布成功後，同步部署[研究網站](https://iceboxi.github.io/market-research/) |
+| 知識庫網頁與預測回顧 | [Knowledge site](https://github.com/iceboxi/market-research/actions/workflows/knowledge-site.yml) | 平日 15:40（臺灣）排程；知識庫合併後要立刻上線就 Run workflow → `main` | [知識庫網頁](https://iceboxi.github.io/market-research/knowledge/)與[預測回顧 Issue #192](https://github.com/iceboxi/market-research/issues/192)；網站根目錄導向知識庫 |
+| 台股／美股盤後掃描 | [EOD market scan](https://github.com/iceboxi/market-research/actions/workflows/scan.yml) | 手動 Run workflow，選擇 `main` 與 TW/US/both（台股排程已於 #206 停用，美股於 #117） | Run Summary 和 `market-scan-...` Artifact；TW/both 的 `candidate-research-...` 含[每日固定2330與候選摘要](TW_DAILY_RESEARCH.md)，零候選也發布固定報告；main 的 TW/both 手動執行在固定報告發布成功後部署研究網站，取代知識庫網站直到下一次 Knowledge site run |
 | 指定公司個股研究 | [On-demand company research](https://github.com/iceboxi/market-research/actions/workflows/company-research.yml) | Run workflow → `main` → 輸入 `2330.TW` 或 `AAPL` | `company-report-...` Artifact，含 `report.json`、`report.md` |
-| 追蹤官方事件變化 | [Official disclosure watch](https://github.com/iceboxi/market-research/actions/workflows/event-watch.yml) | 正式 state migration 完成後由排程自動執行；必要時由工程人員人工 dispatch | `official-event-watch-...` Artifact，包括來源覆蓋、狀態恢復、保存與差異 receipt |
+| 追蹤官方事件變化 | [Official disclosure watch](https://github.com/iceboxi/market-research/actions/workflows/event-watch.yml) | 手動 dispatch（排程已於 #206 停用） | `official-event-watch-...` Artifact，包括來源覆蓋、狀態恢復、保存與差異 receipt |
 
 ### 下載結果
 
@@ -18,7 +19,7 @@
 3. 需要研究細節時，於 Run 頁面下方找到 **Artifacts**，下載對應 ZIP。
 4. 可把 Run URL 或下載 ZIP 交給 ChatGPT／本地 Agent 討論。GitHub Actions Artifact 目前多數僅保留 **14 天**；長期研究證據須另行保存合法且必要的精簡資料。
 
-**研究限制：** 目前範圍凍結到 2026-11-30（[#159](https://github.com/iceboxi/market-research/issues/159)）：核心 ETF 0050、00631L 與加權指數只看行情；衛星股 2330、2317、2454、2356、3017 有本益比檢視區與論點檢查（#111）；產業觀察 2408、2344、8299 有價格位置、股價淨值比檢視區與營收動能（#141）。檢視區只作為提醒、不是買賣建議。事件已觀察 ≠ 利多／利空；ATR、支撐壓力 ≠ 可執行停損目標；系統尚未提供完整可信的交易建議，亦未自動下單。
+**研究限制：** [#159](https://github.com/iceboxi/market-research/issues/159) 的使用評估結果是系統輸出沒有影響任何決定（2026-11-28），每日掃描、提醒與事件觀察因此停止排程（#206）。研究在對話中進行，結論寫進[知識庫](../knowledge/README.md)；手動執行掃描時，衛星股與產業觀察股的檢視區、論點檢查與營收動能照舊計算（#111、#141）。檢視區只作為提醒、不是買賣建議。事件已觀察 ≠ 利多／利空；ATR、支撐壓力 ≠ 可執行停損目標；系統尚未提供完整可信的交易建議，亦未自動下單。
 
 ## 正式事件 state 遷移（已完成）
 
@@ -37,9 +38,11 @@
 | TWSE 資料不足／當天還未收盤 | `data_quality.json`、來源狀態、最新已完成交易日 | EOD market scan |
 | 事件監控失敗 | 是否已完成 #9 正式遷移；查看恢復／來源／持久化 receipts，不要重做 baseline | Official disclosure watch |
 | 工作流程顯示成功但報告沒有完整買賣價 | 查看 `readiness`、`not_evaluated` 與來源證據；這是不同層級的 gate | Company report；相關研究 Issue |
-| 排程沒有發動 | 查看實際 `event=schedule` Run；只確認有執行，延遲不追蹤（2026-10-29 決策） | EOD schedule watchdog（工程入口） |
+| 排程沒有發動 | 查看 Knowledge site 實際的 `event=schedule` Run；只確認有執行，延遲不追蹤（2026-10-29 決策） | Knowledge site |
 
 ## 排程狀態怎麼看
+
+#206 起只有 Knowledge site 有排程；scan 與 watchdog 都只能手動執行，手動跑 watchdog 會把沒排程的掃描判成缺席。以下 watchdog 說明只在恢復掃描排程時適用。
 
 [EOD schedule watchdog](https://github.com/iceboxi/market-research/actions/workflows/watchdog.yml) 的 Summary 會列出觀測時間、判定中的 slot、grace、下一次預期排程（UTC 與臺灣時間），以及同時間 window 內最後成功的自然 job。`not_created` 表示回傳範圍內沒有對應 run，`queued` 是已建立但等待執行，`in_progress` 是尚未完成，`execution_failed` 是已結束但失敗。這些分類與資料來源健康分開；仍須查看 scan Artifact，確認實際市場、資料日期與 coverage。
 
@@ -49,4 +52,4 @@
 
 ## GitHub 多 Agent 工作方式
 
-新功能以 [AGENTS.md](../AGENTS.md) / [GitHub Issue tracker](agents/issue-tracker.md) 為準。新 Agent 先確認最新 main、開啟的 PR 與 Issue 認領，再用獨立 branch、PR、GitHub Actions 驗收。整體進度看開啟中的 Issue 與 PR，目前範圍與 2026-11-30 評估見 [#159](https://github.com/iceboxi/market-research/issues/159)；交接寫在各自的 Issue／PR（舊的交接總覽 #11 已於 2026-11-01 關閉）。避免將聊天紀錄當成唯一事實來源。
+新功能以 [AGENTS.md](../AGENTS.md) / [GitHub Issue tracker](agents/issue-tracker.md) 為準。新 Agent 先確認最新 main、開啟的 PR 與 Issue 認領，再用獨立 branch、PR、GitHub Actions 驗收。整體進度看開啟中的 Issue 與 PR，使用評估的結論見 [#159](https://github.com/iceboxi/market-research/issues/159)、停用排程見 [#206](https://github.com/iceboxi/market-research/issues/206)；交接寫在各自的 Issue／PR（舊的交接總覽 #11 已於 2026-11-01 關閉）。避免將聊天紀錄當成唯一事實來源。
