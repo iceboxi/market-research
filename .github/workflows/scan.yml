@@ -22,11 +22,6 @@ on:
         required: true
         default: both
         options: [tw, us, both]
-  schedule:
-    # TW 15:40 Asia/Taipei: TWSE STOCK_DAY already had the same-day session at 15:15
-    # (push run 39214871920); GitHub schedule delay adds hours on top of this slot.
-    - cron: '40 7 * * 1-5'
-    # US cron removed in #117; dispatch market=us still runs it manually.
 permissions:
   contents: write
   issues: write

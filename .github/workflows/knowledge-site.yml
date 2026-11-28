@@ -1,0 +1,92 @@
+name: Knowledge site
+# #206: publishes knowledge/ and the prediction review (#183) to Pages now that the daily
+# scan has no schedule (#159). The Pages site is replaced as a whole on every deploy.
+on:
+  schedule:
+    # 15:40 Asia/Taipei, the old scan slot: the session has closed, so held predictions
+    # see today's bar and a knowledge merge goes live the same day.
+    - cron: '40 7 * * 1-5'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      ready: ${{ steps.site.outputs.ready }}
+    env:
+      # scripts/prediction_review.py:46-51 writes #192 only for the TW market.
+      SCAN_MARKET: tw
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # First seen of each prediction comes from main's history.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - run: uv python install 3.12
+      - run: uv sync --extra dev --locked
+      - name: Sync prediction review Issue and scorecard page
+        id: review
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          uv run --no-sync python -m scripts.prediction_review --repo "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --out output
+          status=$?
+          set -e
+          jq -r '"預測回顧：\(.status) issue=#\(.issue_number // "-") comment=\(.comment // "-") page=\(.page.status // "-") \(.error_type // "") \(.reason // "")"' \
+            output/prediction_review_receipt.json >> "$GITHUB_STEP_SUMMARY" || true
+          exit $status
+      - name: Build knowledge site
+        id: site
+        if: always()
+        run: |
+          mkdir -p _site
+          cat > _site/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=knowledge/">
+          <title>Market Research 知識庫</title>
+          <a href="knowledge/">知識庫</a>
+          HTML
+          scorecard=output/predictions.md
+          if [ -f "$scorecard" ] && uv run --no-sync python -m scripts.build_knowledge_site --src knowledge \
+              --out _site/knowledge --extra "$scorecard" --extra-label "預測紀錄的每日判定（執行紀錄）" \
+              --extra-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; then
+            :
+          else
+            echo "預測成績表頁面未更新：沒有產生或產生失敗，知識庫其他頁面照常部署（#183）" >> "$GITHUB_STEP_SUMMARY"
+            rm -rf _site/knowledge
+            uv run --no-sync python -m scripts.build_knowledge_site --src knowledge --out _site/knowledge
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Upload knowledge site for Pages
+        if: always() && steps.site.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  pages:
+    needs: build
+    if: always() && github.ref == 'refs/heads/main' && needs.build.outputs.ready == 'true'
+    # Shared with the manual scan and production publication so Pages deploys never race.
+    concurrency:
+      group: research-publication-production
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy_pages.outputs.page_url }}
+    steps:
+      - name: Deploy knowledge site to GitHub Pages
+        id: deploy_pages
+        uses: actions/deploy-pages@v4

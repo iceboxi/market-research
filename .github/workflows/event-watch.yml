@@ -1,9 +1,6 @@
 name: Official disclosure watch
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '15 12 * * 1-5'
-    - cron: '30 2 * * 2-6'
 permissions:
   contents: write
 concurrency:

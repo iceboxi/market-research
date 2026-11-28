@@ -2,7 +2,7 @@
 
 這裡放對話中整理出來的產業研究，內容包括論點、會讓論點失效的訊號、證據和推論。每次提問後由 Agent 更新。非買賣建議。
 
-網頁版：<https://iceboxi.github.io/market-research/knowledge/>。合併到 main 之後，下一次平日排程部署報告網站時一起更新。
+網頁版：<https://iceboxi.github.io/market-research/knowledge/>。合併到 main 之後，由 [Knowledge site](https://github.com/iceboxi/market-research/actions/workflows/knowledge-site.yml) 在下一次平日 15:40（臺灣）排程部署；要立刻更新就手動 Run workflow。
 
 | 檔案 | 範圍 |
 | --- | --- |
@@ -17,9 +17,9 @@
 
 ## 和 pipeline 的分工
 
-- **數字**（價格、P/B 檢視區、營收動能）由 pipeline 每日計算。知識庫只在有事件時引用快照，並附資料日期和執行紀錄連結。
+- **數字**（價格、P/B 檢視區、營收動能）：每日掃描已停止排程（#206），需要時在對話中查原始來源，或手動 Run [EOD market scan](https://github.com/iceboxi/market-research/actions/workflows/scan.yml)。知識庫只在有事件時引用快照，並附資料日期和來源或執行紀錄連結。
 - **論點文字**：`config/watchlist.yaml` 的 `rationale` 是報告網頁顯示的摘要，證據和出處以知識庫為準。兩邊不一致時，先改知識庫，再同步 `rationale`。
-- **歷史資料**：[data/](data/README.md) 是一次抓取的快照，只用來做歷史對照。當天的數字以 pipeline 為準。
+- **歷史資料**：[data/](data/README.md) 是一次抓取的快照，只用來做歷史對照。當天的數字以當次查詢的原始來源為準。
 
 ## 每份檔案的段落
 
