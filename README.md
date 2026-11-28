@@ -116,10 +116,11 @@ satellites are also in `config/event_watchlist.yaml`. The report, daily summary
 and Pages overview show the status and its basis; `review` asks for a re-read
 of the thesis, not a trade.
 
-One open Issue titled 觀察名單提醒 ([#139](https://github.com/iceboxi/market-research/issues/139),
-built in #116) tracks those two states and, since #145, each industry-watch
+One Issue titled 觀察名單提醒 ([#139](https://github.com/iceboxi/market-research/issues/139),
+built in #116; closed in #206 when the scan schedule stopped, and the alert only
+writes to an open Issue, so a manual main run opens a new one) tracks those two states and, since #145, each industry-watch
 stock's P/B zone and revenue momentum. Its body is the current table and stores
-the last evaluated state in a hidden marker; each main TW schedule or dispatch run
+the last evaluated state in a hidden marker; each main TW dispatch run
 comments only when one of those items changes (old → new, prices or basis, data
 date, run link), at most once per run. The first run creates the Issue with a
 baseline comment, and items the stored state has never held (a newly added
