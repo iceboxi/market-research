@@ -219,7 +219,6 @@ def _page(title: str, body: str, nav: str, source: str, repo_url: str, sha: str,
 <header class="topbar">
   <div class="topbar-inner">
     <div class="brand">Market Research<span>知識庫</span></div>
-    <a class="toplink" href="../">個股研究</a>
   </div>
   <nav class="secnav" aria-label="知識庫檔案">{nav}</nav>
 </header>

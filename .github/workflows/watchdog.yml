@@ -1,9 +1,5 @@
 name: EOD schedule watchdog
 on:
-  schedule:
-    # A slot is judged once its 12h window closes (07:40 + 12h = 19:40 UTC), so even
-    # with hours of GitHub delay this run judges the previous TW slot.
-    - cron: '15 2 * * *'
   workflow_dispatch:
 permissions:
   actions: read

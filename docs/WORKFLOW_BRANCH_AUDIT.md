@@ -110,17 +110,18 @@
 - 本次清理移除該 synthetic 檔，並把 `ops-validation.yml` 的 push 限定在 branch。修改這個檔案本身也會觸發它，所以已透過 Actions 將它設為 `disabled_manually`（與 `scripts/state_store_acceptance.py` 的 cutover 前置條件一致）；需要 smoke test 時，先 `gh workflow enable ops-validation.yml`。
 - 後續所有帶 `push` 的 workflow 都加上 `branches: ['**']`，推 tag 不再觸發任何 push workflow（見 F）。
 
-## F. 現行 workflow 清單（2026-10-27，19 個）
+## F. 現行 workflow 清單（2026-11-28，20 個）
 
 所有 `push` trigger 都限定 `branches: ['**']`，tag push 不會觸發。
 
 | YAML | 觸發 | 用途 | 備註 |
 | --- | --- | --- | --- |
-| `scan.yml` | schedule、dispatch、push | **[User]** 每日盤後掃描、固定研究、TW 發布後部署 Pages、觀察名單提醒 Issue | TW 15:40（臺灣）名目排程；US 排程與 prospective 步驟已於 #117 移除；提醒 Issue 只在 main 的 TW schedule／dispatch 寫入（#116）；push 只掃 TW，US 只能手動選擇（#135） |
+| `knowledge-site.yml` | schedule、dispatch | **[User]** 預測回顧 Issue #192 與成績表、知識庫部署 Pages | TW 15:40（臺灣）名目排程（#206）；根目錄導向 `knowledge/` |
+| `scan.yml` | dispatch、push | **[User]** 盤後掃描、固定研究、TW 發布後部署 Pages、觀察名單提醒 Issue | 排程於 #206 停用；US 排程與 prospective 步驟已於 #117 移除；提醒 Issue 只在 main 的 TW schedule／dispatch 寫入（#116）；push 只掃 TW，US 只能手動選擇（#135） |
 | `company-research.yml` | dispatch、push | **[User]** 指定個股研究 | |
-| `event-watch.yml` | schedule、dispatch | **[User]** 官方事件觀察，寫 `research-state/events` | |
+| `event-watch.yml` | dispatch | **[User]** 官方事件觀察，寫 `research-state/events` | 排程於 #206 停用 |
 | `research-publication.yml` | dispatch、push | push／validation：發布驗收；dispatch production：手動發布 2330 並部署 Pages | production 只限 main dispatch |
-| `watchdog.yml` | schedule、dispatch | **[Ops]** 排程缺席／失敗監督，寫 incident Issue | 名目 10:15（臺灣） |
+| `watchdog.yml` | dispatch | **[Ops]** 排程缺席／失敗監督，寫 incident Issue | 排程於 #206 停用；手動執行會把沒跑的掃描當成缺席 |
 | `test.yml` | PR、push、dispatch | **[CI]** Unit tests | |
 | `state-store-acceptance.yml` | push、dispatch | **[CI/Ops]** state store 驗收；dispatch 可做一次性 operations cutover | |
 | `remote-acceptance.yml` | dispatch | **[CI]** dispatch 關聯驗收 | 搭配 child |

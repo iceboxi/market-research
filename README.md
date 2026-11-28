@@ -54,16 +54,17 @@ prices or treat unadjusted Taiwan prices as corporate-action-neutral.
 
 | 你要做的事 | GitHub Actions 入口 | 執行方式 |
 | --- | --- | --- |
-| 每日盤後掃描、產生候選名單 | [EOD market scan](https://github.com/iceboxi/market-research/actions/workflows/scan.yml) | 排程；必要時可 Run workflow |
+| 知識庫網頁與預測回顧 | [Knowledge site](https://github.com/iceboxi/market-research/actions/workflows/knowledge-site.yml) | 平日 15:40（臺灣）排程；必要時可 Run workflow |
+| 盤後掃描、產生候選名單 | [EOD market scan](https://github.com/iceboxi/market-research/actions/workflows/scan.yml) | 手動 Run workflow（排程已於 [#206](https://github.com/iceboxi/market-research/issues/206) 停用） |
 | 指定股票研究，如 `2330.TW`、`AAPL` | [On-demand company research](https://github.com/iceboxi/market-research/actions/workflows/company-research.yml) | 手動 Run workflow |
-| 追蹤官方重大公告是否變更 | [Official disclosure watch](https://github.com/iceboxi/market-research/actions/workflows/event-watch.yml) | 排程（事件 state 遷移已於 2026-10-19 由 [#9](https://github.com/iceboxi/market-research/issues/9) 驗收） |
+| 追蹤官方重大公告是否變更 | [Official disclosure watch](https://github.com/iceboxi/market-research/actions/workflows/event-watch.yml) | 手動 Run workflow（排程已於 #206 停用） |
 
-**目前範圍：** 2026-11-01 起凍結到 2026-11-30 的使用評估（[#159](https://github.com/iceboxi/market-research/issues/159)），期間不新增標的、指標或分析層。排程只確認自動化有執行，延遲不追蹤（2026-10-29 決策）。現行 workflow 與 branch 清單見[逐項盤點](docs/WORKFLOW_BRANCH_AUDIT.md) F 節。
+**目前範圍：** [#159](https://github.com/iceboxi/market-research/issues/159) 的使用評估結果是系統輸出沒有影響任何決定（2026-11-28），因此每日掃描、觀察名單提醒、官方事件觀察與排程監督都停止排程（#206），只保留知識庫網頁與預測回顧的排程。研究改在對話中進行，結論寫進 [knowledge/](knowledge/README.md)。排程只確認自動化有執行，延遲不追蹤（2026-10-29 決策）。現行 workflow 與 branch 清單見[逐項盤點](docs/WORKFLOW_BRANCH_AUDIT.md) F 節。
 
 ## Run with GitHub Actions
 
 - **Unit tests** workflow runs on push and pull request.
-- **EOD market scan** can run manually with **Run workflow** for tw, us, or both; it also runs on a weekday schedule.
+- **EOD market scan** can run manually with **Run workflow** for tw, us, or both; its weekday schedule was removed in #206.
 - Download the 14-day Artifact: manifest.json, data_quality.json, screening_results.json, signals.json, summary.md.
 - You can ask ChatGPT to read the artifact from GitHub where supported, or upload the downloaded ZIP into this conversation.
 
@@ -145,7 +146,7 @@ instead, which keeps the page about 20 kB per stored version lighter.
 
 ## Limits
 
-TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. This public repository intentionally does not publish raw full-history market CSV by default. Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.
+TWSE reports **raw, unadjusted** prices and **shares** for .TW tickers; corporate actions can affect indicator calculations. Yahoo Finance via yfinance is unofficial and subject to data quality and usage restrictions. Historical corporate actions and data freshness must be reviewed. The pipeline does not publish raw full-history market CSV; the one-off historical snapshot used for analogues is committed under `knowledge/data/` (#200). Taiwan price/volume are sourced directly from TWSE (not Yahoo); the optional crosscheck only applies to nonofficial Taiwan adapters. No match is a legitimate result, not a license to invent candidates.
 
 This repository currently covers only a handful of example tickers. It is **not** a whole-exchange scanner. No automatic trading, VPS, AI API, or Serenity analysis is included. An exploratory backtesting module exists, but no automated broker execution is supported. Python dependency resolution is pinned in the committed uv.lock.
 
@@ -185,7 +186,7 @@ The GitHub Runner-generated `uv.lock` is committed to main. Unit, scan and backt
 For scheduled and manually dispatched scans, a small metadata-only JSON report
 is appended under operations/history/YYYY/MM on the `research-state` data branch,
 with run ID, dates, status, strategy versions
-and input hashes. Full raw OHLCV is **not committed to public GitHub**.
+and input hashes. This history holds no raw OHLCV; the separate one-off snapshot in `knowledge/data/` (#200) does.
 Each run also produces health_report.json and health_report.md as Artifacts.
 
 Expected provisional-session warnings do not create an incident. Missing
@@ -205,7 +206,7 @@ for cutover, read/restore, integrity, receipts and validation gates.
 
 ## Watchdog onboarding gate
 
-`EOD schedule watchdog` checks the actual scheduled GitHub Actions events, not push/manual run success. First eligible monitored slots are explicit in `config/operations.json` (TW 2026-10-28 07:40 UTC, the first slot after the TW cron moved from 11:30 UTC; the US cron was removed in #117, so only TW is monitored), preventing false missing-run alerts for cron slots that preceded deployment. Before the first due slot the watchdog reports `warming_up` without creating Issues. Its own cron is a best-effort GitHub schedule; a separate external heartbeat would be needed to detect GitHub-wide scheduler failure.
+Since #206 neither the scan nor the watchdog has a schedule; the watchdog runs only by manual dispatch, and a dispatched run would report the missing scan slots. `EOD schedule watchdog` checks the actual scheduled GitHub Actions events, not push/manual run success. First eligible monitored slots are explicit in `config/operations.json` (TW 2026-10-28 07:40 UTC, the first slot after the TW cron moved from 11:30 UTC; the US cron was removed in #117, so only TW is monitored), preventing false missing-run alerts for cron slots that preceded deployment. Before the first due slot the watchdog reports `warming_up` without creating Issues. Its own cron is a best-effort GitHub schedule; a separate external heartbeat would be needed to detect GitHub-wide scheduler failure.
 
 The Summary now shows the observation time, actual execution phase (`not_created`, `queued`, `in_progress`, `execution_failed`, `completed`), evaluated slot/grace, next nominal UTC/Taiwan slot and the last successful scheduled job within that market's time window. `created_at` and `run_started_at` are workflow-run metadata, not proof of runner/job start; inspect jobs/steps for that evidence. Runtime market and source health still need the scan Artifact. A scheduled run counts for a slot only if it was created within 12 hours of the nominal slot (observed natural delays: 4–6.2 h, and 9 h 45 m for TW run 41490981368 on 2026-11-02). The grace equals that 12-hour window, so a slot is judged only after its window closes; watchdog runs daily at `02:15 UTC` (`10:15 Asia/Taipei`), subject to delays, and before 19:40 UTC it judges the previous TW slot. US is no longer scheduled (#117); the manual US probe's window overlaps TW 07:25–12:45 UTC, where `created_at` alone cannot identify the market. Missing/late-run root causes remain unverified without supporting evidence.
 

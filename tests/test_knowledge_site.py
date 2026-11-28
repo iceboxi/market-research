@@ -89,6 +89,6 @@ def test_build_writes_index_first_with_nav_and_footer(tmp_path: Path):
     assert '<a href="memory.html">memory.md</a>' in index
     assert '<a href="index.html#知識庫">README</a>' in page
     assert '<a href="memory.html" aria-current="page">記憶體</a>' in page
-    assert '<a class="toplink" href="../">個股研究</a>' in page
+    assert 'href="../"' not in page  # #206: the report home is retired; Pages root redirects here
     assert "commit <code>abcdef1</code>" in page and "2026-11-06 09:00（台北）" in page
     assert "<title>記憶體 — 知識庫</title>" in page
